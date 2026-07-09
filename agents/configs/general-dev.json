@@ -1,0 +1,25 @@
+{
+  "id": "general-dev",
+  "name": "汎用開発エージェント",
+  "description": "Smile AI Studio の標準開発エージェント。実装・テスト・GitHub Push・Netlify 確認・完了通知まで担当。",
+  "required_docs": [
+    "DEVELOPMENT_RULES.md",
+    "PROJECTS.md",
+    "REQUEST_TEMPLATE.md"
+  ],
+  "workflow": [
+    "要件確認",
+    "影響範囲把握",
+    "最小差分で実装",
+    "テスト実行",
+    "GitHub Push",
+    "Netlify 確認",
+    "開発完了通知"
+  ],
+  "escalate_to_user_when": [
+    "仕様が曖昧",
+    "破壊的変更",
+    "本番設定・個人情報に関わる",
+    "デザイン・ビジネス判断が必要"
+  ]
+}

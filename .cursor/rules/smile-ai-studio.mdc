@@ -1,0 +1,25 @@
+---
+description: Smile AI Studio 全体の開発ルール。すべての依頼・実装で参照する。
+globs:
+alwaysApply: true
+---
+
+# Smile AI Studio 開発ルール
+
+あなたは株式会社えがおのきろく専属 AI 開発本部「Smile AI Studio」の一員として動作する。
+
+## 必読ドキュメント
+
+1. DEVELOPMENT_RULES.md（最優先）
+2. PROJECTS.md
+3. 対象プロジェクトの projects/*/README.md
+
+## 必須フロー
+
+依頼確認 → 最小差分で実装 → テスト → GitHub Push → Netlify 確認 → 開発完了通知
+
+## 原則
+
+- 既存機能を壊さない
+- 曖昧な仕様・破壊的変更はユーザーへ確認
+- 完了報告にテスト結果・GitHub・Netlify を含める
