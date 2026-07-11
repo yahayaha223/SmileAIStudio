@@ -49,6 +49,29 @@
     { id: "tester", name: "テスターAI", icon: "🔍", role: "バグ確認、動作確認、改善提案" }
   ];
 
+  var AI_NAMES = ["プログラマーAI", "デザイナーAI", "ライターAI", "テスターAI"];
+
+  var AI_KEYWORDS = {
+    "プログラマーAI": [
+      "コード", "実装", "機能", "追加", "修正", "開発", "javascript", "html", "css",
+      "api", "データ", "localstorage", "保存", "バグ修正", "エラー", "リファクタ",
+      "github", "commit", "push", "ロジック", "処理", "フォーム", "入力"
+    ],
+    "デザイナーAI": [
+      "デザイン", "見た目", "ui", "ux", "画面", "余白", "色", "配色", "ボタン",
+      "レイアウト", "スマホ", "見やすく", "押しやすく", "フォント", "使いやす",
+      "分かりやすく", "見た目", "ビジュアル", "アイコン", "余白"
+    ],
+    "ライターAI": [
+      "文章", "文言", "コピー", "lp", "説明", "seo", "見出し", "キャッチ",
+      "テキスト", "書き", "伝わり", "説明文", "文章作成", "言い回し", "表現"
+    ],
+    "テスターAI": [
+      "テスト", "バグ", "不具合", "確認", "再現", "動作確認", "検証", "チェック",
+      "異常", "境界", "重大度", "調査", "原因", "デバッグ"
+    ]
+  };
+
   var STAFF_WORK_EXTRA = {
     "プログラマーAI": [
       "コード構成を確認する",
@@ -86,15 +109,31 @@
     "変更内容を日本語で報告する"
   ];
 
-  var REQUIRED_FIELDS = [
-    { id: "req-project", label: "プロジェクト" },
-    { id: "req-staff", label: "依頼するAIスタッフ" },
-    { id: "req-title", label: "依頼タイトル" },
-    { id: "req-content", label: "依頼内容" },
-    { id: "req-purpose", label: "目的" },
-    { id: "req-desired", label: "希望する完成状態" },
-    { id: "req-scope", label: "変更してよい範囲" },
-    { id: "req-priority", label: "優先度" }
+  var DEFAULT_CONSTRAINTS = [
+    "・既存機能を壊さない",
+    "・既存ファイルを勝手に削除しない",
+    "・現在のコードを確認してから変更する",
+    "・大規模な構成変更を勝手に行わない",
+    "・強制pushを使用しない",
+    "・認証情報や秘密情報をコードに直接書かない",
+    "・変更後に動作確認を行う",
+    "・スマホ表示を優先する"
+  ].join("\n");
+
+  var DEFAULT_REFERENCES = "現在のプロジェクト構成と既存コードを確認してください";
+
+  var DESIRED_BY_STAFF = {
+    "プログラマーAI": "既存機能を維持したまま、依頼内容が正常に動作する状態",
+    "デザイナーAI": "スマホで見やすく、押しやすく、迷わず使える状態",
+    "ライターAI": "対象者に伝わりやすく、自然で分かりやすい文章になっている状態",
+    "テスターAI": "不具合の再現条件、原因候補、重大度、改善案が整理された状態"
+  };
+
+  var CHECK_ITEMS = [
+    "依頼内容が意図どおり動作するか確認する",
+    "既存機能が壊れていないか確認する",
+    "スマホ表示を優先して確認する",
+    "エラーや表示崩れがないか確認する"
   ];
 
   var modal = document.getElementById("request-modal");
@@ -105,9 +144,16 @@
   var promptResult = document.getElementById("prompt-result");
   var promptResultText = document.getElementById("prompt-result-text");
   var promptViewText = document.getElementById("prompt-view-text");
+  var detailsPanel = document.getElementById("details-panel");
+  var btnToggleDetails = document.getElementById("btn-toggle-details");
+  var routerInputView = document.getElementById("router-input-view");
+  var routerResultView = document.getElementById("router-result-view");
+  var routeSummary = document.getElementById("route-summary");
   var toastTimer = null;
   var currentGeneratedPrompt = "";
   var viewedPrompt = "";
+  var detailsOpen = false;
+  var currentRoute = null;
 
   function showToast(message) {
     toast.textContent = message;
@@ -144,23 +190,36 @@
   function normalizeRequest(req) {
     if (!req || typeof req !== "object") return null;
 
-    var staff = req.aiStaff || req.staff || "";
+    var project = req.selectedProject || req.project || "";
+    var staff = req.detectedMainAI || req.aiStaff || req.staff || "";
     var content = req.request || req.content || "";
+    var support = req.detectedSupportAI || req.supportAI || "";
+    var purpose = req.detectedPurpose || req.purpose || "";
+    var desired = req.detectedDesiredResult || req.desiredResult || "";
+    var priority = req.detectedPriority || req.priority || "通常";
 
     return {
       id: req.id || String(Date.now()),
-      project: req.project || "",
+      project: project,
+      selectedProject: project,
       staff: staff,
       aiStaff: staff,
+      detectedMainAI: staff,
+      supportAI: support,
+      detectedSupportAI: support,
       title: req.title || "",
       content: content,
       request: content,
-      purpose: req.purpose || "",
-      desiredResult: req.desiredResult || "",
+      purpose: purpose,
+      detectedPurpose: purpose,
+      desiredResult: desired,
+      detectedDesiredResult: desired,
       changeScope: req.changeScope || "",
       constraints: req.constraints || "",
       references: req.references || "",
-      priority: req.priority || "中",
+      priority: priority,
+      detectedPriority: priority,
+      routingConfidence: req.routingConfidence || "",
       generatedPrompt: req.generatedPrompt || "",
       createdAt: req.createdAt || new Date().toISOString()
     };
@@ -186,7 +245,13 @@
 
   function priorityBadgeClass(priority) {
     if (priority === "高") return "badge--priority-high";
-    if (priority === "低") return "badge--priority-normal";
+    if (priority === "低" || priority === "通常") return "badge--priority-normal";
+    return "badge--progress";
+  }
+
+  function confidenceBadgeClass(level) {
+    if (level === "高") return "badge--priority-high";
+    if (level === "低") return "badge--priority-normal";
     return "badge--progress";
   }
 
@@ -202,24 +267,165 @@
     return t.slice(0, maxLen) + "…";
   }
 
-  function displayOrEmpty(value) {
-    var v = (value || "").trim();
-    return v || "（未入力）";
+  function buildTitleFromWant(want) {
+    var normalized = String(want || "")
+      .replace(/\r\n|\r|\n/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) return "";
+    if (normalized.length <= 30) return normalized;
+    return normalized.slice(0, 30) + "…";
   }
 
-  function getFormValues() {
+  function inferPurpose(want) {
+    var t = String(want || "").replace(/\r\n|\r|\n/g, " ").replace(/\s+/g, " ").trim();
+    if (!t) return "現場スタッフが迷わず操作できるようにする";
+
+    if (/入力ミス|誤入力|ミスを減ら/.test(t)) {
+      return "現場スタッフの入力ミスを減らす";
+    }
+    if (/分かりやすく|見やすく|使いやすく|迷わず|操作しやすく/.test(t)) {
+      return "現場スタッフが迷わず操作できるようにする";
+    }
+    if (/速く|早く|効率|時短|手間/.test(t)) {
+      return "作業時間を短縮し、現場の負担を減らす";
+    }
+    if (/文章|文言|コピー|LP|説明文|SEO/.test(t)) {
+      return "対象者に伝わりやすい文章にする";
+    }
+    if (/バグ|不具合|エラー|テスト|確認/.test(t)) {
+      return "不具合を洗い出し、安心して使える状態にする";
+    }
+
+    var base = t
+      .replace(/[。．.！!？?\s]+$/g, "")
+      .replace(/(したい|してほしい|して欲しい)$/g, "");
+    if (!base) base = t;
+    return base + "ことで、現場の負担を減らす";
+  }
+
+  function inferDesiredResult(staff) {
+    return DESIRED_BY_STAFF[staff] || "依頼内容が満たされ、既存機能も問題なく使える状態";
+  }
+
+  function inferPriority(want, override) {
+    if (override) return override;
+    var t = String(want || "");
+    if (/今日|明日|至急|急ぎ|すぐ|緊急/.test(t)) return "高";
+    if (/急がない|いつでも|余裕|低優先/.test(t)) return "低";
+    if (/今週/.test(t)) return "中";
+    return "通常";
+  }
+
+  function countKeywordMatches(want, keywords) {
+    var text = String(want || "").toLowerCase();
+    var count = 0;
+    var matched = {};
+    keywords.forEach(function (kw) {
+      var key = String(kw).toLowerCase();
+      if (!key || matched[key]) return;
+      if (text.indexOf(key) !== -1) {
+        matched[key] = true;
+        count += 1;
+      }
+    });
+    return count;
+  }
+
+  function confidenceFromMatchCount(count) {
+    if (count >= 2) return "高";
+    if (count === 1) return "中";
+    return "低";
+  }
+
+  function detectAIStaff(want, mainOverride, supportOverride) {
+    var scores = AI_NAMES.map(function (name) {
+      return {
+        name: name,
+        score: countKeywordMatches(want, AI_KEYWORDS[name] || [])
+      };
+    }).sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return AI_NAMES.indexOf(a.name) - AI_NAMES.indexOf(b.name);
+    });
+
+    var mainAI = mainOverride || scores[0].name;
+    var mainScore = 0;
+    scores.forEach(function (s) {
+      if (s.name === mainAI) mainScore = s.score;
+    });
+
+    var supportAI = "";
+    if (supportOverride === "なし") {
+      supportAI = "なし";
+    } else if (supportOverride) {
+      supportAI = supportOverride === mainAI ? "なし" : supportOverride;
+    } else {
+      var second = scores.find(function (s) {
+        return s.name !== mainAI && s.score > 0;
+      });
+      supportAI = second ? second.name : "なし";
+    }
+
+    return {
+      mainAI: mainAI,
+      supportAI: supportAI,
+      mainScore: mainScore,
+      confidence: confidenceFromMatchCount(mainScore),
+      scores: scores
+    };
+  }
+
+  function getRawFormValues() {
     return {
       project: document.getElementById("req-project").value,
-      staff: document.getElementById("req-staff").value,
-      title: document.getElementById("req-title").value.trim(),
       content: document.getElementById("req-content").value.trim(),
-      purpose: document.getElementById("req-purpose").value.trim(),
-      desiredResult: document.getElementById("req-desired").value.trim(),
+      mainAI: document.getElementById("req-main-ai").value,
+      supportAI: document.getElementById("req-support-ai").value,
       changeScope: document.getElementById("req-scope").value,
       constraints: document.getElementById("req-constraints").value.trim(),
       references: document.getElementById("req-references").value.trim(),
       priority: document.getElementById("req-priority").value
     };
+  }
+
+  function runRouter(raw) {
+    var content = (raw.content || "").trim();
+    var project = raw.project || "";
+    var detection = detectAIStaff(content, raw.mainAI || "", raw.supportAI || "");
+    var mainAI = detection.mainAI;
+    var priority = inferPriority(content, (raw.priority || "").trim());
+
+    return {
+      selectedProject: project,
+      project: project,
+      content: content,
+      title: buildTitleFromWant(content),
+      detectedMainAI: mainAI,
+      staff: mainAI,
+      aiStaff: mainAI,
+      detectedSupportAI: detection.supportAI,
+      supportAI: detection.supportAI,
+      detectedPurpose: inferPurpose(content),
+      purpose: inferPurpose(content),
+      detectedDesiredResult: inferDesiredResult(mainAI),
+      desiredResult: inferDesiredResult(mainAI),
+      detectedPriority: priority,
+      priority: priority,
+      routingConfidence: detection.confidence,
+      changeScope: (raw.changeScope || "").trim() || "関連ファイルのみ",
+      constraints: (raw.constraints || "").trim() || DEFAULT_CONSTRAINTS,
+      references: (raw.references || "").trim() || DEFAULT_REFERENCES,
+      mainScore: detection.mainScore
+    };
+  }
+
+  function setDetailsOpen(open) {
+    detailsOpen = !!open;
+    if (!detailsPanel || !btnToggleDetails) return;
+    detailsPanel.hidden = !detailsOpen;
+    btnToggleDetails.setAttribute("aria-expanded", detailsOpen ? "true" : "false");
+    btnToggleDetails.textContent = detailsOpen ? "詳細設定を閉じる" : "詳細設定を開く";
   }
 
   function clearValidation() {
@@ -230,26 +436,30 @@
     });
   }
 
-  function validateRequired() {
+  function showFormError(message, fieldIds) {
     clearValidation();
-    var missing = [];
-
-    REQUIRED_FIELDS.forEach(function (field) {
-      var el = document.getElementById(field.id);
-      var value = el.value.trim();
-      if (!value) {
-        missing.push(field.label);
-        if (el.parentElement) el.parentElement.classList.add("is-invalid");
-      }
+    formError.textContent = message;
+    formError.hidden = false;
+    (fieldIds || []).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentElement) el.parentElement.classList.add("is-invalid");
     });
+    formError.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 
-    if (missing.length > 0) {
-      formError.textContent = "次の項目を入力してください：" + missing.join("、");
-      formError.hidden = false;
-      formError.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  function validateRouterInput() {
+    var project = document.getElementById("req-project").value;
+    var content = document.getElementById("req-content").value.trim();
+
+    if (!project) {
+      showFormError("作業するプロジェクトを選択してください", ["req-project"]);
       return false;
     }
-
+    if (!content) {
+      showFormError("やりたいことを入力してください", ["req-content"]);
+      return false;
+    }
+    clearValidation();
     return true;
   }
 
@@ -264,42 +474,65 @@
     return items;
   }
 
-  function generatePrompt(values) {
-    var workItems = buildWorkItems(values.staff);
+  function generatePrompt(route) {
+    var workItems = buildWorkItems(route.detectedMainAI || route.staff);
     var workLines = workItems.map(function (item, i) {
       return (i + 1) + ". " + item;
     }).join("\n");
 
+    var checkLines = CHECK_ITEMS.map(function (item) {
+      return "・" + item;
+    }).join("\n");
+
+    var supportLine = route.detectedSupportAI && route.detectedSupportAI !== "なし"
+      ? route.detectedSupportAI
+      : "なし";
+
     return [
+      "【作業対象プロジェクト】",
+      route.selectedProject || route.project,
+      "",
+      "【作業範囲の厳守】",
+      "・現在開いているフォルダ名と対象プロジェクト名が一致しているか、作業前に確認する",
+      "・対象プロジェクト以外のファイルを変更しない",
+      "・フォルダが一致しない場合は作業を開始せず報告する",
+      "・別リポジトリへcommitやpushを行わない",
+      "",
       "【プロジェクト名】",
-      values.project,
+      route.selectedProject || route.project,
       "",
       "【担当AI】",
-      values.staff,
+      route.detectedMainAI || route.staff,
+      "",
+      "【補助AI】",
+      supportLine,
       "",
       "【依頼タイトル】",
-      values.title,
+      route.title,
       "",
       "【目的】",
-      values.purpose,
+      route.detectedPurpose || route.purpose,
       "",
       "【現在の課題】",
-      values.content,
+      route.content,
       "",
       "【希望する完成状態】",
-      values.desiredResult,
+      route.detectedDesiredResult || route.desiredResult,
       "",
       "【変更してよい範囲】",
-      values.changeScope,
+      route.changeScope,
       "",
       "【守ってほしい条件】",
-      displayOrEmpty(values.constraints),
+      route.constraints,
       "",
       "【参考情報】",
-      displayOrEmpty(values.references),
+      route.references,
       "",
       "【作業内容】",
       workLines,
+      "",
+      "【動作確認】",
+      checkLines,
       "",
       "【重要】",
       "・既存ファイルを勝手に削除しない",
@@ -321,15 +554,49 @@
     ].join("\n");
   }
 
-  function showGeneratedPrompt(text) {
-    currentGeneratedPrompt = text;
-    promptResultText.textContent = text;
-    promptResult.hidden = false;
-    promptResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  function showView(mode) {
+    if (routerInputView) routerInputView.hidden = mode !== "input";
+    if (routerResultView) routerResultView.hidden = mode !== "result";
+    if (promptResult) promptResult.hidden = mode !== "prompt";
   }
 
-  function hideGeneratedPrompt() {
-    promptResult.hidden = true;
+  function renderRouteSummary(route) {
+    document.getElementById("route-project-name").textContent = route.selectedProject || route.project;
+    routeSummary.innerHTML =
+      '<div class="route-summary__row">' +
+        "<span>主担当AI</span><strong>" + escapeHtml(route.detectedMainAI) + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>補助AI</span><strong>" + escapeHtml(route.detectedSupportAI || "なし") + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>依頼タイトル</span><strong>" + escapeHtml(route.title) + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>目的</span><strong>" + escapeHtml(route.detectedPurpose) + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>希望する完成状態</span><strong>" + escapeHtml(route.detectedDesiredResult) + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>優先度</span><strong>" + escapeHtml(route.detectedPriority) + "</strong>" +
+      "</div>" +
+      '<div class="route-summary__row">' +
+        "<span>確信度</span>" +
+        '<strong><span class="badge ' + confidenceBadgeClass(route.routingConfidence) + '">' +
+          escapeHtml(route.routingConfidence) +
+        "</span></strong>" +
+      "</div>" +
+      '<p class="route-summary__note">確信度は担当AI判定のみです。プロジェクトは手動選択のため判定対象外です。</p>';
+  }
+
+  function showGeneratedPrompt(route, text) {
+    currentGeneratedPrompt = text;
+    currentRoute = route;
+    document.getElementById("prompt-project-name").textContent = route.selectedProject || route.project;
+    promptResultText.textContent = text;
+    showView("prompt");
+    promptResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function copyText(text) {
@@ -385,48 +652,55 @@
     });
   }
 
-  function buildRequestObject(values, generatedPrompt) {
-    var content = values.content;
-    var staff = values.staff;
+  function buildRequestObject(route, generatedPrompt) {
+    var project = route.selectedProject || route.project;
+    var mainAI = route.detectedMainAI || route.staff;
+    var content = route.content;
 
     return {
       id: Date.now().toString(),
-      project: values.project,
-      staff: staff,
-      aiStaff: staff,
-      title: values.title,
+      project: project,
+      selectedProject: project,
+      staff: mainAI,
+      aiStaff: mainAI,
+      detectedMainAI: mainAI,
+      supportAI: route.detectedSupportAI || "なし",
+      detectedSupportAI: route.detectedSupportAI || "なし",
+      title: route.title,
       content: content,
       request: content,
-      purpose: values.purpose,
-      desiredResult: values.desiredResult,
-      changeScope: values.changeScope,
-      constraints: values.constraints,
-      references: values.references,
-      priority: values.priority,
+      purpose: route.detectedPurpose || route.purpose,
+      detectedPurpose: route.detectedPurpose || route.purpose,
+      desiredResult: route.detectedDesiredResult || route.desiredResult,
+      detectedDesiredResult: route.detectedDesiredResult || route.desiredResult,
+      changeScope: route.changeScope,
+      constraints: route.constraints,
+      references: route.references,
+      priority: route.detectedPriority || route.priority,
+      detectedPriority: route.detectedPriority || route.priority,
+      routingConfidence: route.routingConfidence || "",
       generatedPrompt: generatedPrompt || "",
       createdAt: new Date().toISOString()
     };
   }
 
-  function saveCurrentRequest(options) {
-    options = options || {};
-    if (!validateRequired()) return false;
-
-    var values = getFormValues();
-    var prompt = currentGeneratedPrompt;
-
-    if (!prompt && options.requirePrompt) {
-      formError.textContent = "先に「指示書を生成」を押してください。";
-      formError.hidden = false;
+  function saveCurrentRequest() {
+    if (!currentRoute) {
+      showFormError("先にAIルーターを実行してください");
+      showView("input");
       return false;
     }
 
-    if (!prompt) {
-      prompt = generatePrompt(values);
-      currentGeneratedPrompt = prompt;
+    if (!(currentRoute.selectedProject || currentRoute.project)) {
+      showFormError("作業するプロジェクトを選択してください", ["req-project"]);
+      showView("input");
+      return false;
     }
 
-    var request = buildRequestObject(values, prompt);
+    var prompt = currentGeneratedPrompt || generatePrompt(currentRoute);
+    currentGeneratedPrompt = prompt;
+
+    var request = buildRequestObject(currentRoute, prompt);
     var requests = getRequests();
     requests.unshift(request);
     saveRequests(requests);
@@ -537,6 +811,12 @@
 
       var hasPrompt = !!(req.generatedPrompt && req.generatedPrompt.trim());
       var preview = truncateText(req.content || req.request || "", 80);
+      var mainAI = req.detectedMainAI || req.staff || req.aiStaff || "—";
+      var projectName = req.selectedProject || req.project || "—";
+      var confidence = req.routingConfidence
+        ? ' <span class="badge ' + confidenceBadgeClass(req.routingConfidence) + '">確信度：' +
+          escapeHtml(req.routingConfidence) + "</span>"
+        : "";
 
       card.innerHTML =
         '<div class="request-card__top">' +
@@ -544,8 +824,10 @@
           '<time class="request-card__date">' + escapeHtml(formatDate(req.createdAt)) + "</time>" +
         "</div>" +
         '<p class="request-card__info">' +
-          escapeHtml(req.project || "—") + " ／ " + escapeHtml(req.staff || req.aiStaff || "—") +
-          ' <span class="badge ' + priorityBadgeClass(req.priority) + '">' + escapeHtml(req.priority || "中") + "</span>" +
+          escapeHtml(projectName) + " ／ " + escapeHtml(mainAI) +
+          ' <span class="badge ' + priorityBadgeClass(req.priority) + '">' +
+            escapeHtml(req.detectedPriority || req.priority || "通常") +
+          "</span>" + confidence +
         "</p>" +
         '<p class="request-card__content">' + escapeHtml(preview || "（内容なし）") + "</p>" +
         '<div class="request-card__actions">' +
@@ -582,24 +864,34 @@
     }
   }
 
+  function resetFormFields() {
+    document.getElementById("req-scope").value = "";
+    document.getElementById("req-priority").value = "";
+    document.getElementById("req-constraints").value = "";
+    document.getElementById("req-references").value = "";
+    document.getElementById("req-main-ai").value = "";
+    document.getElementById("req-support-ai").value = "";
+  }
+
   function openModal(preset) {
     preset = preset || {};
     form.reset();
     clearValidation();
-    hideGeneratedPrompt();
     currentGeneratedPrompt = "";
-
-    document.getElementById("req-scope").value = "不明";
-    document.getElementById("req-priority").value = "中";
+    currentRoute = null;
+    setDetailsOpen(false);
+    resetFormFields();
+    showView("input");
 
     if (preset.project) {
       document.getElementById("req-project").value = preset.project;
     }
     if (preset.staff) {
-      document.getElementById("req-staff").value = preset.staff;
+      document.getElementById("req-main-ai").value = preset.staff;
+      setDetailsOpen(true);
     }
-    if (preset.title) {
-      document.getElementById("req-title").value = preset.title;
+    if (preset.content) {
+      document.getElementById("req-content").value = preset.content;
     }
 
     modal.classList.add("is-open");
@@ -608,12 +900,10 @@
 
     setTimeout(function () {
       var focusEl = document.getElementById("req-project");
-      if (preset.project && !preset.staff) {
-        focusEl = document.getElementById("req-staff");
-      } else if (preset.staff && !preset.project) {
+      if (preset.project) {
+        focusEl = document.getElementById("req-content");
+      } else if (preset.staff) {
         focusEl = document.getElementById("req-project");
-      } else if (preset.project && preset.staff) {
-        focusEl = document.getElementById("req-title");
       }
       if (focusEl) focusEl.focus();
     }, 300);
@@ -623,19 +913,41 @@
     modal.classList.remove("is-open");
     modal.setAttribute("aria-hidden", "true");
     currentGeneratedPrompt = "";
-    hideGeneratedPrompt();
+    currentRoute = null;
     clearValidation();
+    setDetailsOpen(false);
+    showView("input");
     if (!promptViewModal.classList.contains("is-open")) {
       document.body.style.overflow = "";
     }
   }
 
-  function handleGenerate() {
-    if (!validateRequired()) return;
+  function handleRoute() {
+    if (!validateRouterInput()) return;
 
-    var values = getFormValues();
-    var prompt = generatePrompt(values);
-    showGeneratedPrompt(prompt);
+    var raw = getRawFormValues();
+    currentRoute = runRouter(raw);
+    currentGeneratedPrompt = "";
+    renderRouteSummary(currentRoute);
+    showView("result");
+    routerResultView.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    showToast("AI判定が完了しました");
+  }
+
+  function handleBuildPrompt() {
+    if (!currentRoute) {
+      showFormError("先にAIルーターを実行してください");
+      showView("input");
+      return;
+    }
+    if (!(currentRoute.selectedProject || currentRoute.project)) {
+      showFormError("作業するプロジェクトを選択してください", ["req-project"]);
+      showView("input");
+      return;
+    }
+
+    var prompt = generatePrompt(currentRoute);
+    showGeneratedPrompt(currentRoute, prompt);
     showToast("指示書を生成しました");
   }
 
@@ -698,8 +1010,16 @@
 
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("modal-cancel").addEventListener("click", closeModal);
+  document.getElementById("modal-cancel-result").addEventListener("click", closeModal);
 
-  document.getElementById("btn-generate").addEventListener("click", handleGenerate);
+  document.getElementById("btn-route").addEventListener("click", handleRoute);
+  document.getElementById("btn-build-prompt").addEventListener("click", handleBuildPrompt);
+
+  document.getElementById("btn-back-to-input").addEventListener("click", function () {
+    currentGeneratedPrompt = "";
+    showView("input");
+    clearValidation();
+  });
 
   document.getElementById("btn-copy-prompt").addEventListener("click", function () {
     copyText(currentGeneratedPrompt).then(function () {
@@ -711,18 +1031,24 @@
 
   document.getElementById("btn-edit-prompt").addEventListener("click", function () {
     currentGeneratedPrompt = "";
-    hideGeneratedPrompt();
     clearValidation();
-    var titleEl = document.getElementById("req-title");
-    if (titleEl) {
-      titleEl.focus();
-      titleEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    showView("input");
+    var wantEl = document.getElementById("req-content");
+    if (wantEl) {
+      wantEl.focus();
+      wantEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   });
 
   document.getElementById("btn-save-from-result").addEventListener("click", function () {
     saveCurrentRequest();
   });
+
+  if (btnToggleDetails) {
+    btnToggleDetails.addEventListener("click", function () {
+      setDetailsOpen(!detailsOpen);
+    });
+  }
 
   document.getElementById("prompt-view-close").addEventListener("click", closePromptView);
   document.getElementById("prompt-view-cancel").addEventListener("click", closePromptView);
@@ -755,7 +1081,6 @@
   });
 
   form.addEventListener("submit", handleSubmit);
-
   document.getElementById("recent-requests").addEventListener("click", handleRecentClick);
 
   renderPriorityTasks();
