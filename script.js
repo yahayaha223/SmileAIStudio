@@ -8,29 +8,61 @@
   var RELEASE_NOTES_KEY = "smileAIStudio_releaseNotes";
   var RELEASE_HISTORY_KEY = "smileAIStudio_releaseHistory";
   var RELEASE_STATE_KEY = "smileAIStudio_releaseState";
+  var TODAY_TODOS_KEY = "smileAIStudio_todayTodos";
+  var IPHONE_SETTINGS_KEY = "smileAIStudio_iphoneSettings";
+  var CURRENT_FOCUS_KEY = "smileAIStudio_currentFocus";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "0.5.0",
-    build: 25,
+    version: "0.6.0",
+    build: 26,
     updatedAt: "2026-07-11"
   };
 
   var DEV_ROADMAP = {
-    progress: 60,
+    progress: 65,
     completed: [
       "AIルーター",
       "指示書生成",
       "プロジェクト管理",
-      "システムチェック"
+      "システムチェック",
+      "リリースセンター",
+      "スマホファーストUI"
     ],
     upcoming: [
       { label: "AI会議ログ", status: "準備中" },
-      { label: "AIスタッフ管理", status: "予定" },
-      { label: "GitHub自動化", status: "予定" },
-      { label: "Netlify自動化", status: "予定" },
-      { label: "Cursor連携", status: "予定" }
+      { label: "GitHub自動Push", status: "準備中" },
+      { label: "Netlify公開", status: "準備中" },
+      { label: "Cursor連携", status: "準備中" },
+      { label: "通知", status: "準備中" },
+      { label: "音声入力", status: "準備中" }
     ]
+  };
+
+  var FUTURE_FEATURES = [
+    "AI会議ログ",
+    "GitHub自動Push",
+    "Netlify公開",
+    "Cursor連携",
+    "通知",
+    "音声入力"
+  ];
+
+  var DEFAULT_TODAY_TODOS = [
+    { id: "todo-giftcanvas", text: "GiftCanvas修正", done: false },
+    { id: "todo-ningyoyaki", text: "人形焼き追加", done: false },
+    { id: "todo-system-check", text: "システムチェック", done: false }
+  ];
+
+  var DEFAULT_IPHONE_SETTINGS = {
+    cursorMobile: false,
+    githubMobile: false,
+    netlifyCheck: false
+  };
+
+  var DEFAULT_CURRENT_FOCUS = {
+    projectId: "gift-canvas",
+    progress: 45
   };
 
   var MANUAL_CHECK_ITEMS = [
@@ -242,6 +274,9 @@
   var modal = document.getElementById("request-modal");
   var promptViewModal = document.getElementById("prompt-view-modal");
   var projectModal = document.getElementById("project-modal");
+  var projectDetailModal = document.getElementById("project-detail-modal");
+  var projectDetailBody = document.getElementById("project-detail-body");
+  var projectDetailTitle = document.getElementById("project-detail-title");
   var form = document.getElementById("request-form");
   var toast = document.getElementById("toast");
   var formError = document.getElementById("form-error");
@@ -311,6 +346,7 @@
       (modal && modal.classList.contains("is-open")) ||
       (promptViewModal && promptViewModal.classList.contains("is-open")) ||
       (projectModal && projectModal.classList.contains("is-open")) ||
+      (projectDetailModal && projectDetailModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
       (releaseCenterModal && releaseCenterModal.classList.contains("is-open"))
     );
@@ -630,6 +666,7 @@
     renderProjectCards();
     populateProjectSelect(selectedId || "");
     renderProjectManagementList();
+    renderCurrentFocus();
   }
 
   /* ========== Project UI ========== */
@@ -654,6 +691,7 @@
 
   function renderProjectCards() {
     var container = document.getElementById("project-list");
+    if (!container) return;
     var enabled = getEnabledProjects();
 
     if (enabled.length === 0) {
@@ -663,53 +701,40 @@
 
     container.innerHTML = enabled.map(function (p) {
       return (
-        '<article class="card project-card" data-project-id="' + escapeHtml(p.id) + '">' +
+        '<article class="card project-card project-card--simple" data-project-id="' + escapeHtml(p.id) + '" tabindex="0" role="button" aria-label="' + escapeHtml(p.name) + 'の詳細">' +
           '<div class="card__header">' +
             '<h3 class="card__title">' +
-              '<span class="project-card__icon" aria-hidden="true">' + escapeHtml(p.icon) + "</span> " +
+              '<span class="project-card__icon" aria-hidden="true">' + escapeHtml(p.icon) + "</span>" +
               escapeHtml(p.name) +
             "</h3>" +
           "</div>" +
-          '<p class="card__desc">' + escapeHtml(p.description) + "</p>" +
           '<div class="card__meta">' +
             '<span class="badge ' + statusBadgeClass(p.status) + '">' + escapeHtml(p.status) + "</span>" +
             '<span class="badge ' + priorityBadgeClass(p.priority) + '">優先度：' + escapeHtml(p.priority) + "</span>" +
           "</div>" +
           '<div class="card__actions">' +
-            '<button type="button" class="btn btn--secondary btn-open" data-project-id="' + escapeHtml(p.id) + '">開く</button>' +
-            '<button type="button" class="btn btn--secondary btn-github" data-project-id="' + escapeHtml(p.id) + '">GitHub</button>' +
-            '<button type="button" class="btn btn--primary btn-instruct" data-project-id="' + escapeHtml(p.id) + '">開発指示を作る</button>' +
+            '<button type="button" class="btn btn--primary btn-develop" data-project-id="' + escapeHtml(p.id) + '">開発</button>' +
           "</div>" +
         "</article>"
       );
     }).join("");
 
-    container.querySelectorAll(".btn-open").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var p = getProjectById(btn.getAttribute("data-project-id"));
-        if (!p) return;
-        if (p.publicUrl) {
-          window.open(p.publicUrl, "_blank", "noopener,noreferrer");
-        } else {
-          showToast("公開サイトURLが登録されていません");
+    container.querySelectorAll(".project-card--simple").forEach(function (card) {
+      card.addEventListener("click", function (e) {
+        if (e.target.closest(".btn-develop")) return;
+        openProjectDetail(card.getAttribute("data-project-id"));
+      });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openProjectDetail(card.getAttribute("data-project-id"));
         }
       });
     });
 
-    container.querySelectorAll(".btn-github").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var p = getProjectById(btn.getAttribute("data-project-id"));
-        if (!p) return;
-        if (p.githubUrl) {
-          window.open(p.githubUrl, "_blank", "noopener,noreferrer");
-        } else {
-          showToast("GitHub URLが登録されていません");
-        }
-      });
-    });
-
-    container.querySelectorAll(".btn-instruct").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+    container.querySelectorAll(".btn-develop").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
         openModal({ projectId: btn.getAttribute("data-project-id") });
       });
     });
@@ -1508,6 +1533,7 @@
 
   function renderStaff() {
     var container = document.getElementById("staff-list");
+    if (!container) return;
     container.innerHTML = staffList.map(function (s) {
       return (
         '<article class="card staff-card">' +
@@ -1837,17 +1863,25 @@
 
   function checkRequiredDom() {
     var required = [
+      { id: "today-todos", label: "今日やること描画先" },
       { id: "priority-tasks", label: "今日の優先タスク描画先" },
+      { id: "current-focus-panel", label: "現在開発中描画先" },
+      { id: "release-home-panel", label: "リリース状況描画先" },
+      { id: "btn-ai-request-hero", label: "AIへ依頼ヒーロー" },
       { id: "project-list", label: "プロジェクト一覧描画先" },
       { id: "staff-list", label: "AIスタッフ一覧描画先" },
       { id: "recent-requests", label: "最近の依頼描画先" },
-      { id: "btn-new-request", label: "新しい依頼ボタン" },
+      { id: "iphone-settings", label: "iPhone運用設定描画先" },
+      { id: "upcoming-panel", label: "今後追加予定描画先" },
+      { id: "btn-new-request", label: "AI依頼クイックボタン" },
+      { id: "btn-quick-projects", label: "プロジェクトクイックボタン" },
       { id: "btn-manage-projects", label: "プロジェクト管理ボタン" },
       { id: "btn-add-project", label: "プロジェクト追加ボタン" },
       { id: "btn-system-check", label: "システムチェックボタン" },
       { id: "btn-release-center", label: "リリースセンターボタン" },
       { id: "request-modal", label: "依頼モーダル" },
       { id: "project-modal", label: "プロジェクト管理モーダル" },
+      { id: "project-detail-modal", label: "プロジェクト詳細モーダル" },
       { id: "project-form-view", label: "プロジェクト登録フォーム" },
       { id: "system-check-modal", label: "システムチェックモーダル" },
       { id: "release-center-modal", label: "リリースセンターモーダル" },
@@ -1859,8 +1893,8 @@
     required.forEach(function (item) {
       if (!document.getElementById(item.id)) missing.push(item.label + " (#" + item.id + ")");
     });
-    var footer = document.querySelector("footer.footer");
-    if (!footer) missing.push("固定フッター (footer.footer)");
+    var footer = document.querySelector("footer.footer.footer--quick");
+    if (!footer) missing.push("クイックアクションフッター (footer.footer--quick)");
 
     if (missing.length) {
       return makeCheckResult("dom", "必須DOM", "fail",
@@ -2204,6 +2238,15 @@
       },
       closeCheck: function () { return typeof closeReleaseCenter === "function"; },
       allowOpenDuringCheck: true
+    });
+
+    checkOne({
+      id: "project-detail-modal",
+      label: "プロジェクト詳細モーダル",
+      closeIds: ["project-detail-close", "btn-detail-close"],
+      openCheck: function () { return typeof openProjectDetail === "function"; },
+      closeCheck: function () { return typeof closeProjectDetail === "function"; },
+      allowOpenDuringCheck: false
     });
 
     var details = [];
@@ -2893,6 +2936,7 @@
     }
 
     renderReleaseHistory();
+    if (typeof renderReleaseHome === "function") renderReleaseHome();
   }
 
   function renderReleaseHistory() {
@@ -3006,10 +3050,438 @@
       "</article>";
   }
 
+  /* ========== スマホファースト：今日やること / 詳細 / 設定 ========== */
+
+  function loadTodayTodos() {
+    try {
+      var raw = localStorage.getItem(TODAY_TODOS_KEY);
+      if (!raw) return DEFAULT_TODAY_TODOS.map(function (t) {
+        return { id: t.id, text: t.text, done: !!t.done };
+      });
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return DEFAULT_TODAY_TODOS.map(function (t) {
+          return { id: t.id, text: t.text, done: !!t.done };
+        });
+      }
+      return parsed.map(function (t, i) {
+        return {
+          id: String(t.id || ("todo-" + i)),
+          text: String(t.text || "").trim() || "（無題）",
+          done: !!t.done
+        };
+      });
+    } catch (e) {
+      return DEFAULT_TODAY_TODOS.map(function (t) {
+        return { id: t.id, text: t.text, done: !!t.done };
+      });
+    }
+  }
+
+  function saveTodayTodos(list) {
+    try {
+      localStorage.setItem(TODAY_TODOS_KEY, JSON.stringify(list || []));
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderTodayTodos() {
+    var el = document.getElementById("today-todos");
+    if (!el) return;
+    var todos = loadTodayTodos();
+    var items = todos.map(function (t) {
+      return (
+        '<label class="today-item' + (t.done ? " is-done" : "") + '">' +
+          '<input type="checkbox" data-todo-id="' + escapeHtml(t.id) + '"' + (t.done ? " checked" : "") + ">" +
+          '<span class="today-item__text">' + escapeHtml(t.text) + "</span>" +
+        "</label>"
+      );
+    }).join("");
+
+    el.innerHTML =
+      items +
+      '<div class="today-add">' +
+        '<input type="text" id="today-todo-input" placeholder="やること追加" maxlength="80" aria-label="やること追加">' +
+        '<button type="button" class="btn btn--primary" id="btn-add-today-todo">追加</button>' +
+      "</div>";
+
+    el.querySelectorAll("input[data-todo-id]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var list = loadTodayTodos();
+        var id = input.getAttribute("data-todo-id");
+        list.forEach(function (t) {
+          if (t.id === id) t.done = !!input.checked;
+        });
+        saveTodayTodos(list);
+        renderTodayTodos();
+      });
+    });
+
+    var addBtn = document.getElementById("btn-add-today-todo");
+    var addInput = document.getElementById("today-todo-input");
+    if (addBtn && addInput) {
+      function addTodo() {
+        var text = addInput.value.trim();
+        if (!text) {
+          showToast("内容を入力してください");
+          return;
+        }
+        var list = loadTodayTodos();
+        list.push({
+          id: "todo-" + Date.now(),
+          text: text,
+          done: false
+        });
+        saveTodayTodos(list);
+        renderTodayTodos();
+        showToast("追加しました");
+      }
+      addBtn.addEventListener("click", addTodo);
+      addInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addTodo();
+        }
+      });
+    }
+  }
+
+  function loadCurrentFocus() {
+    try {
+      var raw = localStorage.getItem(CURRENT_FOCUS_KEY);
+      if (!raw) return {
+        projectId: DEFAULT_CURRENT_FOCUS.projectId,
+        progress: DEFAULT_CURRENT_FOCUS.progress
+      };
+      var parsed = JSON.parse(raw);
+      return {
+        projectId: String(parsed.projectId || DEFAULT_CURRENT_FOCUS.projectId),
+        progress: Math.max(0, Math.min(100, Number(parsed.progress) || DEFAULT_CURRENT_FOCUS.progress))
+      };
+    } catch (e) {
+      return {
+        projectId: DEFAULT_CURRENT_FOCUS.projectId,
+        progress: DEFAULT_CURRENT_FOCUS.progress
+      };
+    }
+  }
+
+  function saveCurrentFocus(focus) {
+    try {
+      localStorage.setItem(CURRENT_FOCUS_KEY, JSON.stringify(focus));
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderCurrentFocus() {
+    var el = document.getElementById("current-focus-panel");
+    if (!el) return;
+    var focus = loadCurrentFocus();
+    var project = getProjectById(focus.projectId) || getEnabledProjects()[0] || null;
+    if (!project) {
+      el.innerHTML = '<p class="empty-message">開発中のプロジェクトがありません</p>';
+      return;
+    }
+    if (project.id !== focus.projectId) {
+      focus.projectId = project.id;
+      saveCurrentFocus(focus);
+    }
+
+    el.innerHTML =
+      '<button type="button" class="focus-card" id="btn-current-focus" data-project-id="' + escapeHtml(project.id) + '">' +
+        '<p class="focus-card__label">現在</p>' +
+        '<p class="focus-card__name">' +
+          '<span aria-hidden="true">' + escapeHtml(project.icon) + "</span> " +
+          escapeHtml(project.name) +
+        "</p>" +
+        '<div class="progress">' +
+          '<div class="progress__bar" role="progressbar" aria-valuenow="' + focus.progress +
+            '" aria-valuemin="0" aria-valuemax="100">' +
+            '<div class="progress__fill" style="width:' + focus.progress + '%"></div>' +
+          "</div>" +
+        "</div>" +
+        '<p class="focus-card__pct">' + focus.progress + "%</p>" +
+      "</button>";
+
+    var btn = document.getElementById("btn-current-focus");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        openProjectDetail(btn.getAttribute("data-project-id"));
+      });
+    }
+  }
+
+  function renderReleaseHome() {
+    var el = document.getElementById("release-home-panel");
+    if (!el) return;
+    var state = { status: "開発中" };
+    var decision = { label: "未判定" };
+    try {
+      state = loadReleaseState() || state;
+    } catch (e1) { /* ignore */ }
+    try {
+      decision = evaluatePublishDecision() || decision;
+    } catch (e2) { /* ignore */ }
+    var statusText = (state && state.status) ? state.status : "開発中";
+    var decisionText = decision && decision.label ? decision.label : "未判定";
+    var checkText = "未実行";
+    if (latestSystemCheckOverall && latestSystemCheckOverall.label) {
+      checkText = latestSystemCheckOverall.label;
+    }
+
+    el.innerHTML =
+      '<button type="button" class="release-home-card" id="btn-release-home">' +
+        '<div class="release-home-card__row">' +
+          '<span class="release-home-card__label">公開状態</span>' +
+          '<span class="release-home-card__value">' + escapeHtml(statusText) + "</span>" +
+        "</div>" +
+        '<div class="release-home-card__row">' +
+          '<span class="release-home-card__label">公開判定</span>' +
+          '<span class="release-home-card__value">' + escapeHtml(decisionText) + "</span>" +
+        "</div>" +
+        '<div class="release-home-card__row">' +
+          '<span class="release-home-card__label">システムチェック</span>' +
+          '<span class="release-home-card__value">' + escapeHtml(checkText) + "</span>" +
+        "</div>" +
+        '<p class="form-hint" style="margin-top:12px;margin-bottom:0">タップでリリースセンターを開く</p>' +
+      "</button>";
+
+    var btn = document.getElementById("btn-release-home");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        openReleaseCenter();
+      });
+    }
+  }
+
+  function loadIphoneSettings() {
+    try {
+      var raw = localStorage.getItem(IPHONE_SETTINGS_KEY);
+      if (!raw) {
+        return {
+          cursorMobile: DEFAULT_IPHONE_SETTINGS.cursorMobile,
+          githubMobile: DEFAULT_IPHONE_SETTINGS.githubMobile,
+          netlifyCheck: DEFAULT_IPHONE_SETTINGS.netlifyCheck
+        };
+      }
+      var parsed = JSON.parse(raw);
+      return {
+        cursorMobile: !!parsed.cursorMobile,
+        githubMobile: !!parsed.githubMobile,
+        netlifyCheck: !!parsed.netlifyCheck
+      };
+    } catch (e) {
+      return {
+        cursorMobile: false,
+        githubMobile: false,
+        netlifyCheck: false
+      };
+    }
+  }
+
+  function saveIphoneSettings(settings) {
+    try {
+      localStorage.setItem(IPHONE_SETTINGS_KEY, JSON.stringify(settings));
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderIphoneSettings() {
+    var el = document.getElementById("iphone-settings");
+    if (!el) return;
+    var s = loadIphoneSettings();
+    var rows = [
+      { key: "cursorMobile", label: "Cursorモバイル運用" },
+      { key: "githubMobile", label: "GitHub Mobile運用" },
+      { key: "netlifyCheck", label: "Netlify公開確認" }
+    ];
+
+    el.innerHTML = rows.map(function (row) {
+      return (
+        '<div class="settings-row">' +
+          '<span class="settings-row__label">' + escapeHtml(row.label) + "</span>" +
+          '<label class="settings-toggle">' +
+            '<input type="checkbox" data-iphone-setting="' + row.key + '"' + (s[row.key] ? " checked" : "") + ">" +
+            '<span class="settings-toggle__track" aria-hidden="true"></span>' +
+          "</label>" +
+        "</div>"
+      );
+    }).join("");
+
+    el.querySelectorAll("input[data-iphone-setting]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        var settings = loadIphoneSettings();
+        var key = input.getAttribute("data-iphone-setting");
+        settings[key] = !!input.checked;
+        saveIphoneSettings(settings);
+        showToast(input.checked ? "ONにしました" : "OFFにしました");
+      });
+    });
+  }
+
+  function renderUpcomingPanel() {
+    var el = document.getElementById("upcoming-panel");
+    if (!el) return;
+    el.innerHTML =
+      '<ul class="upcoming-list">' +
+        FUTURE_FEATURES.map(function (label) {
+          return (
+            "<li>" +
+              "<span>" + escapeHtml(label) + "</span>" +
+              '<span class="upcoming-badge">準備中</span>' +
+            "</li>"
+          );
+        }).join("") +
+      "</ul>";
+  }
+
+  function getProjectReleaseSummary(project) {
+    if (!project) return { latest: "未登録", publish: "不明" };
+    var history = [];
+    try {
+      var raw = localStorage.getItem(RELEASE_HISTORY_KEY);
+      history = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(history)) history = [];
+    } catch (e) {
+      history = [];
+    }
+    var latest = history[0];
+    var latestText = latest
+      ? ("v" + (latest.version || "?") + " / " + formatDate(latest.date || ""))
+      : "未登録";
+    var publish = project.publicUrl ? "公開URLあり" : "未公開";
+    if (project.id === "smile-ai-studio") {
+      var state = loadReleaseState();
+      if (state && state.status) publish = state.status;
+    }
+    return { latest: latestText, publish: publish };
+  }
+
+  function getProjectDevHistory(project) {
+    var requests = getRequests().filter(function (r) {
+      return (r.projectId && r.projectId === project.id) ||
+        (r.projectName && r.projectName === project.name) ||
+        (r.selectedProject && r.selectedProject === project.name) ||
+        (r.project && r.project === project.name);
+    }).slice(0, 5);
+
+    if (requests.length === 0) {
+      return '<p class="form-hint">まだ開発履歴はありません</p>';
+    }
+    return (
+      '<ul class="dev-status-list">' +
+        requests.map(function (r) {
+          return "<li>" + escapeHtml(formatDate(r.createdAt)) + " — " +
+            escapeHtml(r.title || "無題の依頼") + "</li>";
+        }).join("") +
+      "</ul>"
+    );
+  }
+
+  function openProjectDetail(projectId) {
+    var project = getProjectById(projectId);
+    if (!project || !projectDetailModal || !projectDetailBody) {
+      showToast("プロジェクトが見つかりません");
+      return;
+    }
+    var release = getProjectReleaseSummary(project);
+    if (projectDetailTitle) {
+      projectDetailTitle.textContent = (project.icon ? project.icon + " " : "") + project.name;
+    }
+
+    var githubHtml = project.githubUrl
+      ? '<a href="' + escapeHtml(project.githubUrl) + '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(project.githubUrl) + "</a>"
+      : "未登録";
+    var publicHtml = project.publicUrl
+      ? '<a href="' + escapeHtml(project.publicUrl) + '" target="_blank" rel="noopener noreferrer">' +
+          escapeHtml(project.publicUrl) + "</a>"
+      : "未登録";
+
+    projectDetailBody.innerHTML =
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">説明</p>' +
+        '<p class="detail-block__value">' + escapeHtml(project.description || "—") + "</p>" +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">GitHub</p>' +
+        '<p class="detail-block__value">' + githubHtml + "</p>" +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">公開サイト</p>' +
+        '<p class="detail-block__value">' + publicHtml + "</p>" +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">ローカルフォルダ</p>' +
+        '<p class="detail-block__value">' + escapeHtml(project.localFolderName || "—") + "</p>" +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">開発履歴</p>' +
+        getProjectDevHistory(project) +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">最新リリース</p>' +
+        '<p class="detail-block__value">' + escapeHtml(release.latest) + "</p>" +
+      "</div>" +
+      '<div class="detail-block">' +
+        '<p class="detail-block__label">公開状態</p>' +
+        '<p class="detail-block__value">' + escapeHtml(release.publish) + "</p>" +
+      "</div>" +
+      '<div class="detail-actions">' +
+        '<button type="button" class="btn btn--primary" id="btn-detail-develop" data-project-id="' +
+          escapeHtml(project.id) + '">開発する</button>' +
+        '<button type="button" class="btn btn--secondary" id="btn-detail-edit" data-project-id="' +
+          escapeHtml(project.id) + '">編集する</button>' +
+        '<button type="button" class="btn btn--ghost" id="btn-detail-close">閉じる</button>' +
+      "</div>";
+
+    var developBtn = document.getElementById("btn-detail-develop");
+    if (developBtn) {
+      developBtn.addEventListener("click", function () {
+        closeProjectDetail();
+        openModal({ projectId: developBtn.getAttribute("data-project-id") });
+      });
+    }
+    var editBtn = document.getElementById("btn-detail-edit");
+    if (editBtn) {
+      editBtn.addEventListener("click", function () {
+        closeProjectDetail();
+        openProjectModal({ mode: "edit", projectId: editBtn.getAttribute("data-project-id") });
+      });
+    }
+    var closeBtn = document.getElementById("btn-detail-close");
+    if (closeBtn) {
+      closeBtn.addEventListener("click", closeProjectDetail);
+    }
+
+    projectDetailModal.classList.add("is-open");
+    projectDetailModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
+  function closeProjectDetail() {
+    if (!projectDetailModal) return;
+    projectDetailModal.classList.remove("is-open");
+    projectDetailModal.setAttribute("aria-hidden", "true");
+    syncBodyScroll();
+  }
+
+  function scrollToProjects() {
+    var section = document.getElementById("projects-section");
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   /* ========== Events ========== */
   onClick("btn-new-request", function () {
     openModal();
   }, "openRequestModal");
+
+  onClick("btn-ai-request-hero", function () {
+    openModal();
+  }, "openRequestModalHero");
+
+  onClick("btn-quick-projects", function () {
+    scrollToProjects();
+  }, "scrollToProjects");
 
   onClick("btn-manage-projects", function () {
     openProjectModal({ mode: "list" });
@@ -3026,6 +3498,13 @@
   onClick("btn-release-center", function () {
     openReleaseCenter();
   }, "openReleaseCenter");
+
+  onClick("project-detail-close", closeProjectDetail, "closeProjectDetail");
+  if (projectDetailModal) {
+    projectDetailModal.addEventListener("click", function (e) {
+      if (e.target === projectDetailModal) closeProjectDetail();
+    });
+  }
 
   onClick("btn-new-project", function () {
     openProjectForm(null);
@@ -3201,6 +3680,10 @@
       closePromptView();
       return;
     }
+    if (projectDetailModal && projectDetailModal.classList.contains("is-open")) {
+      closeProjectDetail();
+      return;
+    }
     if (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) {
       closeReleaseCenter();
       return;
@@ -3233,12 +3716,17 @@
   /* ========== Init ========== */
   try {
     loadProjects();
+    renderTodayTodos();
     renderPriorityTasks();
+    renderCurrentFocus();
+    renderReleaseHome();
     renderDevStatusPanel();
     renderProjectCards();
     populateProjectSelect();
     renderStaff();
     renderRecentRequests();
+    renderIphoneSettings();
+    renderUpcomingPanel();
     window.smileAIStudioStatus.initialized = true;
     window.smileAIStudioStatus.initializedAt = new Date().toISOString();
   } catch (e) {

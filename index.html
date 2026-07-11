@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="Smile AI Studio — 株式会社えがおのきろく AI司令塔">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#4f6ef7">
   <title>Smile AI Studio</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -13,14 +15,21 @@
     <header class="hero">
       <div class="hero__badge">AI Command Center</div>
       <h1 class="hero__title">Smile AI Studio</h1>
-      <p class="hero__subtitle">株式会社えがおのきろく AI司令塔</p>
-      <p class="hero__desc">
-        スマホからAIスタッフへ指示を出し、開発・デザイン・文章作成・テストを管理します。
-      </p>
+      <p class="hero__subtitle">スマホから動かす AI司令塔</p>
+      <p class="hero__desc">指示・確認・公開判断を、片手で。</p>
     </header>
 
     <main class="main">
-      <!-- 今日の優先タスク -->
+      <!-- 今日やること -->
+      <section class="section" aria-labelledby="today-heading">
+        <h2 id="today-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">✅</span>
+          今日やること
+        </h2>
+        <div class="today-card" id="today-todos"></div>
+      </section>
+
+      <!-- ① 今日の優先タスク -->
       <section class="section" aria-labelledby="priority-heading">
         <h2 id="priority-heading" class="section__title">
           <span class="section__icon" aria-hidden="true">⚡</span>
@@ -29,58 +38,120 @@
         <div class="card-list" id="priority-tasks"></div>
       </section>
 
-      <!-- 開発状況 -->
-      <section class="section" aria-labelledby="dev-status-heading">
-        <h2 id="dev-status-heading" class="section__title">
-          <span class="section__icon" aria-hidden="true">🚀</span>
-          開発状況
+      <!-- 現在開発中 -->
+      <section class="section" aria-labelledby="focus-heading">
+        <h2 id="focus-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">📌</span>
+          現在開発中
         </h2>
-        <div id="dev-status-panel"></div>
+        <div id="current-focus-panel"></div>
       </section>
 
-      <!-- プロジェクト一覧 -->
-      <section class="section" aria-labelledby="projects-heading">
+      <!-- ② リリース状況 -->
+      <section class="section" aria-labelledby="release-home-heading">
+        <h2 id="release-home-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">🚀</span>
+          リリース状況
+        </h2>
+        <div id="release-home-panel"></div>
+      </section>
+
+      <!-- ③ AIへ依頼 -->
+      <section class="section" aria-labelledby="ai-request-heading">
+        <h2 id="ai-request-heading" class="section__title visually-hidden">AIへ依頼</h2>
+        <button type="button" class="ai-request-hero" id="btn-ai-request-hero">
+          <span class="ai-request-hero__icon" aria-hidden="true">🤖</span>
+          <span class="ai-request-hero__text">
+            <strong>AIへ依頼</strong>
+            <small>やりたいことを書いて指示書を作る</small>
+          </span>
+          <span class="ai-request-hero__chevron" aria-hidden="true">›</span>
+        </button>
+      </section>
+
+      <!-- ④ プロジェクト -->
+      <section class="section" aria-labelledby="projects-heading" id="projects-section">
         <div class="section__header">
           <h2 id="projects-heading" class="section__title">
             <span class="section__icon" aria-hidden="true">📁</span>
-            プロジェクト一覧
+            プロジェクト
           </h2>
           <div class="section__actions">
-            <button type="button" class="btn btn--ghost btn--compact" id="btn-release-center" title="リリースセンター">🚀 リリース</button>
-            <button type="button" class="btn btn--ghost btn--compact" id="btn-system-check" title="システムチェック">🔧 チェック</button>
-            <button type="button" class="btn btn--secondary btn--compact" id="btn-manage-projects">管理</button>
-            <button type="button" class="btn btn--primary btn--compact" id="btn-add-project">＋ 追加</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-manage-projects">管理</button>
+            <button type="button" class="btn btn--primary btn--touch" id="btn-add-project">＋ 追加</button>
           </div>
         </div>
-        <div class="card-list" id="project-list"></div>
+        <div class="card-list card-list--projects" id="project-list"></div>
       </section>
 
-      <!-- AIスタッフ -->
+      <!-- ⑤ AIスタッフ -->
       <section class="section" aria-labelledby="staff-heading">
         <h2 id="staff-heading" class="section__title">
           <span class="section__icon" aria-hidden="true">🤖</span>
           AIスタッフ
         </h2>
-        <div class="card-list card-list--staff" id="staff-list"></div>
+        <div class="staff-scroll" id="staff-list"></div>
       </section>
 
-      <!-- 最近の依頼 -->
+      <!-- ⑥ 最近の依頼 -->
       <section class="section" aria-labelledby="recent-heading">
         <h2 id="recent-heading" class="section__title">
           <span class="section__icon" aria-hidden="true">📋</span>
           最近の依頼
         </h2>
         <div class="card-list" id="recent-requests">
-          <p class="empty-message" id="empty-requests">まだ依頼はありません。下のボタンから作成できます。</p>
+          <p class="empty-message" id="empty-requests">まだ依頼はありません。下の AI依頼 から作成できます。</p>
         </div>
+      </section>
+
+      <!-- iPhone運用準備 -->
+      <section class="section" aria-labelledby="iphone-settings-heading">
+        <h2 id="iphone-settings-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">📱</span>
+          iPhone運用準備
+        </h2>
+        <div class="settings-card" id="iphone-settings"></div>
+      </section>
+
+      <!-- 今後追加予定 -->
+      <section class="section" aria-labelledby="upcoming-heading">
+        <h2 id="upcoming-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">🧭</span>
+          今後追加予定
+        </h2>
+        <div id="upcoming-panel"></div>
+      </section>
+
+      <!-- Smile AI Studio の進捗 -->
+      <section class="section section--muted" aria-labelledby="dev-status-heading">
+        <h2 id="dev-status-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">📊</span>
+          Smile AI Studio の進捗
+        </h2>
+        <div id="dev-status-panel"></div>
       </section>
     </main>
 
-    <!-- 固定フッター -->
-    <footer class="footer">
-      <button type="button" class="btn btn--primary btn--large" id="btn-new-request">
-        ＋ 新しい依頼を作る
-      </button>
+    <!-- 固定フッター：クイックアクション -->
+    <footer class="footer footer--quick">
+      <nav class="quick-nav" aria-label="クイックアクション">
+        <button type="button" class="quick-nav__btn quick-nav__btn--primary" id="btn-new-request">
+          <span class="quick-nav__icon" aria-hidden="true">🤖</span>
+          <span class="quick-nav__label">AI依頼</span>
+        </button>
+        <button type="button" class="quick-nav__btn" id="btn-release-center">
+          <span class="quick-nav__icon" aria-hidden="true">🚀</span>
+          <span class="quick-nav__label">リリース</span>
+        </button>
+        <button type="button" class="quick-nav__btn" id="btn-system-check">
+          <span class="quick-nav__icon" aria-hidden="true">🔧</span>
+          <span class="quick-nav__label">チェック</span>
+        </button>
+        <button type="button" class="quick-nav__btn" id="btn-quick-projects">
+          <span class="quick-nav__icon" aria-hidden="true">📂</span>
+          <span class="quick-nav__label">プロジェクト</span>
+        </button>
+      </nav>
     </footer>
   </div>
 
@@ -225,6 +296,17 @@
           <button type="button" class="btn btn--ghost btn--block" id="prompt-view-cancel">閉じる</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- プロジェクト詳細モーダル -->
+  <div class="modal-overlay" id="project-detail-modal" aria-hidden="true">
+    <div class="modal modal--project-detail" role="dialog" aria-labelledby="project-detail-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="project-detail-title">プロジェクト詳細</h3>
+        <button type="button" class="modal__close" id="project-detail-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body" id="project-detail-body"></div>
     </div>
   </div>
 
