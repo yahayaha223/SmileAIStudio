@@ -29,12 +29,29 @@
         <div class="card-list" id="priority-tasks"></div>
       </section>
 
+      <!-- 開発状況 -->
+      <section class="section" aria-labelledby="dev-status-heading">
+        <h2 id="dev-status-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">🚀</span>
+          開発状況
+        </h2>
+        <div id="dev-status-panel"></div>
+      </section>
+
       <!-- プロジェクト一覧 -->
       <section class="section" aria-labelledby="projects-heading">
-        <h2 id="projects-heading" class="section__title">
-          <span class="section__icon" aria-hidden="true">📁</span>
-          プロジェクト一覧
-        </h2>
+        <div class="section__header">
+          <h2 id="projects-heading" class="section__title">
+            <span class="section__icon" aria-hidden="true">📁</span>
+            プロジェクト一覧
+          </h2>
+          <div class="section__actions">
+            <button type="button" class="btn btn--ghost btn--compact" id="btn-release-center" title="リリースセンター">🚀 リリース</button>
+            <button type="button" class="btn btn--ghost btn--compact" id="btn-system-check" title="システムチェック">🔧 チェック</button>
+            <button type="button" class="btn btn--secondary btn--compact" id="btn-manage-projects">管理</button>
+            <button type="button" class="btn btn--primary btn--compact" id="btn-add-project">＋ 追加</button>
+          </div>
+        </div>
         <div class="card-list" id="project-list"></div>
       </section>
 
@@ -85,11 +102,6 @@
             <label for="req-project">プロジェクト <span class="required-mark">必須</span></label>
             <select id="req-project" name="project">
               <option value="">選択してください</option>
-              <option value="Fuwafuwa Panic Manager">Fuwafuwa Panic Manager</option>
-              <option value="GiftCanvas">GiftCanvas</option>
-              <option value="イベント相談LP">イベント相談LP</option>
-              <option value="Smile AI Studio">Smile AI Studio</option>
-              <option value="その他">その他</option>
             </select>
             <p class="form-hint">誤変更防止のため、作業するプロジェクトは必ず手動で選んでください。</p>
           </div>
@@ -211,6 +223,198 @@
         <div class="prompt-result__actions">
           <button type="button" class="btn btn--primary btn--block" id="btn-copy-viewed-prompt">コピーする</button>
           <button type="button" class="btn btn--ghost btn--block" id="prompt-view-cancel">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- プロジェクト管理モーダル -->
+  <div class="modal-overlay" id="project-modal" aria-hidden="true">
+    <div class="modal modal--project" role="dialog" aria-labelledby="project-modal-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="project-modal-title">プロジェクト管理</h3>
+        <button type="button" class="modal__close" id="project-modal-close" aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="modal__body" id="project-list-view">
+        <button type="button" class="btn btn--primary btn--block" id="btn-new-project">＋ 新しいプロジェクト</button>
+        <p class="form-hint project-mgmt-hint">無効化したプロジェクトは依頼フォームに出ません。削除より無効化を推奨します。</p>
+        <div class="card-list" id="project-mgmt-list"></div>
+      </div>
+
+      <form class="modal__form" id="project-form-view" hidden novalidate>
+        <div class="form-error" id="project-form-error" role="alert" hidden></div>
+        <input type="hidden" id="proj-edit-id" value="">
+
+        <div class="form-group">
+          <label for="proj-name">プロジェクト名 <span class="required-mark">必須</span></label>
+          <input type="text" id="proj-name" placeholder="例：豊川稲荷 人形焼き">
+        </div>
+        <div class="form-group">
+          <label for="proj-description">説明 <span class="required-mark">必須</span></label>
+          <textarea id="proj-description" rows="3" placeholder="例：豊川稲荷名物となる狐の人形焼きを開発・販売する"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="proj-icon">アイコン</label>
+          <input type="text" id="proj-icon" placeholder="例：🦊（未入力なら📁）">
+        </div>
+        <div class="form-group">
+          <label for="proj-id">短縮名またはID</label>
+          <input type="text" id="proj-id" placeholder="例：toyokawa-ningyoyaki">
+          <p class="form-hint" id="proj-id-hint">未入力なら自動生成します。作成後は変更できません。</p>
+        </div>
+        <div class="form-group">
+          <label for="proj-status">ステータス</label>
+          <select id="proj-status">
+            <option value="構想中" selected>構想中</option>
+            <option value="準備中">準備中</option>
+            <option value="開発中">開発中</option>
+            <option value="改善中">改善中</option>
+            <option value="運用中">運用中</option>
+            <option value="一時停止">一時停止</option>
+            <option value="完了">完了</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="proj-priority">優先度</label>
+          <select id="proj-priority">
+            <option value="最優先">最優先</option>
+            <option value="高">高</option>
+            <option value="通常" selected>通常</option>
+            <option value="低">低</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="proj-github">GitHub URL</label>
+          <input type="url" id="proj-github" placeholder="https://github.com/...">
+        </div>
+        <div class="form-group">
+          <label for="proj-public">公開サイトURL</label>
+          <input type="url" id="proj-public" placeholder="https://...">
+        </div>
+        <div class="form-group">
+          <label for="proj-folder">ローカルフォルダ名</label>
+          <input type="text" id="proj-folder" placeholder="例：FuwafuwaPanicManager">
+        </div>
+        <div class="form-group">
+          <label for="proj-memo">メモ</label>
+          <textarea id="proj-memo" rows="2" placeholder="自由入力"></textarea>
+        </div>
+        <div class="form-group form-group--switch">
+          <label class="switch-label" for="proj-enabled">
+            <input type="checkbox" id="proj-enabled" checked>
+            <span>有効（ダッシュボード・依頼フォームに表示）</span>
+          </label>
+        </div>
+
+        <div class="modal__actions modal__actions--stack">
+          <button type="submit" class="btn btn--primary" id="btn-save-project">保存する</button>
+          <button type="button" class="btn btn--ghost" id="btn-cancel-project-form">一覧に戻る</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- システムチェック モーダル -->
+  <div class="modal-overlay" id="system-check-modal" aria-hidden="true">
+    <div class="modal modal--system-check" role="dialog" aria-labelledby="system-check-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="system-check-title">Smile AI Studio システムチェック</h3>
+        <button type="button" class="modal__close" id="system-check-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <p class="system-check__desc">
+          GitHubへ反映する前に、画面・データ・主要機能の状態を確認します。
+          GitHub / Netlify の実接続やデプロイ結果は対象外です。
+        </p>
+
+        <div class="system-check__actions">
+          <button type="button" class="btn btn--primary" id="btn-run-system-check">すべてチェック</button>
+          <button type="button" class="btn btn--secondary" id="btn-rerun-system-check">再チェック</button>
+          <button type="button" class="btn btn--secondary" id="btn-copy-system-check">結果をコピー</button>
+          <button type="button" class="btn btn--ghost" id="btn-close-system-check">閉じる</button>
+        </div>
+
+        <div class="system-check__overall" id="system-check-overall" hidden></div>
+        <div class="system-check__meta" id="system-check-meta"></div>
+        <div class="system-check__results" id="system-check-results">
+          <p class="form-hint">「すべてチェック」を押すと結果が表示されます。</p>
+        </div>
+
+        <div class="system-check__section">
+          <div class="system-check__section-head">
+            <h4>実行時エラー</h4>
+            <button type="button" class="btn btn--ghost btn--compact" id="btn-clear-runtime-errors">エラー履歴を消去</button>
+          </div>
+          <div id="system-check-errors"></div>
+        </div>
+
+        <div class="system-check__section">
+          <div class="system-check__section-head">
+            <h4>手動確認チェックリスト</h4>
+            <button type="button" class="btn btn--ghost btn--compact" id="btn-reset-manual-checklist">チェックをリセット</button>
+          </div>
+          <div class="manual-checklist" id="manual-checklist"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- リリースセンター モーダル -->
+  <div class="modal-overlay" id="release-center-modal" aria-hidden="true">
+    <div class="modal modal--release" role="dialog" aria-labelledby="release-center-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="release-center-title">🚀 リリースセンター</h3>
+        <button type="button" class="modal__close" id="release-center-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <p class="system-check__desc">
+          システムチェック（健康診断）の結果をもとに、GitHubへpushしてよいかを判定します。
+          実際のGitHub / Netlify操作はまだ行いません。
+        </p>
+
+        <div class="release-version" id="release-version-info"></div>
+
+        <div class="release-card" id="release-status-card">
+          <h4 class="release-card__label">現在の状態</h4>
+          <p class="release-card__value" id="release-current-status">開発中</p>
+        </div>
+
+        <div class="release-card" id="release-check-card">
+          <h4 class="release-card__label">最新システムチェック</h4>
+          <p class="release-card__value" id="release-latest-check">未実行</p>
+          <p class="form-hint" id="release-latest-check-meta"></p>
+        </div>
+
+        <div class="release-card release-card--decision" id="release-decision-card">
+          <h4 class="release-card__label">公開判定</h4>
+          <p class="release-card__value" id="release-decision">⚪ 未判定</p>
+          <p class="form-hint" id="release-decision-detail"></p>
+        </div>
+
+        <div class="system-check__actions">
+          <button type="button" class="btn btn--primary" id="btn-release-run-check">システムチェックを実行</button>
+          <button type="button" class="btn btn--secondary" id="btn-release-view-check">結果を見る</button>
+          <button type="button" class="btn btn--secondary" id="btn-release-judge">公開チェックを実行</button>
+          <button type="button" class="btn btn--secondary" id="btn-release-memo">公開メモを書く</button>
+          <button type="button" class="btn btn--primary" id="btn-release-save-history" hidden>履歴に追加</button>
+          <button type="button" class="btn btn--ghost" id="btn-release-close">閉じる</button>
+        </div>
+
+        <div class="release-memo-panel" id="release-memo-panel" hidden>
+          <div class="form-group">
+            <label for="release-memo-input">公開メモ</label>
+            <textarea id="release-memo-input" rows="3" placeholder="例：AIルーター追加、プロジェクト管理追加、バグ修正"></textarea>
+          </div>
+          <div class="system-check__actions">
+            <button type="button" class="btn btn--primary" id="btn-release-memo-save">メモを保存</button>
+            <button type="button" class="btn btn--ghost" id="btn-release-memo-cancel">閉じる</button>
+          </div>
+        </div>
+
+        <div class="system-check__section">
+          <h4>リリース履歴</h4>
+          <div id="release-history-list"></div>
         </div>
       </div>
     </div>

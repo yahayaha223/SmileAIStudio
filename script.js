@@ -2,44 +2,146 @@
   "use strict";
 
   var STORAGE_KEY = "smileAIStudio_requests";
+  var PROJECTS_KEY = "smileAIStudio_projects";
+  var RUNTIME_ERRORS_KEY = "smileAIStudio_runtimeErrors";
+  var MANUAL_CHECKLIST_KEY = "smileAIStudio_manualChecklist";
+  var RELEASE_NOTES_KEY = "smileAIStudio_releaseNotes";
+  var RELEASE_HISTORY_KEY = "smileAIStudio_releaseHistory";
+  var RELEASE_STATE_KEY = "smileAIStudio_releaseState";
+
+  var APP_INFO = {
+    name: "Smile AI Studio",
+    version: "0.5.0",
+    build: 25,
+    updatedAt: "2026-07-11"
+  };
+
+  var DEV_ROADMAP = {
+    progress: 60,
+    completed: [
+      "AIルーター",
+      "指示書生成",
+      "プロジェクト管理",
+      "システムチェック"
+    ],
+    upcoming: [
+      { label: "AI会議ログ", status: "準備中" },
+      { label: "AIスタッフ管理", status: "予定" },
+      { label: "GitHub自動化", status: "予定" },
+      { label: "Netlify自動化", status: "予定" },
+      { label: "Cursor連携", status: "予定" }
+    ]
+  };
+
+  var MANUAL_CHECK_ITEMS = [
+    { id: "open-request-modal", label: "新しい依頼モーダルを開ける" },
+    { id: "select-project", label: "プロジェクトを選択できる" },
+    { id: "run-router", label: "AIルーターが判定する" },
+    { id: "copy-prompt", label: "指示書をコピーできる" },
+    { id: "save-request", label: "依頼を保存できる" },
+    { id: "reopen-request", label: "保存後に再表示できる" },
+    { id: "add-project", label: "プロジェクトを追加できる" },
+    { id: "edit-project", label: "プロジェクトを編集できる" },
+    { id: "toggle-project", label: "無効化・再有効化できる" },
+    { id: "delete-confirm", label: "削除確認が表示される" },
+    { id: "mobile-layout", label: "スマホ表示が崩れていない" },
+    { id: "console-clean", label: "ブラウザConsoleにエラーがない" },
+    { id: "review-diff", label: "GitHubへpush前の差分を確認した" },
+    { id: "netlify-mobile", label: "Netlify公開後にスマホで確認した" }
+  ];
+
+  window.smileAIStudioStatus = {
+    initialized: false,
+    initializedAt: "",
+    runtimeErrors: [],
+    sessionErrors: [],
+    registeredActions: {}
+  };
+
+  function loadPersistedRuntimeErrors() {
+    try {
+      var raw = localStorage.getItem(RUNTIME_ERRORS_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.slice(0, 20) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function persistRuntimeErrors(list) {
+    try {
+      localStorage.setItem(RUNTIME_ERRORS_KEY, JSON.stringify((list || []).slice(0, 20)));
+    } catch (e) { /* ignore */ }
+  }
+
+  function sanitizeErrorText(value) {
+    var text = String(value == null ? "" : value);
+    text = text.replace(/(api[_-]?key|token|password|secret)\s*[:=]\s*\S+/gi, "$1=[REDACTED]");
+    return text.slice(0, 500);
+  }
+
+  function recordRuntimeError(entry) {
+    var item = {
+      message: sanitizeErrorText(entry.message || "Unknown error"),
+      source: sanitizeErrorText(entry.source || ""),
+      line: entry.line || 0,
+      column: entry.column || 0,
+      type: entry.type || "error",
+      at: entry.at || new Date().toISOString(),
+      session: true
+    };
+    window.smileAIStudioStatus.sessionErrors.unshift(item);
+    if (window.smileAIStudioStatus.sessionErrors.length > 20) {
+      window.smileAIStudioStatus.sessionErrors.length = 20;
+    }
+    var persisted = loadPersistedRuntimeErrors();
+    persisted.unshift({
+      message: item.message,
+      source: item.source,
+      line: item.line,
+      column: item.column,
+      type: item.type,
+      at: item.at,
+      session: false
+    });
+    persistRuntimeErrors(persisted);
+    window.smileAIStudioStatus.runtimeErrors = persisted;
+  }
+
+  window.smileAIStudioStatus.runtimeErrors = loadPersistedRuntimeErrors();
+
+  window.addEventListener("error", function (event) {
+    recordRuntimeError({
+      message: event && event.message ? event.message : "Script error",
+      source: event && event.filename ? event.filename : "",
+      line: event && event.lineno ? event.lineno : 0,
+      column: event && event.colno ? event.colno : 0,
+      type: "error"
+    });
+  });
+
+  window.addEventListener("unhandledrejection", function (event) {
+    var reason = event && event.reason;
+    var message = "";
+    if (reason && reason.message) message = reason.message;
+    else if (typeof reason === "string") message = reason;
+    else {
+      try { message = JSON.stringify(reason); } catch (e) { message = String(reason); }
+    }
+    recordRuntimeError({
+      message: message || "Unhandled promise rejection",
+      source: "",
+      line: 0,
+      column: 0,
+      type: "unhandledrejection"
+    });
+  });
 
   var priorityTasks = [
     { title: "Fuwafuwa Panic Managerの実用化", progress: 45, status: "進行中" },
     { title: "イベント相談LPの改善", progress: 30, status: "進行中" },
     { title: "Smile AI Studioの司令塔構築", progress: 60, status: "進行中" }
-  ];
-
-  var projects = [
-    {
-      id: "fuwafuwa",
-      name: "Fuwafuwa Panic Manager",
-      desc: "イベント現場の積み込み・返却・在庫・スタッフ管理",
-      status: "開発中",
-      statusClass: "badge--dev",
-      priority: "最優先",
-      priorityClass: "badge--priority-top",
-      links: { open: "", github: "" }
-    },
-    {
-      id: "giftcanvas",
-      name: "GiftCanvas",
-      desc: "バルーンギフトのデザイン・注文システム",
-      status: "開発中",
-      statusClass: "badge--dev",
-      priority: "通常",
-      priorityClass: "badge--priority-normal",
-      links: { open: "", github: "" }
-    },
-    {
-      id: "event-lp",
-      name: "イベント相談LP",
-      desc: "イベント相談とAI見積もりの集客サイト",
-      status: "改善中",
-      statusClass: "badge--improve",
-      priority: "高",
-      priorityClass: "badge--priority-high",
-      links: { open: "", github: "" }
-    }
   ];
 
   var staffList = [
@@ -60,7 +162,7 @@
     "デザイナーAI": [
       "デザイン", "見た目", "ui", "ux", "画面", "余白", "色", "配色", "ボタン",
       "レイアウト", "スマホ", "見やすく", "押しやすく", "フォント", "使いやす",
-      "分かりやすく", "見た目", "ビジュアル", "アイコン", "余白"
+      "分かりやすく", "ビジュアル", "アイコン"
     ],
     "ライターAI": [
       "文章", "文言", "コピー", "lp", "説明", "seo", "見出し", "キャッチ",
@@ -136,8 +238,10 @@
     "エラーや表示崩れがないか確認する"
   ];
 
+  /* ========== DOM ========== */
   var modal = document.getElementById("request-modal");
   var promptViewModal = document.getElementById("prompt-view-modal");
+  var projectModal = document.getElementById("project-modal");
   var form = document.getElementById("request-form");
   var toast = document.getElementById("toast");
   var formError = document.getElementById("form-error");
@@ -149,12 +253,19 @@
   var routerInputView = document.getElementById("router-input-view");
   var routerResultView = document.getElementById("router-result-view");
   var routeSummary = document.getElementById("route-summary");
+  var projectListView = document.getElementById("project-list-view");
+  var projectFormView = document.getElementById("project-form-view");
+  var projectFormError = document.getElementById("project-form-error");
+  var systemCheckModal = document.getElementById("system-check-modal");
+  var releaseCenterModal = document.getElementById("release-center-modal");
   var toastTimer = null;
   var currentGeneratedPrompt = "";
   var viewedPrompt = "";
   var detailsOpen = false;
   var currentRoute = null;
+  var editingProjectId = null;
 
+  /* ========== Utils ========== */
   function showToast(message) {
     toast.textContent = message;
     toast.classList.add("is-visible");
@@ -164,18 +275,701 @@
     }, 2800);
   }
 
-  function showPlaceholder() {
-    showToast("リンクは今後設定します");
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.textContent = str == null ? "" : String(str);
+    return div.innerHTML;
   }
 
-  function openLink(url) {
-    if (url) {
-      window.open(url, "_blank", "noopener,noreferrer");
-    } else {
-      showPlaceholder();
+  function truncateText(text, maxLen) {
+    var t = (text || "").trim();
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen) + "…";
+  }
+
+  function formatDate(iso) {
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      var m = d.getMonth() + 1;
+      var day = d.getDate();
+      var h = String(d.getHours()).padStart(2, "0");
+      var min = String(d.getMinutes()).padStart(2, "0");
+      return m + "/" + day + " " + h + ":" + min;
+    } catch (e) {
+      return "";
     }
   }
 
+  function isValidHttpUrl(value) {
+    if (!value) return true;
+    return /^https?:\/\/.+/i.test(value);
+  }
+
+  function anyModalOpen() {
+    return (
+      (modal && modal.classList.contains("is-open")) ||
+      (promptViewModal && promptViewModal.classList.contains("is-open")) ||
+      (projectModal && projectModal.classList.contains("is-open")) ||
+      (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
+      (releaseCenterModal && releaseCenterModal.classList.contains("is-open"))
+    );
+  }
+
+  function registerAction(name) {
+    if (!window.smileAIStudioStatus.registeredActions) {
+      window.smileAIStudioStatus.registeredActions = {};
+    }
+    window.smileAIStudioStatus.registeredActions[name] = true;
+  }
+
+  function onClick(id, handler, actionName) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    el.addEventListener("click", handler);
+    if (actionName) registerAction(actionName);
+    return el;
+  }
+
+  function syncBodyScroll() {
+    document.body.style.overflow = anyModalOpen() ? "hidden" : "";
+  }
+
+  function priorityBadgeClass(priority) {
+    if (priority === "最優先") return "badge--priority-top";
+    if (priority === "高") return "badge--priority-high";
+    if (priority === "低" || priority === "通常") return "badge--priority-normal";
+    return "badge--progress";
+  }
+
+  function statusBadgeClass(status) {
+    if (status === "開発中") return "badge--dev";
+    if (status === "改善中") return "badge--improve";
+    if (status === "運用中") return "badge--progress";
+    if (status === "一時停止" || status === "完了") return "badge--priority-normal";
+    return "badge--progress";
+  }
+
+  function confidenceBadgeClass(level) {
+    if (level === "高") return "badge--priority-high";
+    if (level === "低") return "badge--priority-normal";
+    return "badge--progress";
+  }
+
+  /* ========== Project storage ========== */
+  function getDefaultProjects() {
+    var now = new Date().toISOString();
+    return [
+      {
+        id: "fuwafuwa-panic-manager",
+        name: "Fuwafuwa Panic Manager",
+        icon: "🎪",
+        description: "イベント現場の積み込み・返却・在庫・スタッフ管理",
+        status: "開発中",
+        priority: "最優先",
+        githubUrl: "",
+        publicUrl: "",
+        localFolderName: "FuwafuwaPanicManager",
+        memo: "",
+        enabled: true,
+        isDefault: true,
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "gift-canvas",
+        name: "GiftCanvas",
+        icon: "🎈",
+        description: "バルーンギフトのデザイン・注文システム",
+        status: "開発中",
+        priority: "通常",
+        githubUrl: "",
+        publicUrl: "",
+        localFolderName: "GiftCanvas",
+        memo: "",
+        enabled: true,
+        isDefault: true,
+        sortOrder: 1,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "event-consultation-lp",
+        name: "イベント相談LP",
+        icon: "🌐",
+        description: "イベント相談とAI見積もりの集客サイト",
+        status: "改善中",
+        priority: "高",
+        githubUrl: "",
+        publicUrl: "",
+        localFolderName: "event-soudan",
+        memo: "",
+        enabled: true,
+        isDefault: true,
+        sortOrder: 2,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "smile-ai-studio",
+        name: "Smile AI Studio",
+        icon: "🤖",
+        description: "株式会社えがおのきろく専用のAI司令塔",
+        status: "開発中",
+        priority: "最優先",
+        githubUrl: "https://github.com/yahayaha223/SmileAIStudio",
+        publicUrl: "https://smileaistudio.netlify.app",
+        localFolderName: "SmileAIStudio",
+        memo: "",
+        enabled: true,
+        isDefault: true,
+        sortOrder: 3,
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+  }
+
+  function normalizeProject(raw, index) {
+    if (!raw || typeof raw !== "object") return null;
+    var now = new Date().toISOString();
+    var id = String(raw.id || "").trim();
+    if (!id) id = "project-" + Date.now() + "-" + (index || 0);
+
+    return {
+      id: id,
+      name: String(raw.name || "").trim() || "名称未設定",
+      icon: String(raw.icon || "").trim() || "📁",
+      description: String(raw.description || raw.desc || "").trim(),
+      status: String(raw.status || "構想中").trim() || "構想中",
+      priority: String(raw.priority || "通常").trim() || "通常",
+      githubUrl: String(raw.githubUrl || (raw.links && raw.links.github) || "").trim(),
+      publicUrl: String(raw.publicUrl || (raw.links && raw.links.open) || "").trim(),
+      localFolderName: String(raw.localFolderName || "").trim(),
+      memo: String(raw.memo || "").trim(),
+      enabled: raw.enabled !== false,
+      isDefault: !!raw.isDefault,
+      sortOrder: typeof raw.sortOrder === "number" ? raw.sortOrder : (typeof index === "number" ? index : 0),
+      createdAt: raw.createdAt || now,
+      updatedAt: raw.updatedAt || now
+    };
+  }
+
+  function sortProjects(list) {
+    return list.slice().sort(function (a, b) {
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      return String(a.name).localeCompare(String(b.name), "ja");
+    });
+  }
+
+  function loadProjects() {
+    try {
+      var data = localStorage.getItem(PROJECTS_KEY);
+      if (!data) {
+        var defaults = getDefaultProjects();
+        saveProjects(defaults);
+        return defaults;
+      }
+      var parsed = JSON.parse(data);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        var fallback = getDefaultProjects();
+        saveProjects(fallback);
+        return fallback;
+      }
+      return sortProjects(parsed.map(normalizeProject).filter(Boolean));
+    } catch (e) {
+      var recovery = getDefaultProjects();
+      try { saveProjects(recovery); } catch (err) { /* ignore */ }
+      return recovery;
+    }
+  }
+
+  function saveProjects(projects) {
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(sortProjects(projects)));
+  }
+
+  function getEnabledProjects() {
+    return loadProjects().filter(function (p) { return p.enabled; });
+  }
+
+  function getProjectById(id) {
+    if (!id) return null;
+    return loadProjects().find(function (p) { return p.id === id; }) || null;
+  }
+
+  function getProjectByName(name) {
+    if (!name) return null;
+    return loadProjects().find(function (p) { return p.name === name; }) || null;
+  }
+
+  function sanitizeCustomId(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9\-_\u3040-\u30ff\u3400-\u9fff]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  }
+
+  function generateProjectId(name) {
+    var base = sanitizeCustomId(name);
+    if (!base) base = "project";
+    var id = base + "-" + Date.now().toString(36);
+    var n = 0;
+    while (getProjectById(id)) {
+      n += 1;
+      id = base + "-" + Date.now().toString(36) + "-" + n;
+    }
+    return id;
+  }
+
+  function createProject(input) {
+    var projects = loadProjects();
+    var maxOrder = projects.reduce(function (max, p) {
+      return Math.max(max, typeof p.sortOrder === "number" ? p.sortOrder : 0);
+    }, -1);
+
+    var now = new Date().toISOString();
+    var customId = sanitizeCustomId(input.id);
+    var id = customId || generateProjectId(input.name);
+    if (getProjectById(id)) {
+      throw new Error("同じIDのプロジェクトが既に存在します");
+    }
+
+    var project = normalizeProject({
+      id: id,
+      name: input.name,
+      icon: input.icon,
+      description: input.description,
+      status: input.status,
+      priority: input.priority,
+      githubUrl: input.githubUrl,
+      publicUrl: input.publicUrl,
+      localFolderName: input.localFolderName,
+      memo: input.memo,
+      enabled: input.enabled !== false,
+      isDefault: false,
+      sortOrder: maxOrder + 1,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    projects.push(project);
+    saveProjects(projects);
+    return project;
+  }
+
+  function updateProject(id, input) {
+    var projects = loadProjects();
+    var index = projects.findIndex(function (p) { return p.id === id; });
+    if (index < 0) throw new Error("プロジェクトが見つかりません");
+
+    var current = projects[index];
+    projects[index] = normalizeProject({
+      id: current.id,
+      name: input.name,
+      icon: input.icon,
+      description: input.description,
+      status: input.status,
+      priority: input.priority,
+      githubUrl: input.githubUrl,
+      publicUrl: input.publicUrl,
+      localFolderName: input.localFolderName,
+      memo: input.memo,
+      enabled: input.enabled !== false,
+      isDefault: current.isDefault,
+      sortOrder: current.sortOrder,
+      createdAt: current.createdAt,
+      updatedAt: new Date().toISOString()
+    }, index);
+
+    saveProjects(projects);
+    return projects[index];
+  }
+
+  function deleteProject(id) {
+    var projects = loadProjects().filter(function (p) { return p.id !== id; });
+    saveProjects(projects);
+  }
+
+  function toggleProjectEnabled(id) {
+    var projects = loadProjects();
+    var target = projects.find(function (p) { return p.id === id; });
+    if (!target) return null;
+    target.enabled = !target.enabled;
+    target.updatedAt = new Date().toISOString();
+    saveProjects(projects);
+    return target;
+  }
+
+  function moveProject(id, direction) {
+    var projects = sortProjects(loadProjects());
+    var index = projects.findIndex(function (p) { return p.id === id; });
+    if (index < 0) return;
+    var swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= projects.length) return;
+
+    var tmpOrder = projects[index].sortOrder;
+    projects[index].sortOrder = projects[swapIndex].sortOrder;
+    projects[swapIndex].sortOrder = tmpOrder;
+
+    var tmp = projects[index];
+    projects[index] = projects[swapIndex];
+    projects[swapIndex] = tmp;
+
+    projects.forEach(function (p, i) {
+      p.sortOrder = i;
+      p.updatedAt = new Date().toISOString();
+    });
+    saveProjects(projects);
+  }
+
+  function refreshProjectDependentUI(selectedId) {
+    renderProjectCards();
+    populateProjectSelect(selectedId || "");
+    renderProjectManagementList();
+  }
+
+  /* ========== Project UI ========== */
+  function populateProjectSelect(selectedId) {
+    var select = document.getElementById("req-project");
+    if (!select) return;
+    var current = selectedId || select.value;
+    var enabled = getEnabledProjects();
+
+    select.innerHTML = '<option value="">選択してください</option>';
+    enabled.forEach(function (p) {
+      var opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = (p.icon ? p.icon + " " : "") + p.name;
+      select.appendChild(opt);
+    });
+
+    if (current && enabled.some(function (p) { return p.id === current; })) {
+      select.value = current;
+    }
+  }
+
+  function renderProjectCards() {
+    var container = document.getElementById("project-list");
+    var enabled = getEnabledProjects();
+
+    if (enabled.length === 0) {
+      container.innerHTML = '<p class="empty-message">表示できるプロジェクトがありません。管理画面から追加または有効化してください。</p>';
+      return;
+    }
+
+    container.innerHTML = enabled.map(function (p) {
+      return (
+        '<article class="card project-card" data-project-id="' + escapeHtml(p.id) + '">' +
+          '<div class="card__header">' +
+            '<h3 class="card__title">' +
+              '<span class="project-card__icon" aria-hidden="true">' + escapeHtml(p.icon) + "</span> " +
+              escapeHtml(p.name) +
+            "</h3>" +
+          "</div>" +
+          '<p class="card__desc">' + escapeHtml(p.description) + "</p>" +
+          '<div class="card__meta">' +
+            '<span class="badge ' + statusBadgeClass(p.status) + '">' + escapeHtml(p.status) + "</span>" +
+            '<span class="badge ' + priorityBadgeClass(p.priority) + '">優先度：' + escapeHtml(p.priority) + "</span>" +
+          "</div>" +
+          '<div class="card__actions">' +
+            '<button type="button" class="btn btn--secondary btn-open" data-project-id="' + escapeHtml(p.id) + '">開く</button>' +
+            '<button type="button" class="btn btn--secondary btn-github" data-project-id="' + escapeHtml(p.id) + '">GitHub</button>' +
+            '<button type="button" class="btn btn--primary btn-instruct" data-project-id="' + escapeHtml(p.id) + '">開発指示を作る</button>' +
+          "</div>" +
+        "</article>"
+      );
+    }).join("");
+
+    container.querySelectorAll(".btn-open").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = getProjectById(btn.getAttribute("data-project-id"));
+        if (!p) return;
+        if (p.publicUrl) {
+          window.open(p.publicUrl, "_blank", "noopener,noreferrer");
+        } else {
+          showToast("公開サイトURLが登録されていません");
+        }
+      });
+    });
+
+    container.querySelectorAll(".btn-github").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var p = getProjectById(btn.getAttribute("data-project-id"));
+        if (!p) return;
+        if (p.githubUrl) {
+          window.open(p.githubUrl, "_blank", "noopener,noreferrer");
+        } else {
+          showToast("GitHub URLが登録されていません");
+        }
+      });
+    });
+
+    container.querySelectorAll(".btn-instruct").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openModal({ projectId: btn.getAttribute("data-project-id") });
+      });
+    });
+  }
+
+  function renderProjectManagementList() {
+    var container = document.getElementById("project-mgmt-list");
+    if (!container) return;
+    var projects = loadProjects();
+
+    if (projects.length === 0) {
+      container.innerHTML = '<p class="empty-message">プロジェクトがありません。</p>';
+      return;
+    }
+
+    container.innerHTML = projects.map(function (p, index) {
+      var githubLabel = p.githubUrl ? "GitHubあり" : "GitHubなし";
+      var publicLabel = p.publicUrl ? "公開URLあり" : "公開URLなし";
+      var enabledLabel = p.enabled ? "有効" : "無効";
+
+      return (
+        '<article class="card mgmt-card' + (p.enabled ? "" : " mgmt-card--disabled") + '" data-project-id="' + escapeHtml(p.id) + '">' +
+          '<div class="mgmt-card__top">' +
+            '<div class="mgmt-card__title-wrap">' +
+              '<span class="mgmt-card__icon" aria-hidden="true">' + escapeHtml(p.icon) + "</span>" +
+              '<div>' +
+                '<h4 class="mgmt-card__name">' + escapeHtml(p.name) + "</h4>" +
+                '<p class="mgmt-card__id">ID: ' + escapeHtml(p.id) + "</p>" +
+              "</div>" +
+            "</div>" +
+            '<span class="badge ' + (p.enabled ? "badge--dev" : "badge--priority-normal") + '">' + enabledLabel + "</span>" +
+          "</div>" +
+          '<p class="card__desc">' + escapeHtml(p.description) + "</p>" +
+          '<div class="card__meta">' +
+            '<span class="badge ' + statusBadgeClass(p.status) + '">' + escapeHtml(p.status) + "</span>" +
+            '<span class="badge ' + priorityBadgeClass(p.priority) + '">' + escapeHtml(p.priority) + "</span>" +
+            '<span class="badge badge--progress">' + githubLabel + "</span>" +
+            '<span class="badge badge--progress">' + publicLabel + "</span>" +
+          "</div>" +
+          '<div class="mgmt-card__actions">' +
+            '<button type="button" class="btn btn--secondary btn--compact btn-move-up"' + (index === 0 ? " disabled" : "") + ">上へ</button>" +
+            '<button type="button" class="btn btn--secondary btn--compact btn-move-down"' + (index === projects.length - 1 ? " disabled" : "") + ">下へ</button>" +
+            '<button type="button" class="btn btn--secondary btn--compact btn-toggle-enabled">' + (p.enabled ? "無効化" : "有効化") + "</button>" +
+            '<button type="button" class="btn btn--primary btn--compact btn-edit-project">編集</button>' +
+            '<button type="button" class="btn btn--danger btn--compact btn-delete-project">削除</button>' +
+          "</div>" +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function showProjectListView() {
+    projectListView.hidden = false;
+    projectFormView.hidden = true;
+    document.getElementById("project-modal-title").textContent = "プロジェクト管理";
+    editingProjectId = null;
+    clearProjectFormError();
+    renderProjectManagementList();
+  }
+
+  function openProjectForm(project) {
+    clearProjectFormError();
+    projectListView.hidden = true;
+    projectFormView.hidden = false;
+    editingProjectId = project ? project.id : null;
+
+    document.getElementById("project-modal-title").textContent = project ? "プロジェクトを編集" : "新しいプロジェクト";
+    document.getElementById("proj-edit-id").value = project ? project.id : "";
+    document.getElementById("proj-name").value = project ? project.name : "";
+    document.getElementById("proj-description").value = project ? project.description : "";
+    document.getElementById("proj-icon").value = project ? (project.icon === "📁" ? "" : project.icon) : "";
+    document.getElementById("proj-id").value = project ? project.id : "";
+    document.getElementById("proj-id").disabled = !!project;
+    document.getElementById("proj-id-hint").textContent = project
+      ? "作成後のIDは変更できません。"
+      : "未入力なら自動生成します。作成後は変更できません。";
+    document.getElementById("proj-status").value = project ? project.status : "構想中";
+    document.getElementById("proj-priority").value = project ? project.priority : "通常";
+    document.getElementById("proj-github").value = project ? project.githubUrl : "";
+    document.getElementById("proj-public").value = project ? project.publicUrl : "";
+    document.getElementById("proj-folder").value = project ? project.localFolderName : "";
+    document.getElementById("proj-memo").value = project ? project.memo : "";
+    document.getElementById("proj-enabled").checked = project ? project.enabled !== false : true;
+
+    setTimeout(function () {
+      document.getElementById("proj-name").focus();
+    }, 200);
+  }
+
+  function clearProjectFormError() {
+    if (!projectFormError) return;
+    projectFormError.hidden = true;
+    projectFormError.textContent = "";
+    projectFormView.querySelectorAll(".form-group.is-invalid").forEach(function (el) {
+      el.classList.remove("is-invalid");
+    });
+  }
+
+  function showProjectFormError(message, fieldIds) {
+    clearProjectFormError();
+    projectFormError.textContent = message;
+    projectFormError.hidden = false;
+    (fieldIds || []).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentElement) el.parentElement.classList.add("is-invalid");
+    });
+    projectFormError.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function getProjectFormValues() {
+    return {
+      name: document.getElementById("proj-name").value.trim(),
+      description: document.getElementById("proj-description").value.trim(),
+      icon: document.getElementById("proj-icon").value.trim(),
+      id: document.getElementById("proj-id").value.trim(),
+      status: document.getElementById("proj-status").value,
+      priority: document.getElementById("proj-priority").value,
+      githubUrl: document.getElementById("proj-github").value.trim(),
+      publicUrl: document.getElementById("proj-public").value.trim(),
+      localFolderName: document.getElementById("proj-folder").value.trim(),
+      memo: document.getElementById("proj-memo").value.trim(),
+      enabled: document.getElementById("proj-enabled").checked
+    };
+  }
+
+  function validateProjectForm(values, isEdit) {
+    if (!values.name) {
+      showProjectFormError("プロジェクト名を入力してください", ["proj-name"]);
+      return false;
+    }
+    if (!values.description) {
+      showProjectFormError("説明を入力してください", ["proj-description"]);
+      return false;
+    }
+    if (!isEdit && values.id) {
+      var sanitized = sanitizeCustomId(values.id);
+      if (!sanitized) {
+        showProjectFormError("IDに使える文字がありません", ["proj-id"]);
+        return false;
+      }
+      if (getProjectById(sanitized)) {
+        showProjectFormError("同じIDのプロジェクトが既に存在します", ["proj-id"]);
+        return false;
+      }
+    }
+    if (!isValidHttpUrl(values.githubUrl)) {
+      showProjectFormError("GitHub URLは http:// または https:// で始めてください", ["proj-github"]);
+      return false;
+    }
+    if (!isValidHttpUrl(values.publicUrl)) {
+      showProjectFormError("公開サイトURLは http:// または https:// で始めてください", ["proj-public"]);
+      return false;
+    }
+    clearProjectFormError();
+    return true;
+  }
+
+  function openProjectModal(options) {
+    options = options || {};
+    projectModal.classList.add("is-open");
+    projectModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+
+    if (options.mode === "create") {
+      openProjectForm(null);
+    } else if (options.mode === "edit" && options.projectId) {
+      var p = getProjectById(options.projectId);
+      if (p) openProjectForm(p);
+      else showProjectListView();
+    } else {
+      showProjectListView();
+    }
+  }
+
+  function closeProjectModal() {
+    projectModal.classList.remove("is-open");
+    projectModal.setAttribute("aria-hidden", "true");
+    editingProjectId = null;
+    clearProjectFormError();
+    showProjectListView();
+    syncBodyScroll();
+  }
+
+  function handleProjectFormSubmit(e) {
+    e.preventDefault();
+    var values = getProjectFormValues();
+    var isEdit = !!editingProjectId;
+    if (!validateProjectForm(values, isEdit)) return;
+
+    try {
+      if (isEdit) {
+        updateProject(editingProjectId, values);
+        showToast("プロジェクトを更新しました");
+      } else {
+        createProject(values);
+        showToast("プロジェクトを追加しました");
+      }
+      refreshProjectDependentUI();
+      showProjectListView();
+    } catch (err) {
+      showProjectFormError(err.message || "保存に失敗しました");
+    }
+  }
+
+  function handleProjectMgmtClick(e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    var card = btn.closest(".mgmt-card");
+    if (!card) return;
+    var id = card.getAttribute("data-project-id");
+    var project = getProjectById(id);
+    if (!project) {
+      showToast("プロジェクトが見つかりません");
+      renderProjectManagementList();
+      return;
+    }
+
+    if (btn.classList.contains("btn-edit-project")) {
+      openProjectForm(project);
+      return;
+    }
+
+    if (btn.classList.contains("btn-toggle-enabled")) {
+      var updated = toggleProjectEnabled(id);
+      refreshProjectDependentUI();
+      showToast(updated && updated.enabled ? "プロジェクトを有効化しました" : "プロジェクトを無効化しました");
+      return;
+    }
+
+    if (btn.classList.contains("btn-move-up")) {
+      moveProject(id, "up");
+      refreshProjectDependentUI();
+      return;
+    }
+
+    if (btn.classList.contains("btn-move-down")) {
+      moveProject(id, "down");
+      refreshProjectDependentUI();
+      return;
+    }
+
+    if (btn.classList.contains("btn-delete-project")) {
+      var msg =
+        "このプロジェクトを削除しますか？\n" +
+        "過去の依頼履歴は削除されません。\n\n" +
+        "可能であれば削除ではなく「無効化」を推奨します。";
+      if (project.isDefault) {
+        msg =
+          "標準プロジェクト「" + project.name + "」を削除しますか？\n" +
+          "過去の依頼履歴は削除されません。\n\n" +
+          "誤操作防止のため、削除より「無効化」を強く推奨します。";
+      }
+      if (!window.confirm(msg)) return;
+      deleteProject(id);
+      refreshProjectDependentUI();
+      showToast("プロジェクトを削除しました");
+    }
+  }
+
+  /* ========== Requests ========== */
   function getRequests() {
     try {
       var data = localStorage.getItem(STORAGE_KEY);
@@ -190,7 +984,7 @@
   function normalizeRequest(req) {
     if (!req || typeof req !== "object") return null;
 
-    var project = req.selectedProject || req.project || "";
+    var projectName = req.projectName || req.selectedProject || req.project || "";
     var staff = req.detectedMainAI || req.aiStaff || req.staff || "";
     var content = req.request || req.content || "";
     var support = req.detectedSupportAI || req.supportAI || "";
@@ -200,8 +994,14 @@
 
     return {
       id: req.id || String(Date.now()),
-      project: project,
-      selectedProject: project,
+      project: projectName,
+      selectedProject: projectName,
+      projectId: req.projectId || "",
+      projectName: projectName,
+      projectIcon: req.projectIcon || "",
+      projectLocalFolderName: req.projectLocalFolderName || "",
+      projectGithubUrl: req.projectGithubUrl || "",
+      projectPublicUrl: req.projectPublicUrl || "",
       staff: staff,
       aiStaff: staff,
       detectedMainAI: staff,
@@ -229,44 +1029,7 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(requests));
   }
 
-  function formatDate(iso) {
-    try {
-      var d = new Date(iso);
-      if (isNaN(d.getTime())) return "";
-      var m = d.getMonth() + 1;
-      var day = d.getDate();
-      var h = String(d.getHours()).padStart(2, "0");
-      var min = String(d.getMinutes()).padStart(2, "0");
-      return m + "/" + day + " " + h + ":" + min;
-    } catch (e) {
-      return "";
-    }
-  }
-
-  function priorityBadgeClass(priority) {
-    if (priority === "高") return "badge--priority-high";
-    if (priority === "低" || priority === "通常") return "badge--priority-normal";
-    return "badge--progress";
-  }
-
-  function confidenceBadgeClass(level) {
-    if (level === "高") return "badge--priority-high";
-    if (level === "低") return "badge--priority-normal";
-    return "badge--progress";
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement("div");
-    div.textContent = str == null ? "" : String(str);
-    return div.innerHTML;
-  }
-
-  function truncateText(text, maxLen) {
-    var t = (text || "").trim();
-    if (t.length <= maxLen) return t;
-    return t.slice(0, maxLen) + "…";
-  }
-
+  /* ========== AI Router ========== */
   function buildTitleFromWant(want) {
     var normalized = String(want || "")
       .replace(/\r\n|\r|\n/g, " ")
@@ -280,26 +1043,14 @@
   function inferPurpose(want) {
     var t = String(want || "").replace(/\r\n|\r|\n/g, " ").replace(/\s+/g, " ").trim();
     if (!t) return "現場スタッフが迷わず操作できるようにする";
-
-    if (/入力ミス|誤入力|ミスを減ら/.test(t)) {
-      return "現場スタッフの入力ミスを減らす";
-    }
+    if (/入力ミス|誤入力|ミスを減ら/.test(t)) return "現場スタッフの入力ミスを減らす";
     if (/分かりやすく|見やすく|使いやすく|迷わず|操作しやすく/.test(t)) {
       return "現場スタッフが迷わず操作できるようにする";
     }
-    if (/速く|早く|効率|時短|手間/.test(t)) {
-      return "作業時間を短縮し、現場の負担を減らす";
-    }
-    if (/文章|文言|コピー|LP|説明文|SEO/.test(t)) {
-      return "対象者に伝わりやすい文章にする";
-    }
-    if (/バグ|不具合|エラー|テスト|確認/.test(t)) {
-      return "不具合を洗い出し、安心して使える状態にする";
-    }
-
-    var base = t
-      .replace(/[。．.！!？?\s]+$/g, "")
-      .replace(/(したい|してほしい|して欲しい)$/g, "");
+    if (/速く|早く|効率|時短|手間/.test(t)) return "作業時間を短縮し、現場の負担を減らす";
+    if (/文章|文言|コピー|LP|説明文|SEO/.test(t)) return "対象者に伝わりやすい文章にする";
+    if (/バグ|不具合|エラー|テスト|確認/.test(t)) return "不具合を洗い出し、安心して使える状態にする";
+    var base = t.replace(/[。．.！!？?\s]+$/g, "").replace(/(したい|してほしい|して欲しい)$/g, "");
     if (!base) base = t;
     return base + "ことで、現場の負担を減らす";
   }
@@ -371,14 +1122,13 @@
       mainAI: mainAI,
       supportAI: supportAI,
       mainScore: mainScore,
-      confidence: confidenceFromMatchCount(mainScore),
-      scores: scores
+      confidence: confidenceFromMatchCount(mainScore)
     };
   }
 
   function getRawFormValues() {
     return {
-      project: document.getElementById("req-project").value,
+      projectId: document.getElementById("req-project").value,
       content: document.getElementById("req-content").value.trim(),
       mainAI: document.getElementById("req-main-ai").value,
       supportAI: document.getElementById("req-support-ai").value,
@@ -391,14 +1141,24 @@
 
   function runRouter(raw) {
     var content = (raw.content || "").trim();
-    var project = raw.project || "";
+    var project = getProjectById(raw.projectId);
+    if (!project) {
+      throw new Error("作業するプロジェクトを選択してください");
+    }
+
     var detection = detectAIStaff(content, raw.mainAI || "", raw.supportAI || "");
     var mainAI = detection.mainAI;
     var priority = inferPriority(content, (raw.priority || "").trim());
 
     return {
-      selectedProject: project,
-      project: project,
+      projectId: project.id,
+      selectedProject: project.name,
+      project: project.name,
+      projectName: project.name,
+      projectIcon: project.icon,
+      projectLocalFolderName: project.localFolderName || "",
+      projectGithubUrl: project.githubUrl || "",
+      projectPublicUrl: project.publicUrl || "",
       content: content,
       title: buildTitleFromWant(content),
       detectedMainAI: mainAI,
@@ -448,11 +1208,16 @@
   }
 
   function validateRouterInput() {
-    var project = document.getElementById("req-project").value;
+    var projectId = document.getElementById("req-project").value;
     var content = document.getElementById("req-content").value.trim();
 
-    if (!project) {
+    if (!projectId) {
       showFormError("作業するプロジェクトを選択してください", ["req-project"]);
+      return false;
+    }
+    if (!getProjectById(projectId)) {
+      showFormError("作業するプロジェクトを選択してください", ["req-project"]);
+      populateProjectSelect();
       return false;
     }
     if (!content) {
@@ -488,18 +1253,45 @@
       ? route.detectedSupportAI
       : "なし";
 
+    var folderName = route.projectLocalFolderName || "";
+    var folderBlock = folderName
+      ? folderName
+      : "ローカルフォルダ名が未登録のため、作業前に対象フォルダを確認してください";
+
+    var githubBlock = route.projectGithubUrl || "（未登録）";
+    var publicBlock = route.projectPublicUrl || "（未登録）";
+
+    var scopeRules = folderName
+      ? [
+          "・現在Cursorで開いているフォルダ名と、想定ローカルフォルダ名を確認する",
+          "・一致しない場合は作業を開始せず報告する",
+          "・対象プロジェクト以外のファイルを変更しない",
+          "・別リポジトリへcommitやpushを行わない"
+        ]
+      : [
+          "・ローカルフォルダ名が未登録のため、作業前に対象フォルダを確認してください",
+          "・対象プロジェクト以外のファイルを変更しない",
+          "・別リポジトリへcommitやpushを行わない"
+        ];
+
     return [
       "【作業対象プロジェクト】",
-      route.selectedProject || route.project,
+      route.selectedProject || route.projectName || route.project,
+      "",
+      "【想定ローカルフォルダ】",
+      folderBlock,
+      "",
+      "【GitHubリポジトリ】",
+      githubBlock,
+      "",
+      "【公開サイト】",
+      publicBlock,
       "",
       "【作業範囲の厳守】",
-      "・現在開いているフォルダ名と対象プロジェクト名が一致しているか、作業前に確認する",
-      "・対象プロジェクト以外のファイルを変更しない",
-      "・フォルダが一致しない場合は作業を開始せず報告する",
-      "・別リポジトリへcommitやpushを行わない",
+      scopeRules.join("\n"),
       "",
       "【プロジェクト名】",
-      route.selectedProject || route.project,
+      route.selectedProject || route.projectName || route.project,
       "",
       "【担当AI】",
       route.detectedMainAI || route.staff,
@@ -600,16 +1392,12 @@
   }
 
   function copyText(text) {
-    if (!text) {
-      return Promise.reject(new Error("empty"));
-    }
-
+    if (!text) return Promise.reject(new Error("empty"));
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       return navigator.clipboard.writeText(text).catch(function () {
         return fallbackCopy(text);
       });
     }
-
     return fallbackCopy(text);
   }
 
@@ -623,44 +1411,34 @@
       textarea.style.left = "0";
       textarea.style.width = "1px";
       textarea.style.height = "1px";
-      textarea.style.padding = "0";
-      textarea.style.border = "none";
-      textarea.style.outline = "none";
-      textarea.style.boxShadow = "none";
-      textarea.style.background = "transparent";
       textarea.style.opacity = "0";
       document.body.appendChild(textarea);
-
       textarea.focus();
       textarea.select();
       textarea.setSelectionRange(0, textarea.value.length);
-
       var ok = false;
-      try {
-        ok = document.execCommand("copy");
-      } catch (e) {
-        ok = false;
-      }
-
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
       document.body.removeChild(textarea);
-
-      if (ok) {
-        resolve();
-      } else {
-        reject(new Error("copy failed"));
-      }
+      if (ok) resolve();
+      else reject(new Error("copy failed"));
     });
   }
 
   function buildRequestObject(route, generatedPrompt) {
-    var project = route.selectedProject || route.project;
+    var projectName = route.selectedProject || route.projectName || route.project;
     var mainAI = route.detectedMainAI || route.staff;
     var content = route.content;
 
     return {
       id: Date.now().toString(),
-      project: project,
-      selectedProject: project,
+      project: projectName,
+      selectedProject: projectName,
+      projectId: route.projectId || "",
+      projectName: projectName,
+      projectIcon: route.projectIcon || "",
+      projectLocalFolderName: route.projectLocalFolderName || "",
+      projectGithubUrl: route.projectGithubUrl || "",
+      projectPublicUrl: route.projectPublicUrl || "",
       staff: mainAI,
       aiStaff: mainAI,
       detectedMainAI: mainAI,
@@ -690,7 +1468,6 @@
       showView("input");
       return false;
     }
-
     if (!(currentRoute.selectedProject || currentRoute.project)) {
       showFormError("作業するプロジェクトを選択してください", ["req-project"]);
       showView("input");
@@ -699,12 +1476,10 @@
 
     var prompt = currentGeneratedPrompt || generatePrompt(currentRoute);
     currentGeneratedPrompt = prompt;
-
     var request = buildRequestObject(currentRoute, prompt);
     var requests = getRequests();
     requests.unshift(request);
     saveRequests(requests);
-
     closeModal();
     renderRecentRequests();
     showToast("依頼を保存しました");
@@ -721,9 +1496,7 @@
             '<span class="badge badge--progress">' + escapeHtml(task.status) + "</span>" +
           "</div>" +
           '<div class="progress">' +
-            '<div class="progress__label">' +
-              "<span>進捗</span><span>" + task.progress + "%</span>" +
-            "</div>" +
+            '<div class="progress__label"><span>進捗</span><span>' + task.progress + "%</span></div>" +
             '<div class="progress__bar" role="progressbar" aria-valuenow="' + task.progress + '" aria-valuemin="0" aria-valuemax="100">' +
               '<div class="progress__fill" style="width:' + task.progress + '%"></div>' +
             "</div>" +
@@ -731,41 +1504,6 @@
         "</article>"
       );
     }).join("");
-  }
-
-  function renderProjects() {
-    var container = document.getElementById("project-list");
-    container.innerHTML = projects.map(function (p) {
-      return (
-        '<article class="card" data-project="' + escapeHtml(p.name) + '">' +
-          '<div class="card__header">' +
-            '<h3 class="card__title">' + escapeHtml(p.name) + "</h3>" +
-          "</div>" +
-          '<p class="card__desc">' + escapeHtml(p.desc) + "</p>" +
-          '<div class="card__meta">' +
-            '<span class="badge ' + p.statusClass + '">' + escapeHtml(p.status) + "</span>" +
-            '<span class="badge ' + p.priorityClass + '">優先度：' + escapeHtml(p.priority) + "</span>" +
-          "</div>" +
-          '<div class="card__actions">' +
-            '<button type="button" class="btn btn--secondary btn-open" data-url="' + escapeHtml(p.links.open) + '">開く</button>' +
-            '<button type="button" class="btn btn--secondary btn-github" data-url="' + escapeHtml(p.links.github) + '">GitHub</button>' +
-            '<button type="button" class="btn btn--primary btn-instruct" data-project="' + escapeHtml(p.name) + '">開発指示を作る</button>' +
-          "</div>" +
-        "</article>"
-      );
-    }).join("");
-
-    container.querySelectorAll(".btn-open, .btn-github").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        openLink(btn.getAttribute("data-url"));
-      });
-    });
-
-    container.querySelectorAll(".btn-instruct").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        openModal({ project: btn.getAttribute("data-project") });
-      });
-    });
   }
 
   function renderStaff() {
@@ -801,7 +1539,6 @@
       if (emptyMsg) emptyMsg.style.display = "";
       return;
     }
-
     if (emptyMsg) emptyMsg.style.display = "none";
 
     requests.slice(0, 10).forEach(function (req) {
@@ -812,7 +1549,8 @@
       var hasPrompt = !!(req.generatedPrompt && req.generatedPrompt.trim());
       var preview = truncateText(req.content || req.request || "", 80);
       var mainAI = req.detectedMainAI || req.staff || req.aiStaff || "—";
-      var projectName = req.selectedProject || req.project || "—";
+      var projectName = req.projectName || req.selectedProject || req.project || "—";
+      var icon = req.projectIcon ? req.projectIcon + " " : "";
       var confidence = req.routingConfidence
         ? ' <span class="badge ' + confidenceBadgeClass(req.routingConfidence) + '">確信度：' +
           escapeHtml(req.routingConfidence) + "</span>"
@@ -824,7 +1562,7 @@
           '<time class="request-card__date">' + escapeHtml(formatDate(req.createdAt)) + "</time>" +
         "</div>" +
         '<p class="request-card__info">' +
-          escapeHtml(projectName) + " ／ " + escapeHtml(mainAI) +
+          escapeHtml(icon + projectName) + " ／ " + escapeHtml(mainAI) +
           ' <span class="badge ' + priorityBadgeClass(req.priority) + '">' +
             escapeHtml(req.detectedPriority || req.priority || "通常") +
           "</span>" + confidence +
@@ -841,9 +1579,7 @@
   }
 
   function findRequestById(id) {
-    return getRequests().find(function (r) {
-      return r.id === id;
-    }) || null;
+    return getRequests().find(function (r) { return r.id === id; }) || null;
   }
 
   function openPromptView(promptText, title) {
@@ -852,16 +1588,14 @@
     document.getElementById("prompt-view-title").textContent = title || "保存済み指示書";
     promptViewModal.classList.add("is-open");
     promptViewModal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
+    syncBodyScroll();
   }
 
   function closePromptView() {
     promptViewModal.classList.remove("is-open");
     promptViewModal.setAttribute("aria-hidden", "true");
     viewedPrompt = "";
-    if (!modal.classList.contains("is-open")) {
-      document.body.style.overflow = "";
-    }
+    syncBodyScroll();
   }
 
   function resetFormFields() {
@@ -882,9 +1616,15 @@
     setDetailsOpen(false);
     resetFormFields();
     showView("input");
+    populateProjectSelect();
 
-    if (preset.project) {
-      document.getElementById("req-project").value = preset.project;
+    var projectId = preset.projectId || "";
+    if (!projectId && preset.project) {
+      var byName = getProjectByName(preset.project);
+      if (byName) projectId = byName.id;
+    }
+    if (projectId) {
+      document.getElementById("req-project").value = projectId;
     }
     if (preset.staff) {
       document.getElementById("req-main-ai").value = preset.staff;
@@ -896,15 +1636,12 @@
 
     modal.classList.add("is-open");
     modal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
+    syncBodyScroll();
 
     setTimeout(function () {
       var focusEl = document.getElementById("req-project");
-      if (preset.project) {
-        focusEl = document.getElementById("req-content");
-      } else if (preset.staff) {
-        focusEl = document.getElementById("req-project");
-      }
+      if (projectId) focusEl = document.getElementById("req-content");
+      else if (preset.staff) focusEl = document.getElementById("req-project");
       if (focusEl) focusEl.focus();
     }, 300);
   }
@@ -917,21 +1654,22 @@
     clearValidation();
     setDetailsOpen(false);
     showView("input");
-    if (!promptViewModal.classList.contains("is-open")) {
-      document.body.style.overflow = "";
-    }
+    syncBodyScroll();
   }
 
   function handleRoute() {
     if (!validateRouterInput()) return;
-
-    var raw = getRawFormValues();
-    currentRoute = runRouter(raw);
-    currentGeneratedPrompt = "";
-    renderRouteSummary(currentRoute);
-    showView("result");
-    routerResultView.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    showToast("AI判定が完了しました");
+    try {
+      var raw = getRawFormValues();
+      currentRoute = runRouter(raw);
+      currentGeneratedPrompt = "";
+      renderRouteSummary(currentRoute);
+      showView("result");
+      routerResultView.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      showToast("AI判定が完了しました");
+    } catch (err) {
+      showFormError(err.message || "判定に失敗しました", ["req-project"]);
+    }
   }
 
   function handleBuildPrompt() {
@@ -945,7 +1683,6 @@
       showView("input");
       return;
     }
-
     var prompt = generatePrompt(currentRoute);
     showGeneratedPrompt(currentRoute, prompt);
     showToast("指示書を生成しました");
@@ -959,10 +1696,8 @@
   function handleRecentClick(e) {
     var btn = e.target.closest("button");
     if (!btn) return;
-
     var card = btn.closest(".request-card");
     if (!card) return;
-
     var id = card.getAttribute("data-id");
     var req = findRequestById(id);
     if (!req) {
@@ -995,41 +1730,1348 @@
 
     if (btn.classList.contains("btn-delete-request")) {
       if (!window.confirm("この依頼を削除しますか？")) return;
-      var requests = getRequests().filter(function (r) {
-        return r.id !== id;
-      });
+      var requests = getRequests().filter(function (r) { return r.id !== id; });
       saveRequests(requests);
       renderRecentRequests();
       showToast("依頼を削除しました");
     }
   }
 
-  document.getElementById("btn-new-request").addEventListener("click", function () {
+  /* ========== System Check ========== */
+  var latestSystemCheckResults = [];
+  var latestSystemCheckOverall = null;
+  var latestSystemCheckAt = "";
+
+  function openSystemCheck() {
+    if (!systemCheckModal) return;
+    systemCheckModal.classList.add("is-open");
+    systemCheckModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    renderVersionMeta();
+    renderRuntimeErrorPanel();
+    renderManualChecklist();
+  }
+
+  function closeSystemCheck() {
+    if (!systemCheckModal) return;
+    systemCheckModal.classList.remove("is-open");
+    systemCheckModal.setAttribute("aria-hidden", "true");
+    syncBodyScroll();
+  }
+
+  function makeCheckResult(id, title, status, message, details) {
+    return {
+      id: id,
+      title: title,
+      status: status || "unknown",
+      message: message || "",
+      details: details || ""
+    };
+  }
+
+  function runCheckSafely(id, title, fn) {
+    try {
+      var result = fn();
+      if (!result || typeof result !== "object") {
+        return makeCheckResult(id, title, "fail", "チェック結果が不正です");
+      }
+      result.id = id;
+      result.title = title;
+      if (!result.status) result.status = "unknown";
+      if (!result.message) result.message = "";
+      if (!result.details) result.details = "";
+      return result;
+    } catch (e) {
+      return makeCheckResult(
+        id,
+        title,
+        "fail",
+        "チェック実行中に例外が発生しました",
+        sanitizeErrorText(e && e.message ? e.message : e)
+      );
+    }
+  }
+
+  function checkInitialization() {
+    var status = window.smileAIStudioStatus || {};
+    if (status.initialized) {
+      return makeCheckResult(
+        "init",
+        "JavaScript初期化",
+        "ok",
+        "初期化が完了しています",
+        "initializedAt: " + (status.initializedAt || "不明")
+      );
+    }
+    return makeCheckResult(
+      "init",
+      "JavaScript初期化",
+      "fail",
+      "初期化が完了していません。JavaScriptエラーの可能性があります。"
+    );
+  }
+
+  function checkRuntimeErrors() {
+    var session = (window.smileAIStudioStatus && window.smileAIStudioStatus.sessionErrors) || [];
+    var persisted = loadPersistedRuntimeErrors();
+    var details = [];
+    details.push("現在のページ読み込み後のエラー: " + session.length + "件");
+    details.push("保存済みの過去エラー: " + persisted.length + "件");
+    if (session.length) {
+      details.push("--- 今回のセッション ---");
+      session.slice(0, 5).forEach(function (err, i) {
+        details.push((i + 1) + ". [" + err.type + "] " + err.message +
+          (err.source ? " (" + err.source + ":" + err.line + ")" : ""));
+      });
+    }
+    if (session.length > 0) {
+      return makeCheckResult("runtime-errors", "直近の実行時エラー", "fail",
+        "現在のページ読み込み後に " + session.length + "件のエラーがあります", details.join("\n"));
+    }
+    if (persisted.length > 0) {
+      return makeCheckResult("runtime-errors", "直近の実行時エラー", "warn",
+        "保存済みの過去エラーが " + persisted.length + "件あります（今回の読み込み後は0件）", details.join("\n"));
+    }
+    return makeCheckResult("runtime-errors", "直近の実行時エラー", "ok", "エラーは0件です", details.join("\n"));
+  }
+
+  function checkRequiredDom() {
+    var required = [
+      { id: "priority-tasks", label: "今日の優先タスク描画先" },
+      { id: "project-list", label: "プロジェクト一覧描画先" },
+      { id: "staff-list", label: "AIスタッフ一覧描画先" },
+      { id: "recent-requests", label: "最近の依頼描画先" },
+      { id: "btn-new-request", label: "新しい依頼ボタン" },
+      { id: "btn-manage-projects", label: "プロジェクト管理ボタン" },
+      { id: "btn-add-project", label: "プロジェクト追加ボタン" },
+      { id: "btn-system-check", label: "システムチェックボタン" },
+      { id: "btn-release-center", label: "リリースセンターボタン" },
+      { id: "request-modal", label: "依頼モーダル" },
+      { id: "project-modal", label: "プロジェクト管理モーダル" },
+      { id: "project-form-view", label: "プロジェクト登録フォーム" },
+      { id: "system-check-modal", label: "システムチェックモーダル" },
+      { id: "release-center-modal", label: "リリースセンターモーダル" },
+      { id: "toast", label: "トースト" },
+      { id: "req-project", label: "プロジェクト選択欄" },
+      { id: "req-content", label: "やりたいこと入力欄" }
+    ];
+    var missing = [];
+    required.forEach(function (item) {
+      if (!document.getElementById(item.id)) missing.push(item.label + " (#" + item.id + ")");
+    });
+    var footer = document.querySelector("footer.footer");
+    if (!footer) missing.push("固定フッター (footer.footer)");
+
+    if (missing.length) {
+      return makeCheckResult("dom", "必須DOM", "fail",
+        missing.length + "件の必須要素が見つかりません", missing.join("\n"));
+    }
+    return makeCheckResult("dom", "必須DOM", "ok", "必須DOM要素はすべて存在します",
+      "確認数: " + (required.length + 1) + "件");
+  }
+
+  function checkLocalStorage() {
+    var key = "smileAIStudio_healthCheck";
+    var token = "health-" + Date.now();
+    try {
+      localStorage.setItem(key, token);
+      var read = localStorage.getItem(key);
+      localStorage.removeItem(key);
+      var remains = localStorage.getItem(key);
+      if (read !== token) {
+        return makeCheckResult("localstorage", "localStorage読み書き", "fail", "書き込みと読み込みの値が一致しません");
+      }
+      if (remains !== null) {
+        return makeCheckResult("localstorage", "localStorage読み書き", "fail", "テストキーの削除に失敗しました");
+      }
+      return makeCheckResult("localstorage", "localStorage読み書き", "ok", "保存・読み込み・削除が正常です");
+    } catch (e) {
+      try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+      return makeCheckResult("localstorage", "localStorage読み書き", "fail",
+        "localStorage操作で例外が発生しました", sanitizeErrorText(e.message || e));
+    }
+  }
+
+  function checkProjects() {
+    var projects = loadProjects();
+    if (!Array.isArray(projects)) {
+      return makeCheckResult("projects", "プロジェクトデータ", "fail", "プロジェクトデータが配列ではありません");
+    }
+    if (projects.length === 0) {
+      return makeCheckResult("projects", "プロジェクトデータ", "fail", "プロジェクトが0件です");
+    }
+
+    var enabled = projects.filter(function (p) { return p.enabled; });
+    var ids = {};
+    var dup = [];
+    var noId = 0;
+    var noName = 0;
+    var badGithub = 0;
+    var badPublic = 0;
+    var noFolder = 0;
+    var sortIssues = 0;
+    var normalizeFails = 0;
+
+    projects.forEach(function (p) {
+      try {
+        normalizeProject(p);
+      } catch (e) {
+        normalizeFails += 1;
+      }
+      if (!p.id) noId += 1;
+      if (!p.name) noName += 1;
+      if (p.id) {
+        if (ids[p.id]) dup.push(p.id);
+        else ids[p.id] = true;
+      }
+      if (typeof p.sortOrder !== "number" || isNaN(p.sortOrder)) sortIssues += 1;
+      if (typeof p.enabled !== "boolean") sortIssues += 1;
+      if (p.githubUrl && !isValidHttpUrl(p.githubUrl)) badGithub += 1;
+      if (p.publicUrl && !isValidHttpUrl(p.publicUrl)) badPublic += 1;
+      if (!p.localFolderName) noFolder += 1;
+    });
+
+    var details = [
+      "総数: " + projects.length + "件",
+      "有効: " + enabled.length + "件",
+      "ローカルフォルダ未登録: " + noFolder + "件"
+    ];
+
+    if (normalizeFails || noId || noName || dup.length || badGithub || badPublic) {
+      var issues = [];
+      if (normalizeFails) issues.push("normalizeProject失敗: " + normalizeFails);
+      if (noId) issues.push("id欠損: " + noId);
+      if (noName) issues.push("name欠損: " + noName);
+      if (dup.length) issues.push("ID重複: " + dup.join(", "));
+      if (badGithub) issues.push("GitHub URL形式不正: " + badGithub);
+      if (badPublic) issues.push("公開URL形式不正: " + badPublic);
+      return makeCheckResult("projects", "プロジェクトデータ", "fail",
+        "プロジェクトデータに異常があります", details.concat(issues).join("\n"));
+    }
+
+    if (enabled.length === 0) {
+      return makeCheckResult("projects", "プロジェクトデータ", "fail",
+        "有効なプロジェクトがありません", details.join("\n"));
+    }
+
+    if (noFolder > 0 || sortIssues > 0) {
+      return makeCheckResult("projects", "プロジェクトデータ", "warn",
+        "プロジェクト" + projects.length + "件、有効" + enabled.length + "件（注意あり）",
+        details.concat(sortIssues ? ["sortOrder/enabled型の注意: " + sortIssues] : []).join("\n"));
+    }
+
+    return makeCheckResult("projects", "プロジェクトデータ", "ok",
+      "プロジェクト" + projects.length + "件、有効" + enabled.length + "件", details.join("\n"));
+  }
+
+  function checkAIStaff() {
+    var names = staffList.map(function (s) { return s.name; });
+    var expected = ["プログラマーAI", "デザイナーAI", "ライターAI", "テスターAI"];
+    var missing = expected.filter(function (n) { return names.indexOf(n) === -1; });
+    var empty = staffList.filter(function (s) { return !s.name; });
+    var uniq = {};
+    var dup = [];
+    names.forEach(function (n) {
+      if (uniq[n]) dup.push(n);
+      else uniq[n] = true;
+    });
+
+    var routerNamesOk = expected.every(function (n) {
+      return AI_NAMES.indexOf(n) !== -1;
+    });
+
+    var details = [
+      "定義数: " + staffList.length + "名",
+      "AIルーター側AI名: " + AI_NAMES.join(", ")
+    ];
+
+    if (staffList.length !== 4 || missing.length || empty.length || dup.length || !routerNamesOk) {
+      return makeCheckResult("ai-staff", "AIスタッフ", "fail",
+        "AIスタッフ定義に問題があります",
+        details.concat([
+          missing.length ? "不足: " + missing.join(", ") : "",
+          empty.length ? "空名: " + empty.length : "",
+          dup.length ? "重複: " + dup.join(", ") : "",
+          !routerNamesOk ? "AIルーターの担当AI名と不一致" : ""
+        ]).filter(Boolean).join("\n"));
+    }
+
+    return makeCheckResult("ai-staff", "AIスタッフ", "ok", "4名が利用可能です", details.join("\n"));
+  }
+
+  function checkRequests() {
+    var requests = getRequests();
+    if (!Array.isArray(requests)) {
+      return makeCheckResult("requests", "最近の依頼データ", "fail", "依頼データが配列ではありません");
+    }
+
+    var legacy = 0;
+    var normalizeFails = 0;
+    requests.forEach(function (req) {
+      try {
+        var n = normalizeRequest(req);
+        if (!n) normalizeFails += 1;
+        else if (!req.projectId || !req.generatedPrompt) legacy += 1;
+      } catch (e) {
+        normalizeFails += 1;
+      }
+    });
+
+    if (normalizeFails) {
+      return makeCheckResult("requests", "最近の依頼データ", "fail",
+        "正規化に失敗した依頼が " + normalizeFails + "件あります",
+        "総数: " + requests.length);
+    }
+
+    var msg = "依頼データ" + requests.length + "件";
+    if (legacy) msg += "、旧形式" + legacy + "件を互換表示";
+    return makeCheckResult("requests", "最近の依頼データ", "ok", msg);
+  }
+
+  function checkRequiredButtons() {
+    var buttons = [
+      { id: "btn-new-request", label: "新しい依頼を作る", action: "openRequestModal" },
+      { id: "btn-manage-projects", label: "プロジェクト管理", action: "openProjectManager" },
+      { id: "btn-add-project", label: "プロジェクト追加", action: "openProjectCreate" },
+      { id: "btn-system-check", label: "システムチェック", action: "openSystemCheck" },
+      { id: "btn-release-center", label: "リリースセンター", action: "openReleaseCenter" },
+      { id: "btn-route", label: "AIルーターを実行", action: "runRouter" },
+      { id: "btn-build-prompt", label: "指示書を作る", action: "buildPrompt" },
+      { id: "btn-copy-prompt", label: "コピーする", action: "copyPrompt" },
+      { id: "btn-save-from-result", label: "保存する", action: "saveRequest" },
+      { id: "modal-cancel", label: "閉じる", action: "closeRequestModal" }
+    ];
+
+    var missing = [];
+    var disabled = [];
+    var unregistered = [];
+    var actions = (window.smileAIStudioStatus && window.smileAIStudioStatus.registeredActions) || {};
+
+    buttons.forEach(function (b) {
+      var el = document.getElementById(b.id);
+      if (!el) {
+        missing.push(b.label + " (#" + b.id + ")");
+        return;
+      }
+      if (el.disabled) disabled.push(b.label);
+      if (b.action && !actions[b.action]) unregistered.push(b.label + " (" + b.action + ")");
+    });
+
+    if (missing.length) {
+      return makeCheckResult("buttons", "必須ボタン", "fail",
+        "不足ボタンがあります", missing.join("\n"));
+    }
+    if (disabled.length) {
+      return makeCheckResult("buttons", "必須ボタン", "warn",
+        "disabled状態のボタンがあります", disabled.join("\n"));
+    }
+    if (unregistered.length) {
+      return makeCheckResult("buttons", "必須ボタン", "warn",
+        "イベント登録が確認できないボタンがあります", unregistered.join("\n"));
+    }
+    return makeCheckResult("buttons", "必須ボタン", "ok", "主要ボタンは存在し、イベント登録も確認できました");
+  }
+
+  function checkModals() {
+    var fails = [];
+    var warns = [];
+    var notes = [];
+
+    function hasCloseControl(modalEl, preferredIds) {
+      if (!modalEl) return false;
+      var i;
+      for (i = 0; i < preferredIds.length; i += 1) {
+        if (document.getElementById(preferredIds[i])) return true;
+      }
+      if (modalEl.querySelector(".modal__close, [data-modal-close], [aria-label='閉じる']")) {
+        return true;
+      }
+      return false;
+    }
+
+    function checkOne(spec) {
+      var el = document.getElementById(spec.id);
+      if (!el) {
+        fails.push(spec.label + "が見つかりません（#" + spec.id + "）");
+        return;
+      }
+
+      var isOpen = el.classList.contains("is-open");
+      var ariaHidden = el.getAttribute("aria-hidden");
+
+      // システムチェック実行中は、このモーダル自身が開いていて正常
+      if (isOpen && !spec.allowOpenDuringCheck) {
+        fails.push(spec.label + "が初期状態で開いています（#" + spec.id + "）");
+      } else if (isOpen && spec.allowOpenDuringCheck) {
+        notes.push(spec.label + "はチェック実行中のため開いています（正常）");
+      }
+
+      if (ariaHidden == null || ariaHidden === "") {
+        warns.push(spec.label + "にaria-hiddenがありません（開閉動作への影響は軽微）");
+      } else if (ariaHidden !== "true" && ariaHidden !== "false") {
+        warns.push(spec.label + "のaria-hidden値が不正です（" + ariaHidden + "）");
+      } else if (ariaHidden === "false" && !isOpen && !spec.allowOpenDuringCheck) {
+        warns.push(spec.label + "のaria-hiddenがfalseなのに非表示です（不整合の可能性）");
+      } else if (ariaHidden === "true" && isOpen && !spec.allowOpenDuringCheck) {
+        warns.push(spec.label + "のaria-hiddenがtrueなのに表示中です（不整合の可能性）");
+      }
+
+      if (!hasCloseControl(el, spec.closeIds || [])) {
+        fails.push(spec.label + "に閉じる操作がありません");
+      }
+
+      var openOk = false;
+      if (typeof spec.openCheck === "function") {
+        openOk = !!spec.openCheck();
+      } else if (spec.openAction) {
+        openOk = !!(window.smileAIStudioStatus &&
+          window.smileAIStudioStatus.registeredActions &&
+          window.smileAIStudioStatus.registeredActions[spec.openAction]);
+      }
+      if (!openOk) {
+        fails.push(spec.label + "の開く処理（関数または登録済みアクション）が見つかりません");
+      }
+
+      if (spec.closeCheck && typeof spec.closeCheck === "function" && !spec.closeCheck()) {
+        fails.push(spec.label + "の閉じる関数が見つかりません");
+      }
+
+      if (spec.formId && !document.getElementById(spec.formId)) {
+        fails.push(spec.label + "内の必要フォームが見つかりません（#" + spec.formId + "）");
+      }
+
+      notes.push(spec.label + "：DOM確認OK");
+    }
+
+    checkOne({
+      id: "request-modal",
+      label: "依頼モーダル",
+      closeIds: ["modal-close", "modal-cancel", "modal-cancel-result"],
+      openAction: "openRequestModal",
+      openCheck: function () {
+        return typeof openModal === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openRequestModal;
+      },
+      closeCheck: function () { return typeof closeModal === "function"; },
+      formId: "request-form",
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "project-modal",
+      label: "プロジェクト管理モーダル",
+      closeIds: ["project-modal-close", "btn-cancel-project-form"],
+      openAction: "openProjectManager",
+      openCheck: function () {
+        return typeof openProjectModal === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openProjectManager;
+      },
+      closeCheck: function () { return typeof closeProjectModal === "function"; },
+      formId: "project-form-view",
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "prompt-view-modal",
+      label: "指示書表示モーダル",
+      closeIds: ["prompt-view-close", "prompt-view-cancel"],
+      openCheck: function () { return typeof openPromptView === "function"; },
+      closeCheck: function () { return typeof closePromptView === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "system-check-modal",
+      label: "システムチェックモーダル",
+      closeIds: ["system-check-close", "btn-close-system-check"],
+      openAction: "openSystemCheck",
+      openCheck: function () {
+        return typeof openSystemCheck === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openSystemCheck;
+      },
+      closeCheck: function () { return typeof closeSystemCheck === "function"; },
+      allowOpenDuringCheck: true
+    });
+
+    checkOne({
+      id: "release-center-modal",
+      label: "リリースセンターモーダル",
+      closeIds: ["release-center-close", "btn-release-close"],
+      openAction: "openReleaseCenter",
+      openCheck: function () {
+        return typeof openReleaseCenter === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openReleaseCenter;
+      },
+      closeCheck: function () { return typeof closeReleaseCenter === "function"; },
+      allowOpenDuringCheck: true
+    });
+
+    var details = [];
+    if (fails.length) details.push("【異常】\n・" + fails.join("\n・"));
+    if (warns.length) details.push("【注意】\n・" + warns.join("\n・"));
+    if (notes.length) details.push("【確認メモ】\n・" + notes.join("\n・"));
+
+    if (fails.length) {
+      return makeCheckResult(
+        "modals",
+        "モーダル",
+        "fail",
+        fails[0] + (fails.length > 1 ? " ほか" + (fails.length - 1) + "件" : ""),
+        details.join("\n\n")
+      );
+    }
+
+    if (warns.length) {
+      return makeCheckResult(
+        "modals",
+        "モーダル",
+        "warn",
+        "開閉動作に影響しない軽微な不足があります（" + warns.length + "件）",
+        details.join("\n\n")
+      );
+    }
+
+    return makeCheckResult(
+      "modals",
+      "モーダル",
+      "ok",
+      "主要モーダルの存在・閉じる操作・開閉処理を確認しました",
+      details.join("\n\n")
+    );
+  }
+
+  function checkProjectSelect() {
+    var select = document.getElementById("req-project");
+    if (!select) {
+      return makeCheckResult("project-select", "プロジェクト選択欄", "fail", "選択欄がありません");
+    }
+    populateProjectSelect(select.value || "");
+    var options = Array.prototype.slice.call(select.options || []);
+    var values = options.map(function (o) { return o.value; }).filter(Boolean);
+    var enabled = getEnabledProjects();
+    var details = [
+      "選択肢（空以外）: " + values.length + "件",
+      "有効プロジェクト: " + enabled.length + "件"
+    ];
+
+    if (values.length === 0) {
+      return makeCheckResult("project-select", "プロジェクト選択欄", "fail",
+        "有効な選択肢がありません", details.join("\n"));
+    }
+
+    var dup = {};
+    var hasDup = false;
+    values.forEach(function (v) {
+      if (dup[v]) hasDup = true;
+      dup[v] = true;
+    });
+    if (hasDup) {
+      return makeCheckResult("project-select", "プロジェクト選択欄", "fail",
+        "選択肢のIDが重複しています", details.join("\n"));
+    }
+
+    var enabledIds = enabled.map(function (p) { return p.id; });
+    var unexpected = values.filter(function (v) { return enabledIds.indexOf(v) === -1; });
+    var missing = enabledIds.filter(function (id) { return values.indexOf(id) === -1; });
+    if (unexpected.length || missing.length) {
+      return makeCheckResult("project-select", "プロジェクト選択欄", "warn",
+        "有効プロジェクトと選択肢に差があります",
+        details.concat([
+          unexpected.length ? "余分な選択肢: " + unexpected.join(", ") : "",
+          missing.length ? "未反映: " + missing.join(", ") : ""
+        ]).filter(Boolean).join("\n"));
+    }
+
+    if (select.value) {
+      return makeCheckResult("project-select", "プロジェクト選択欄", "ok",
+        "有効プロジェクトが選択肢に反映されています（現在選択あり）", details.join("\n"));
+    }
+    return makeCheckResult("project-select", "プロジェクト選択欄", "ok",
+      "有効プロジェクトが選択肢に反映され、手動選択必須を維持しています", details.join("\n"));
+  }
+
+  function checkProjectUrls() {
+    var projects = loadProjects();
+    var github = 0;
+    var publicUrl = 0;
+    var folder = 0;
+    var badGithub = 0;
+    var badPublic = 0;
+    projects.forEach(function (p) {
+      if (p.githubUrl) {
+        github += 1;
+        if (!isValidHttpUrl(p.githubUrl)) badGithub += 1;
+      }
+      if (p.publicUrl) {
+        publicUrl += 1;
+        if (!isValidHttpUrl(p.publicUrl)) badPublic += 1;
+      }
+      if (p.localFolderName) folder += 1;
+    });
+
+    var details = [
+      "【GitHub URL】登録済み: " + github + "件 / 未登録: " + (projects.length - github) + "件 / 形式不正: " + badGithub + "件",
+      "【公開URL】登録済み: " + publicUrl + "件 / 未登録: " + (projects.length - publicUrl) + "件 / 形式不正: " + badPublic + "件",
+      "【ローカルフォルダ】登録済み: " + folder + "件 / 未登録: " + (projects.length - folder) + "件",
+      "",
+      "※ これは登録有無とURL形式の確認です。GitHubやNetlifyへの実接続・デプロイ成功は確認していません。"
+    ].join("\n");
+
+    if (badGithub || badPublic) {
+      return makeCheckResult("urls", "URL登録チェック", "fail",
+        "URL形式が不正な登録があります", details);
+    }
+    if (github === 0 && publicUrl === 0) {
+      return makeCheckResult("urls", "URL登録チェック", "warn",
+        "GitHub URL / 公開URLが未登録です（接続確認ではありません）", details);
+    }
+    if ((projects.length - github) > 0 || (projects.length - publicUrl) > 0) {
+      return makeCheckResult("urls", "URL登録チェック", "warn",
+        "一部プロジェクトでURL未登録があります（接続確認ではありません）", details);
+    }
+    return makeCheckResult("urls", "URL登録チェック", "ok",
+      "登録URLの形式は問題ありません（接続確認ではありません）", details);
+  }
+
+  function checkBasicRendering() {
+    var priorityCount = document.querySelectorAll("#priority-tasks .card").length;
+    var projectCount = document.querySelectorAll("#project-list .project-card, #project-list .card").length;
+    var staffCount = document.querySelectorAll("#staff-list .staff-card").length;
+    var recentArea = document.getElementById("recent-requests");
+    var enabledProjects = getEnabledProjects().length;
+    var details = [
+      "優先タスクカード: " + priorityCount,
+      "プロジェクトカード: " + projectCount + "（有効プロジェクト: " + enabledProjects + "）",
+      "AIスタッフカード: " + staffCount,
+      "最近の依頼エリア: " + (recentArea ? "あり" : "なし")
+    ];
+
+    var issues = [];
+    if (priorityCount !== 3) issues.push("優先タスクは3件表示であるべきです（現在" + priorityCount + "件）");
+    if (enabledProjects > 0 && projectCount === 0) issues.push("有効プロジェクトがあるのにカードが0件です");
+    if (staffList.length > 0 && staffCount === 0) issues.push("AIスタッフ定義があるのにカードが0件です");
+    if (!recentArea) issues.push("最近の依頼エリアがありません");
+
+    if (issues.length) {
+      return makeCheckResult("rendering", "基本表示", "fail",
+        "画面描画に問題があります", details.concat(issues).join("\n"));
+    }
+    return makeCheckResult("rendering", "基本表示", "ok",
+      "主要セクションの表示件数は妥当です", details.join("\n"));
+  }
+
+  function checkDataCompatibility() {
+    var sampleRequests = [
+      { id: "legacy-1", project: "GiftCanvas", staff: "プログラマーAI", title: "旧依頼", content: "内容", priority: "中", createdAt: "2026-01-01T00:00:00.000Z" },
+      { id: "legacy-2", project: "イベント相談LP", aiStaff: "ライターAI", request: "LP改善", priority: "高", createdAt: "2026-01-02T00:00:00.000Z" },
+      { id: "legacy-3", selectedProject: "Smile AI Studio", detectedMainAI: "テスターAI", content: "テスト", generatedPrompt: "", createdAt: "2026-01-03T00:00:00.000Z" },
+      null,
+      { id: "broken", project: null, title: "", content: "" }
+    ];
+    var sampleProjects = [
+      { name: "旧形式", desc: "説明のみ" },
+      { id: "x", name: "欠損あり", enabled: "yes" },
+      { id: "y", name: "URL不正", githubUrl: "ftp://example.com", publicUrl: "notaurl" }
+    ];
+
+    var reqFails = 0;
+    sampleRequests.forEach(function (sample) {
+      try {
+        normalizeRequest(sample);
+      } catch (e) {
+        reqFails += 1;
+      }
+    });
+
+    var projFails = 0;
+    sampleProjects.forEach(function (sample, i) {
+      try {
+        normalizeProject(sample, i);
+      } catch (e) {
+        projFails += 1;
+      }
+    });
+
+    if (reqFails || projFails) {
+      return makeCheckResult("compat", "データ互換性", "fail",
+        "正規化処理で例外が発生しました",
+        "依頼サンプル失敗: " + reqFails + " / プロジェクトサンプル失敗: " + projFails);
+    }
+    return makeCheckResult("compat", "データ互換性", "ok",
+      "旧形式・欠損サンプルでも正規化例外は発生しませんでした",
+      "依頼サンプル: " + sampleRequests.length + " / プロジェクトサンプル: " + sampleProjects.length + "（localStorage未保存）");
+  }
+
+  function calculateOverallHealth(results) {
+    var counts = { ok: 0, warn: 0, fail: 0, unknown: 0 };
+    results.forEach(function (r) {
+      if (counts[r.status] == null) counts.unknown += 1;
+      else counts[r.status] += 1;
+    });
+
+    var level = "ok";
+    var label = "公開準備OK";
+    var advice = "異常はありません。注意がある場合は内容を確認してください。";
+    if (counts.fail > 0) {
+      level = "fail";
+      label = "修正が必要";
+      advice = "GitHubへpushする前に異常項目を修正してください。";
+    } else if (counts.warn >= 3) {
+      level = "warn";
+      label = "要確認";
+      advice = "異常はありませんが、注意が複数あります。公開前に確認してください。";
+    } else if (counts.warn > 0) {
+      level = "warn";
+      label = "公開準備OK（注意あり）";
+      advice = "異常0件です。注意項目のみ確認してください。";
+    }
+
+    return {
+      level: level,
+      label: label,
+      advice: advice,
+      counts: counts
+    };
+  }
+
+  function statusLabel(status) {
+    if (status === "ok") return "正常";
+    if (status === "warn") return "注意";
+    if (status === "fail") return "異常";
+    return "未確認";
+  }
+
+  function statusEmoji(status) {
+    if (status === "ok") return "🟢";
+    if (status === "warn") return "🟡";
+    if (status === "fail") return "🔴";
+    return "⚪";
+  }
+
+  function renderVersionMeta() {
+    var el = document.getElementById("system-check-meta");
+    if (!el) return;
+    var projects = [];
+    var requests = [];
+    try { projects = loadProjects(); } catch (e) { projects = []; }
+    try { requests = getRequests(); } catch (e) { requests = []; }
+    var used = 0;
+    try {
+      used = JSON.stringify(localStorage).length;
+    } catch (e) {
+      used = 0;
+    }
+    el.textContent =
+      "アプリ: " + APP_INFO.name + "\n" +
+      "バージョン: " + APP_INFO.version + "\n" +
+      "ビルド: " + APP_INFO.build + "\n" +
+      "最終更新日: " + APP_INFO.updatedAt + "\n" +
+      "現在のURL: " + (location.href || "") + "\n" +
+      "localStorage概算使用量: " + used + " 文字\n" +
+      "登録プロジェクト数: " + projects.length + "\n" +
+      "保存依頼数: " + requests.length;
+  }
+
+  function renderSystemCheckResults(results, overall) {
+    var overallEl = document.getElementById("system-check-overall");
+    var listEl = document.getElementById("system-check-results");
+    if (!overallEl || !listEl) return;
+
+    overallEl.hidden = false;
+    overallEl.className = "system-check__overall is-" + overall.level;
+    var failItems = results.filter(function (r) { return r.status === "fail"; });
+    overallEl.innerHTML =
+      '<div class="system-check__overall-title">' +
+        escapeHtml(statusEmoji(overall.level) + " 総合結果：" + overall.label) +
+      "</div>" +
+      '<div class="system-check__overall-counts">' +
+        escapeHtml(
+          "異常：" + overall.counts.fail + "件 / 注意：" + overall.counts.warn +
+          "件 / 正常：" + overall.counts.ok + "件 / 未確認：" + overall.counts.unknown + "件"
+        ) +
+      "</div>" +
+      '<div class="system-check__overall-issues">' +
+        escapeHtml(overall.advice) +
+        (failItems.length
+          ? "\n異常内容：\n・" + failItems.map(function (f) { return f.message; }).join("\n・")
+          : "") +
+      "</div>";
+
+    listEl.innerHTML = results.map(function (r, index) {
+      var hasDetails = !!(r.details && String(r.details).trim());
+      return (
+        '<article class="check-card is-' + escapeHtml(r.status) + '">' +
+          '<button type="button" class="check-card__summary" data-check-toggle="' + index + '" aria-expanded="false">' +
+            '<div>' +
+              '<div class="check-card__title">' + escapeHtml(statusEmoji(r.status) + " " + r.title) + "</div>" +
+              '<div class="check-card__message">' + escapeHtml(r.message) + "</div>" +
+            "</div>" +
+            '<span class="check-card__badge is-' + escapeHtml(r.status) + '">' +
+              escapeHtml(statusLabel(r.status)) +
+            "</span>" +
+          "</button>" +
+          (hasDetails
+            ? '<div class="check-card__details" id="check-details-' + index + '" hidden>' +
+                escapeHtml(r.details) +
+              "</div>"
+            : "") +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function renderRuntimeErrorPanel() {
+    var el = document.getElementById("system-check-errors");
+    if (!el) return;
+    var session = (window.smileAIStudioStatus && window.smileAIStudioStatus.sessionErrors) || [];
+    var persisted = loadPersistedRuntimeErrors();
+    var html = '<div class="error-list">';
+    html += "<p>現在のページ読み込み後: " + escapeHtml(String(session.length)) + "件 / 保存済み過去エラー: " +
+      escapeHtml(String(persisted.length)) + "件</p>";
+
+    if (!session.length && !persisted.length) {
+      html += "<p>エラー履歴はありません。</p></div>";
+      el.innerHTML = html;
+      return;
+    }
+
+    if (session.length) {
+      html += "<p><strong>今回のセッション</strong></p>";
+      session.slice(0, 10).forEach(function (err) {
+        html += '<div class="error-list__item">' +
+          escapeHtml("[" + err.type + "] " + err.message) + "<br>" +
+          escapeHtml((err.source || "source不明") + ":" + err.line + ":" + err.column + " / " + (err.at || "")) +
+          "</div>";
+      });
+    }
+    if (persisted.length) {
+      html += "<p><strong>保存済みの過去エラー</strong></p>";
+      persisted.slice(0, 10).forEach(function (err) {
+        html += '<div class="error-list__item">' +
+          escapeHtml("[" + err.type + "] " + err.message) + "<br>" +
+          escapeHtml((err.source || "source不明") + ":" + err.line + ":" + err.column + " / " + (err.at || "")) +
+          "</div>";
+      });
+    }
+    html += "</div>";
+    el.innerHTML = html;
+  }
+
+  function loadManualChecklist() {
+    try {
+      var raw = localStorage.getItem(MANUAL_CHECKLIST_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveManualChecklist(map) {
+    try {
+      localStorage.setItem(MANUAL_CHECKLIST_KEY, JSON.stringify(map || {}));
+    } catch (e) { /* ignore */ }
+  }
+
+  function resetManualChecklist() {
+    try {
+      localStorage.removeItem(MANUAL_CHECKLIST_KEY);
+    } catch (e) { /* ignore */ }
+    renderManualChecklist();
+    showToast("手動チェックをリセットしました");
+  }
+
+  function renderManualChecklist() {
+    var el = document.getElementById("manual-checklist");
+    if (!el) return;
+    var map = loadManualChecklist();
+    el.innerHTML = MANUAL_CHECK_ITEMS.map(function (item) {
+      var checked = !!map[item.id];
+      return (
+        '<label class="manual-checklist__item">' +
+          '<input type="checkbox" data-manual-check="' + escapeHtml(item.id) + '"' + (checked ? " checked" : "") + ">" +
+          "<span>" + escapeHtml(item.label) + "</span>" +
+        "</label>"
+      );
+    }).join("");
+  }
+
+  function runAllSystemChecks(options) {
+    options = options || {};
+    latestSystemCheckAt = new Date().toISOString();
+    var checks = [
+      ["init", "JavaScript初期化", checkInitialization],
+      ["runtime-errors", "直近の実行時エラー", checkRuntimeErrors],
+      ["dom", "必須DOM", checkRequiredDom],
+      ["localstorage", "localStorage読み書き", checkLocalStorage],
+      ["projects", "プロジェクトデータ", checkProjects],
+      ["ai-staff", "AIスタッフ", checkAIStaff],
+      ["requests", "最近の依頼データ", checkRequests],
+      ["buttons", "必須ボタン", checkRequiredButtons],
+      ["modals", "モーダル", checkModals],
+      ["project-select", "プロジェクト選択欄", checkProjectSelect],
+      ["urls", "URL登録チェック", checkProjectUrls],
+      ["rendering", "基本表示", checkBasicRendering],
+      ["compat", "データ互換性", checkDataCompatibility]
+    ];
+
+    latestSystemCheckResults = checks.map(function (item) {
+      return runCheckSafely(item[0], item[1], item[2]);
+    });
+    latestSystemCheckOverall = calculateOverallHealth(latestSystemCheckResults);
+    renderVersionMeta();
+    renderSystemCheckResults(latestSystemCheckResults, latestSystemCheckOverall);
+    renderRuntimeErrorPanel();
+    if (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) {
+      renderReleaseCenter();
+    }
+    if (!options.silentToast) {
+      showToast("システムチェックが完了しました");
+    }
+  }
+
+  function copySystemCheckResults() {
+    if (!latestSystemCheckResults.length || !latestSystemCheckOverall) {
+      showToast("先にチェックを実行してください");
+      return;
+    }
+
+    var overall = latestSystemCheckOverall;
+    var ok = latestSystemCheckResults.filter(function (r) { return r.status === "ok"; });
+    var warn = latestSystemCheckResults.filter(function (r) { return r.status === "warn"; });
+    var fail = latestSystemCheckResults.filter(function (r) { return r.status === "fail"; });
+    var session = (window.smileAIStudioStatus && window.smileAIStudioStatus.sessionErrors) || [];
+    var manual = loadManualChecklist();
+    var manualDone = MANUAL_CHECK_ITEMS.filter(function (i) { return !!manual[i.id]; }).length;
+    var manualLeft = MANUAL_CHECK_ITEMS.length - manualDone;
+
+    var lines = [
+      "【Smile AI Studio システムチェック】",
+      "",
+      "実行日時：",
+      latestSystemCheckAt,
+      "",
+      "総合結果：",
+      overall.label,
+      "",
+      "【正常】"
+    ];
+    if (ok.length) ok.forEach(function (r) { lines.push("・" + r.title + "：" + r.message); });
+    else lines.push("・なし");
+
+    lines.push("", "【注意】");
+    if (warn.length) warn.forEach(function (r) { lines.push("・" + r.title + "：" + r.message); });
+    else lines.push("・なし");
+
+    lines.push("", "【異常】");
+    if (fail.length) fail.forEach(function (r) { lines.push("・" + r.title + "：" + r.message); });
+    else lines.push("・なし");
+
+    lines.push("", "【実行時エラー】");
+    if (session.length) session.slice(0, 5).forEach(function (e) { lines.push("・" + e.message); });
+    else lines.push("・なし（今回のページ読み込み後）");
+
+    lines.push("", "【手動確認】", "・完了" + manualDone + "件 / 未確認" + manualLeft + "件");
+    lines.push("", "※ GitHub/Netlifyの実接続・デプロイ結果は未確認です。");
+
+    copyText(lines.join("\n")).then(function () {
+      showToast("システムチェック結果をコピーしました");
+    }).catch(function () {
+      showToast("コピーに失敗しました");
+    });
+  }
+
+  function clearRuntimeErrors() {
+    try { localStorage.removeItem(RUNTIME_ERRORS_KEY); } catch (e) { /* ignore */ }
+    if (window.smileAIStudioStatus) {
+      window.smileAIStudioStatus.runtimeErrors = [];
+      window.smileAIStudioStatus.sessionErrors = [];
+    }
+    renderRuntimeErrorPanel();
+    showToast("エラー履歴を消去しました");
+  }
+
+  /* ========== Release Center ========== */
+  var latestPublishDecision = null;
+
+  function loadReleaseNotes() {
+    try {
+      return localStorage.getItem(RELEASE_NOTES_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function saveReleaseNotes(text) {
+    try {
+      localStorage.setItem(RELEASE_NOTES_KEY, String(text || ""));
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadReleaseHistory() {
+    try {
+      var raw = localStorage.getItem(RELEASE_HISTORY_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveReleaseHistory(list) {
+    try {
+      localStorage.setItem(RELEASE_HISTORY_KEY, JSON.stringify(list || []));
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadReleaseState() {
+    try {
+      var raw = localStorage.getItem(RELEASE_STATE_KEY);
+      if (!raw) return { status: "開発中" };
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : { status: "開発中" };
+    } catch (e) {
+      return { status: "開発中" };
+    }
+  }
+
+  function saveReleaseState(state) {
+    try {
+      localStorage.setItem(RELEASE_STATE_KEY, JSON.stringify(state || {}));
+    } catch (e) { /* ignore */ }
+  }
+
+  function getCheckById(id) {
+    return (latestSystemCheckResults || []).find(function (r) {
+      return r.id === id;
+    }) || null;
+  }
+
+  function evaluatePublishDecision() {
+    if (!latestSystemCheckResults.length || !latestSystemCheckOverall) {
+      return {
+        level: "unknown",
+        label: "⚪ 未判定",
+        detail: "先にシステムチェックを実行してください。",
+        canPublish: false,
+        canRegisterHistory: false
+      };
+    }
+
+    var init = getCheckById("init");
+    var runtime = getCheckById("runtime-errors");
+    var dom = getCheckById("dom");
+    var projects = getCheckById("projects");
+    var staff = getCheckById("ai-staff");
+    var sessionErrors = (window.smileAIStudioStatus && window.smileAIStudioStatus.sessionErrors) || [];
+    var failCount = latestSystemCheckOverall.counts.fail || 0;
+    var blockReasons = [];
+
+    if (failCount > 0) blockReasons.push("異常が" + failCount + "件あります");
+    if (!init || init.status !== "ok") blockReasons.push("JavaScript初期化が正常ではありません");
+    if (sessionErrors.length > 0) blockReasons.push("実行時エラーが" + sessionErrors.length + "件あります");
+    if (runtime && runtime.status === "fail") blockReasons.push("実行時エラーチェックが異常です");
+    if (!dom || dom.status === "fail") blockReasons.push("必須DOMチェックが異常です");
+    if (!projects || projects.status === "fail") blockReasons.push("プロジェクトデータチェックが異常です");
+    if (!staff || staff.status === "fail") blockReasons.push("AIスタッフチェックが異常です");
+
+    if (blockReasons.length) {
+      return {
+        level: "fail",
+        label: "🔴 公開しないでください",
+        detail: blockReasons.join("\n"),
+        canPublish: false,
+        canRegisterHistory: false
+      };
+    }
+
+    var warnCount = latestSystemCheckOverall.counts.warn || 0;
+    if (warnCount > 0) {
+      return {
+        level: "warn",
+        label: "🟡 要確認",
+        detail: "異常はありません。注意が" + warnCount + "件ありますが、公開可能です。必要なら注意内容を確認してください。",
+        canPublish: true,
+        canRegisterHistory: true
+      };
+    }
+
+    return {
+      level: "ok",
+      label: "🟢 公開できます",
+      detail: "公開条件を満たしています。GitHubへのpushは手動で行ってください（この画面では実行しません）。",
+      canPublish: true,
+      canRegisterHistory: true
+    };
+  }
+
+  function deriveCurrentStatus(decision) {
+    var history = loadReleaseHistory();
+    var published = history.some(function (h) {
+      return h.version === APP_INFO.version && String(h.build) === String(APP_INFO.build);
+    });
+    if (published) return "公開済み";
+    if (decision && decision.canPublish) return "公開準備OK";
+    return "開発中";
+  }
+
+  function summarizeLatestCheck() {
+    if (!latestSystemCheckOverall) {
+      return {
+        label: "未実行",
+        meta: "まだシステムチェックが実行されていません。",
+        level: "unknown"
+      };
+    }
+    var c = latestSystemCheckOverall.counts;
+    var level = "ok";
+    var label = "正常";
+    if (c.fail > 0) {
+      level = "fail";
+      label = "異常";
+    } else if (c.warn > 0) {
+      level = "warn";
+      label = "注意";
+    }
+    return {
+      label: label,
+      meta: "正常" + c.ok + " / 注意" + c.warn + " / 異常" + c.fail +
+        (latestSystemCheckAt ? "\n実行: " + latestSystemCheckAt : ""),
+      level: level
+    };
+  }
+
+  function renderReleaseCenter() {
+    var versionEl = document.getElementById("release-version-info");
+    if (versionEl) {
+      versionEl.textContent =
+        "Version\n" + APP_INFO.version + "\n\n" +
+        "Build\n" + APP_INFO.build + "\n\n" +
+        "Updated\n" + APP_INFO.updatedAt;
+    }
+
+    latestPublishDecision = evaluatePublishDecision();
+    var status = deriveCurrentStatus(latestPublishDecision);
+    saveReleaseState({
+      status: status,
+      updatedAt: new Date().toISOString(),
+      decision: latestPublishDecision.label
+    });
+
+    var statusEl = document.getElementById("release-current-status");
+    if (statusEl) statusEl.textContent = status;
+
+    var checkSummary = summarizeLatestCheck();
+    var checkEl = document.getElementById("release-latest-check");
+    var checkMeta = document.getElementById("release-latest-check-meta");
+    var checkCard = document.getElementById("release-check-card");
+    if (checkEl) checkEl.textContent = checkSummary.label;
+    if (checkMeta) checkMeta.textContent = checkSummary.meta;
+    if (checkCard) {
+      checkCard.className = "release-card is-" + checkSummary.level;
+    }
+
+    var decisionEl = document.getElementById("release-decision");
+    var decisionDetail = document.getElementById("release-decision-detail");
+    var decisionCard = document.getElementById("release-decision-card");
+    if (decisionEl) decisionEl.textContent = latestPublishDecision.label;
+    if (decisionDetail) decisionDetail.textContent = latestPublishDecision.detail;
+    if (decisionCard) {
+      decisionCard.className = "release-card release-card--decision is-" + latestPublishDecision.level;
+    }
+
+    var historyBtn = document.getElementById("btn-release-save-history");
+    if (historyBtn) {
+      historyBtn.hidden = !latestPublishDecision.canRegisterHistory;
+    }
+
+    var memoInput = document.getElementById("release-memo-input");
+    if (memoInput && !memoInput.value) {
+      memoInput.value = loadReleaseNotes();
+    }
+
+    renderReleaseHistory();
+  }
+
+  function renderReleaseHistory() {
+    var el = document.getElementById("release-history-list");
+    if (!el) return;
+    var history = loadReleaseHistory();
+    if (!history.length) {
+      el.innerHTML = '<p class="form-hint">まだリリース履歴はありません。公開判定OKのあと「履歴に追加」できます。</p>';
+      return;
+    }
+    el.innerHTML = history.slice(0, 20).map(function (item) {
+      return (
+        '<div class="release-history-item">' +
+          escapeHtml("v" + (item.version || "") + " / build " + (item.build || "") + "\n") +
+          escapeHtml((item.date || "") + "\n") +
+          escapeHtml((item.memo || "（メモなし）") + "\n") +
+          escapeHtml("判定: " + (item.systemCheckResult || "")) +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function openReleaseCenter() {
+    if (!releaseCenterModal) return;
+    releaseCenterModal.classList.add("is-open");
+    releaseCenterModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    var panel = document.getElementById("release-memo-panel");
+    if (panel) panel.hidden = true;
+    renderReleaseCenter();
+  }
+
+  function closeReleaseCenter() {
+    if (!releaseCenterModal) return;
+    releaseCenterModal.classList.remove("is-open");
+    releaseCenterModal.setAttribute("aria-hidden", "true");
+    var panel = document.getElementById("release-memo-panel");
+    if (panel) panel.hidden = true;
+    syncBodyScroll();
+  }
+
+  function runPublishCheck() {
+    if (!latestSystemCheckResults.length) {
+      runAllSystemChecks({ silentToast: true });
+    }
+    latestPublishDecision = evaluatePublishDecision();
+    renderReleaseCenter();
+    if (latestPublishDecision.canPublish) {
+      showToast("公開チェック完了：公開可能な状態です");
+    } else if (latestPublishDecision.level === "unknown") {
+      showToast("先にシステムチェックを実行してください");
+    } else {
+      showToast("公開チェック完了：現時点では公開しないでください");
+    }
+  }
+
+  function addReleaseHistoryEntry() {
+    latestPublishDecision = evaluatePublishDecision();
+    if (!latestPublishDecision.canRegisterHistory) {
+      showToast("公開判定OKのときだけ履歴に追加できます");
+      return;
+    }
+    var memo = loadReleaseNotes().trim();
+    var history = loadReleaseHistory();
+    history.unshift({
+      version: APP_INFO.version,
+      build: APP_INFO.build,
+      date: new Date().toISOString(),
+      memo: memo || "（メモなし）",
+      systemCheckResult: latestPublishDecision.label + " / " +
+        (latestSystemCheckOverall ? latestSystemCheckOverall.label : "")
+    });
+    saveReleaseHistory(history.slice(0, 50));
+    saveReleaseState({
+      status: "公開済み",
+      updatedAt: new Date().toISOString(),
+      decision: latestPublishDecision.label
+    });
+    renderReleaseCenter();
+    showToast("リリース履歴に追加しました");
+  }
+
+  function renderDevStatusPanel() {
+    var el = document.getElementById("dev-status-panel");
+    if (!el) return;
+    var progress = DEV_ROADMAP.progress;
+    var completed = DEV_ROADMAP.completed.map(function (item) {
+      return "<li>✅ " + escapeHtml(item) + "</li>";
+    }).join("");
+    var upcoming = DEV_ROADMAP.upcoming.map(function (item) {
+      var mark = item.status === "準備中" ? "◇" : "□";
+      return "<li>" + mark + " " + escapeHtml(item.label) +
+        (item.status ? "（" + escapeHtml(item.status) + "）" : "") +
+        "</li>";
+    }).join("");
+
+    el.innerHTML =
+      '<article class="dev-status-card">' +
+        '<h3 class="dev-status-card__title">' + escapeHtml(APP_INFO.name) + "</h3>" +
+        '<div class="dev-progress">' +
+          '<div class="dev-progress__label"><span>完成度</span><span>' + progress + "%</span></div>" +
+          '<div class="dev-progress__bar" role="progressbar" aria-valuenow="' + progress +
+            '" aria-valuemin="0" aria-valuemax="100">' +
+            '<div class="dev-progress__fill" style="width:' + progress + '%"></div>' +
+          "</div>" +
+        "</div>" +
+        '<p class="dev-status-list__heading">完成済み</p>' +
+        '<ul class="dev-status-list">' + completed + "</ul>" +
+        '<p class="dev-status-list__heading">次に作る予定</p>' +
+        '<ul class="dev-status-list">' + upcoming + "</ul>" +
+      "</article>";
+  }
+
+  /* ========== Events ========== */
+  onClick("btn-new-request", function () {
     openModal();
+  }, "openRequestModal");
+
+  onClick("btn-manage-projects", function () {
+    openProjectModal({ mode: "list" });
+  }, "openProjectManager");
+
+  onClick("btn-add-project", function () {
+    openProjectModal({ mode: "create" });
+  }, "openProjectCreate");
+
+  onClick("btn-system-check", function () {
+    openSystemCheck();
+  }, "openSystemCheck");
+
+  onClick("btn-release-center", function () {
+    openReleaseCenter();
+  }, "openReleaseCenter");
+
+  onClick("btn-new-project", function () {
+    openProjectForm(null);
+  }, "openProjectForm");
+
+  onClick("project-modal-close", closeProjectModal, "closeProjectModal");
+  onClick("btn-cancel-project-form", function () {
+    showProjectListView();
   });
 
-  document.getElementById("modal-close").addEventListener("click", closeModal);
-  document.getElementById("modal-cancel").addEventListener("click", closeModal);
-  document.getElementById("modal-cancel-result").addEventListener("click", closeModal);
+  if (projectFormView) {
+    projectFormView.addEventListener("submit", handleProjectFormSubmit);
+  }
+  var projectMgmtList = document.getElementById("project-mgmt-list");
+  if (projectMgmtList) {
+    projectMgmtList.addEventListener("click", handleProjectMgmtClick);
+  }
 
-  document.getElementById("btn-route").addEventListener("click", handleRoute);
-  document.getElementById("btn-build-prompt").addEventListener("click", handleBuildPrompt);
+  if (projectModal) {
+    projectModal.addEventListener("click", function (e) {
+      if (e.target === projectModal) closeProjectModal();
+    });
+  }
 
-  document.getElementById("btn-back-to-input").addEventListener("click", function () {
+  onClick("modal-close", closeModal, "closeRequestModal");
+  onClick("modal-cancel", closeModal, "closeRequestModal");
+  onClick("modal-cancel-result", closeModal, "closeRequestModal");
+
+  onClick("btn-route", handleRoute, "runRouter");
+  onClick("btn-build-prompt", handleBuildPrompt, "buildPrompt");
+
+  onClick("btn-back-to-input", function () {
     currentGeneratedPrompt = "";
     showView("input");
     clearValidation();
   });
 
-  document.getElementById("btn-copy-prompt").addEventListener("click", function () {
+  onClick("btn-copy-prompt", function () {
     copyText(currentGeneratedPrompt).then(function () {
       showToast("指示書をコピーしました");
     }).catch(function () {
       showToast("コピーに失敗しました");
     });
-  });
+  }, "copyPrompt");
 
-  document.getElementById("btn-edit-prompt").addEventListener("click", function () {
+  onClick("btn-edit-prompt", function () {
     currentGeneratedPrompt = "";
     clearValidation();
     showView("input");
@@ -1040,9 +3082,9 @@
     }
   });
 
-  document.getElementById("btn-save-from-result").addEventListener("click", function () {
+  onClick("btn-save-from-result", function () {
     saveCurrentRequest();
-  });
+  }, "saveRequest");
 
   if (btnToggleDetails) {
     btnToggleDetails.addEventListener("click", function () {
@@ -1050,10 +3092,10 @@
     });
   }
 
-  document.getElementById("prompt-view-close").addEventListener("click", closePromptView);
-  document.getElementById("prompt-view-cancel").addEventListener("click", closePromptView);
+  onClick("prompt-view-close", closePromptView);
+  onClick("prompt-view-cancel", closePromptView);
 
-  document.getElementById("btn-copy-viewed-prompt").addEventListener("click", function () {
+  onClick("btn-copy-viewed-prompt", function () {
     copyText(viewedPrompt).then(function () {
       showToast("指示書をコピーしました");
     }).catch(function () {
@@ -1061,30 +3103,152 @@
     });
   });
 
-  modal.addEventListener("click", function (e) {
-    if (e.target === modal) closeModal();
-  });
+  if (modal) {
+    modal.addEventListener("click", function (e) {
+      if (e.target === modal) closeModal();
+    });
+  }
 
-  promptViewModal.addEventListener("click", function (e) {
-    if (e.target === promptViewModal) closePromptView();
+  if (promptViewModal) {
+    promptViewModal.addEventListener("click", function (e) {
+      if (e.target === promptViewModal) closePromptView();
+    });
+  }
+
+  if (systemCheckModal) {
+    systemCheckModal.addEventListener("click", function (e) {
+      if (e.target === systemCheckModal) closeSystemCheck();
+    });
+  }
+
+  onClick("system-check-close", closeSystemCheck);
+  onClick("btn-close-system-check", closeSystemCheck);
+  onClick("btn-run-system-check", runAllSystemChecks);
+  onClick("btn-rerun-system-check", runAllSystemChecks);
+  onClick("btn-copy-system-check", copySystemCheckResults);
+  onClick("btn-clear-runtime-errors", clearRuntimeErrors);
+  onClick("btn-reset-manual-checklist", resetManualChecklist);
+
+  onClick("release-center-close", closeReleaseCenter);
+  onClick("btn-release-close", closeReleaseCenter);
+  onClick("btn-release-run-check", function () {
+    runAllSystemChecks();
+    renderReleaseCenter();
   });
+  onClick("btn-release-view-check", function () {
+    closeReleaseCenter();
+    openSystemCheck();
+    if (latestSystemCheckResults.length) {
+      renderSystemCheckResults(latestSystemCheckResults, latestSystemCheckOverall);
+    }
+  });
+  onClick("btn-release-judge", runPublishCheck);
+  onClick("btn-release-memo", function () {
+    var panel = document.getElementById("release-memo-panel");
+    var input = document.getElementById("release-memo-input");
+    if (!panel) return;
+    panel.hidden = false;
+    if (input) {
+      input.value = loadReleaseNotes();
+      input.focus();
+    }
+  });
+  onClick("btn-release-memo-save", function () {
+    var input = document.getElementById("release-memo-input");
+    saveReleaseNotes(input ? input.value : "");
+    showToast("公開メモを保存しました");
+  });
+  onClick("btn-release-memo-cancel", function () {
+    var panel = document.getElementById("release-memo-panel");
+    if (panel) panel.hidden = true;
+  });
+  onClick("btn-release-save-history", addReleaseHistoryEntry);
+
+  if (releaseCenterModal) {
+    releaseCenterModal.addEventListener("click", function (e) {
+      if (e.target === releaseCenterModal) closeReleaseCenter();
+    });
+  }
+
+  var systemCheckResultsEl = document.getElementById("system-check-results");
+  if (systemCheckResultsEl) {
+    systemCheckResultsEl.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-check-toggle]");
+      if (!btn) return;
+      var index = btn.getAttribute("data-check-toggle");
+      var details = document.getElementById("check-details-" + index);
+      if (!details) return;
+      var open = details.hidden;
+      details.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  var manualChecklistEl = document.getElementById("manual-checklist");
+  if (manualChecklistEl) {
+    manualChecklistEl.addEventListener("change", function (e) {
+      var input = e.target;
+      if (!input || !input.getAttribute("data-manual-check")) return;
+      var map = loadManualChecklist();
+      map[input.getAttribute("data-manual-check")] = !!input.checked;
+      saveManualChecklist(map);
+    });
+  }
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
-    if (promptViewModal.classList.contains("is-open")) {
+    if (promptViewModal && promptViewModal.classList.contains("is-open")) {
       closePromptView();
       return;
     }
-    if (modal.classList.contains("is-open")) {
+    if (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) {
+      closeReleaseCenter();
+      return;
+    }
+    if (systemCheckModal && systemCheckModal.classList.contains("is-open")) {
+      closeSystemCheck();
+      return;
+    }
+    if (projectModal && projectModal.classList.contains("is-open")) {
+      if (projectFormView && !projectFormView.hidden) {
+        showProjectListView();
+        return;
+      }
+      closeProjectModal();
+      return;
+    }
+    if (modal && modal.classList.contains("is-open")) {
       closeModal();
     }
   });
 
-  form.addEventListener("submit", handleSubmit);
-  document.getElementById("recent-requests").addEventListener("click", handleRecentClick);
+  if (form) {
+    form.addEventListener("submit", handleSubmit);
+  }
+  var recentRequestsEl = document.getElementById("recent-requests");
+  if (recentRequestsEl) {
+    recentRequestsEl.addEventListener("click", handleRecentClick);
+  }
 
-  renderPriorityTasks();
-  renderProjects();
-  renderStaff();
-  renderRecentRequests();
+  /* ========== Init ========== */
+  try {
+    loadProjects();
+    renderPriorityTasks();
+    renderDevStatusPanel();
+    renderProjectCards();
+    populateProjectSelect();
+    renderStaff();
+    renderRecentRequests();
+    window.smileAIStudioStatus.initialized = true;
+    window.smileAIStudioStatus.initializedAt = new Date().toISOString();
+  } catch (e) {
+    window.smileAIStudioStatus.initialized = false;
+    recordRuntimeError({
+      message: e && e.message ? e.message : String(e),
+      source: "script.js:init",
+      line: 0,
+      column: 0,
+      type: "error"
+    });
+  }
 })();
