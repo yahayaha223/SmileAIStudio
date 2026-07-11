@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Smile AI Studio — 株式会社えがおのきろく AI司令塔">
+  <title>Smile AI Studio</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- ヘッダー -->
+    <header class="hero">
+      <div class="hero__badge">AI Command Center</div>
+      <h1 class="hero__title">Smile AI Studio</h1>
+      <p class="hero__subtitle">株式会社えがおのきろく AI司令塔</p>
+      <p class="hero__desc">
+        スマホからAIスタッフへ指示を出し、開発・デザイン・文章作成・テストを管理します。
+      </p>
+    </header>
+
+    <main class="main">
+      <!-- 今日の優先タスク -->
+      <section class="section" aria-labelledby="priority-heading">
+        <h2 id="priority-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">⚡</span>
+          今日の優先タスク
+        </h2>
+        <div class="card-list" id="priority-tasks"></div>
+      </section>
+
+      <!-- プロジェクト一覧 -->
+      <section class="section" aria-labelledby="projects-heading">
+        <h2 id="projects-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">📁</span>
+          プロジェクト一覧
+        </h2>
+        <div class="card-list" id="project-list"></div>
+      </section>
+
+      <!-- AIスタッフ -->
+      <section class="section" aria-labelledby="staff-heading">
+        <h2 id="staff-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">🤖</span>
+          AIスタッフ
+        </h2>
+        <div class="card-list card-list--staff" id="staff-list"></div>
+      </section>
+
+      <!-- 最近の依頼 -->
+      <section class="section" aria-labelledby="recent-heading">
+        <h2 id="recent-heading" class="section__title">
+          <span class="section__icon" aria-hidden="true">📋</span>
+          最近の依頼
+        </h2>
+        <div class="card-list" id="recent-requests">
+          <p class="empty-message" id="empty-requests">まだ依頼はありません。下のボタンから作成できます。</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- 固定フッター -->
+    <footer class="footer">
+      <button type="button" class="btn btn--primary btn--large" id="btn-new-request">
+        ＋ 新しい依頼を作る
+      </button>
+    </footer>
+  </div>
+
+  <!-- トースト通知 -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- 依頼モーダル -->
+  <div class="modal-overlay" id="request-modal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="modal-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="modal-title">新しい依頼</h3>
+        <button type="button" class="modal__close" id="modal-close" aria-label="閉じる">✕</button>
+      </div>
+      <form class="modal__form" id="request-form">
+        <div class="form-group">
+          <label for="req-project">プロジェクト</label>
+          <select id="req-project" name="project" required>
+            <option value="">選択してください</option>
+            <option value="Fuwafuwa Panic Manager">Fuwafuwa Panic Manager</option>
+            <option value="GiftCanvas">GiftCanvas</option>
+            <option value="イベント相談LP">イベント相談LP</option>
+            <option value="Smile AI Studio">Smile AI Studio</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="req-staff">依頼するAIスタッフ</label>
+          <select id="req-staff" name="staff" required>
+            <option value="">選択してください</option>
+            <option value="プログラマーAI">プログラマーAI</option>
+            <option value="デザイナーAI">デザイナーAI</option>
+            <option value="ライターAI">ライターAI</option>
+            <option value="テスターAI">テスターAI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="req-title">依頼タイトル</label>
+          <input type="text" id="req-title" name="title" placeholder="例：在庫一覧の表示を改善" required>
+        </div>
+        <div class="form-group">
+          <label for="req-content">依頼内容</label>
+          <textarea id="req-content" name="content" rows="4" placeholder="具体的な内容を入力してください" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="req-priority">優先度</label>
+          <select id="req-priority" name="priority" required>
+            <option value="高">高（今日〜明日）</option>
+            <option value="中" selected>中（今週中）</option>
+            <option value="低">低（急がない）</option>
+          </select>
+        </div>
+        <div class="modal__actions">
+          <button type="button" class="btn btn--ghost" id="modal-cancel">キャンセル</button>
+          <button type="submit" class="btn btn--primary">保存する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
