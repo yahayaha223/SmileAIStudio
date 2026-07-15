@@ -79,11 +79,28 @@ function buildTestMessage() {
   return "【Smile AI Studio 接続テスト】\nLINE司令塔との接続に成功しました。";
 }
 
+function buildUserIdCaptureMessage(userId) {
+  return [
+    "【Smile AI Studio】",
+    "あなたの LINE User ID を取得しました。",
+    "",
+    String(userId || ""),
+    "",
+    "この値を Netlify の環境変数",
+    "LINE_ADMIN_USER_ID",
+    "に登録してください。",
+    "",
+    "登録後、この案内は止まり、司令塔コマンドが使えるようになります。",
+    "Smile AI Studio の「その他 → LINE司令塔」でも同じ ID を確認できます。"
+  ].join("\n");
+}
+
 module.exports = {
   buildMorningMessage: buildMorningMessage,
   buildMenuMessage: buildMenuMessage,
   buildProjectActionMessage: buildProjectActionMessage,
   buildStatusMessage: buildStatusMessage,
   buildHelpMessage: buildHelpMessage,
-  buildTestMessage: buildTestMessage
+  buildTestMessage: buildTestMessage,
+  buildUserIdCaptureMessage: buildUserIdCaptureMessage
 };

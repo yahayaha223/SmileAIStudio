@@ -4727,11 +4727,48 @@
     return "";
   }
 
+  function renderLineUserIdBox(status, connected) {
+    var box = document.getElementById("line-userid-box");
+    var valueEl = document.getElementById("line-userid-value");
+    var hintEl = document.getElementById("line-userid-hint");
+    if (!box || !valueEl) return;
+
+    var userId = connected && status ? String(status.lastSeenUserId || "") : "";
+    var bootstrap = !!(status && status.bootstrapMode);
+    var adminSet = status && status.secrets && status.secrets.LINE_ADMIN_USER_ID === "設定済み";
+
+    if (!userId && !bootstrap) {
+      box.hidden = true;
+      valueEl.textContent = "";
+      if (hintEl) hintEl.textContent = "";
+      return;
+    }
+
+    box.hidden = false;
+    if (userId) {
+      valueEl.textContent = userId;
+      if (hintEl) {
+        hintEl.textContent = adminSet
+          ? "取得済みの User ID です（管理者は設定済み）。"
+          : ((status.netlifyHint || "Netlify の LINE_ADMIN_USER_ID にこの値を登録してください。") +
+            "\n取得時刻: " + formatLineDate(status.lastSeenUserAt));
+      }
+    } else {
+      valueEl.textContent = "（まだ未取得）";
+      if (hintEl) {
+        hintEl.textContent =
+          "管理者ID未設定モードです。公式アカウントに友だち追加するか、何かメッセージを送ると User ID がここに表示されます。";
+      }
+    }
+  }
+
   function renderLineStatusPanel(status, connected) {
     var panel = document.getElementById("line-status-panel");
     var hint = document.getElementById("line-command-hint");
     var preview = document.getElementById("line-morning-preview");
     if (!panel) return;
+
+    renderLineUserIdBox(status, connected);
 
     if (!connected || !status) {
       if (hint) hint.textContent = "LINE司令塔へ接続できません。既存機能には影響しません。";
@@ -4753,15 +4790,20 @@
     }
 
     if (hint) {
-      hint.textContent = status.configured
-        ? "サーバー連携は応答しています。秘密情報は表示しません。"
-        : "接続は可能ですが、環境変数が未設定です。";
+      if (status.bootstrapMode) {
+        hint.textContent = "管理者ID取得モードです。LINEへメッセージを送ると User ID が表示されます。";
+      } else if (status.configured) {
+        hint.textContent = "サーバー連携は応答しています。秘密情報は表示しません。";
+      } else {
+        hint.textContent = "接続は可能ですが、環境変数が未設定です。";
+      }
     }
 
     var secrets = status.secrets || {};
     var rows = [
       ["接続", status.ok ? "正常" : "注意", status.ok ? "is-ok" : "is-warn"],
       ["設定完了", status.configured ? "設定済み" : "未設定", status.configured ? "is-ok" : "is-warn"],
+      ["管理者取得モード", status.bootstrapMode ? "ON（User ID収集中）" : "OFF", status.bootstrapMode ? "is-warn" : "is-ok"],
       ["LINE_CHANNEL_SECRET", secrets.LINE_CHANNEL_SECRET || "未設定", lineValueClass(secrets.LINE_CHANNEL_SECRET)],
       ["LINE_CHANNEL_ACCESS_TOKEN", secrets.LINE_CHANNEL_ACCESS_TOKEN || "未設定", lineValueClass(secrets.LINE_CHANNEL_ACCESS_TOKEN)],
       ["LINE_ADMIN_USER_ID", secrets.LINE_ADMIN_USER_ID || "未設定", lineValueClass(secrets.LINE_ADMIN_USER_ID)],
@@ -4774,9 +4816,13 @@
       ["朝スケジュール", status.schedule || "—", ""]
     ];
 
-    panel.innerHTML = (status.configured
+    var topBanner = status.configured
       ? '<div class="line-banner line-banner--ok">LINE司令塔に接続できました</div>'
-      : '<div class="line-banner line-banner--warn">環境変数が未設定です（秘密情報は表示しません）</div>') +
+      : (status.bootstrapMode
+        ? '<div class="line-banner line-banner--warn">LINE_ADMIN_USER_ID 未設定です。公式アカウントにメッセージを送って User ID を取得してください。</div>'
+        : '<div class="line-banner line-banner--warn">環境変数が未設定です（秘密情報は表示しません）</div>');
+
+    panel.innerHTML = topBanner +
       rows.map(function (r) {
         return (
           '<div class="line-status__row">' +
@@ -4795,6 +4841,20 @@
         preview.textContent = "";
       }
     }
+  }
+
+  function handleLineCopyUserId() {
+    var valueEl = document.getElementById("line-userid-value");
+    var text = valueEl ? String(valueEl.textContent || "").trim() : "";
+    if (!text || text.indexOf("未取得") !== -1) {
+      showToast("まだ User ID が取得できていません");
+      return;
+    }
+    copyText(text).then(function () {
+      showToast("User ID をコピーしました。Netlify に貼り付けてください");
+    }).catch(function () {
+      showToast("コピーに失敗しました");
+    });
   }
 
   function renderLineHistoryPanel(history) {
@@ -6020,6 +6080,7 @@
     refreshLineCommandData();
   });
   onClick("btn-line-send-test", handleLineSendTest);
+  onClick("btn-line-copy-userid", handleLineCopyUserId);
   if (lineCommandModal) {
     lineCommandModal.addEventListener("click", function (e) {
       if (e.target === lineCommandModal) closeLineCommand();

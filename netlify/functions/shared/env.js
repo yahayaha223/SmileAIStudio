@@ -30,9 +30,23 @@ function assertLineConfigured(config) {
   return missing;
 }
 
+/** Webhook受信に必要な最小構成（管理者IDは不要） */
+function assertWebhookReady(config) {
+  var missing = [];
+  if (!config.channelSecret) missing.push("LINE_CHANNEL_SECRET");
+  if (!config.accessToken) missing.push("LINE_CHANNEL_ACCESS_TOKEN");
+  return missing;
+}
+
+function isAdminBootstrapMode(config) {
+  return assertWebhookReady(config).length === 0 && !config.adminUserId;
+}
+
 module.exports = {
   getEnv: getEnv,
   getLineConfig: getLineConfig,
   maskSecret: maskSecret,
-  assertLineConfigured: assertLineConfigured
+  assertLineConfigured: assertLineConfigured,
+  assertWebhookReady: assertWebhookReady,
+  isAdminBootstrapMode: isAdminBootstrapMode
 };

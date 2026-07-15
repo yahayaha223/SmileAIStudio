@@ -67,6 +67,30 @@ async function handleLikeWebhook(payload, config) {
   var config = env.getLineConfig();
   var results = [];
 
+  // 0) bootstrap mode: admin missing → return user id text
+  var prevAdmin = process.env.LINE_ADMIN_USER_ID;
+  delete process.env.LINE_ADMIN_USER_ID;
+  // re-require env after env change - env reads process.env at call time so OK
+  var bootConfig = env.getLineConfig();
+  var bootBody = JSON.stringify({
+    events: [buildEvent("こんにちは", "U-bootstrap-user", "evt-boot-1")]
+  });
+  var bootSig = signature.createLineSignature(bootBody, bootConfig.channelSecret);
+  var bootParsed = verifyAndParse(bootBody, bootSig, bootConfig.channelSecret);
+  // Simulate bootstrap reply text (webhook would reply; here we check message builder)
+  var captureText = require(path.join(shared, "message-builder"))
+    .buildUserIdCaptureMessage("U-bootstrap-user");
+  results.push({
+    name: "bootstrap mode captures User ID message",
+    ok: bootParsed.status === 200 &&
+      env.isAdminBootstrapMode(bootConfig) &&
+      captureText.indexOf("U-bootstrap-user") !== -1
+  });
+  if (prevAdmin == null) delete process.env.LINE_ADMIN_USER_ID;
+  else process.env.LINE_ADMIN_USER_ID = prevAdmin;
+  // refresh config for remaining tests
+  config = env.getLineConfig();
+
   // 1) bad signature
   var badBody = JSON.stringify({ events: [buildEvent("メニュー", config.adminUserId, "evt-bad")] });
   var bad = verifyAndParse(badBody, "not-a-valid-signature========", config.channelSecret);

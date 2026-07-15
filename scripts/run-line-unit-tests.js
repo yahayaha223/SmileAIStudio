@@ -78,13 +78,34 @@ test("commands: normalize / map メニュー", function () {
   assert.deepStrictEqual(router.mapCommand(router.normalizeCommand("4")), { type: "number", value: 4 });
 });
 
-test("messages: morning / test / help", function () {
+test("messages: morning / test / help / userid capture", function () {
   var projects = defaults.DEFAULT_PROJECTS;
   var morning = messages.buildMorningMessage(projects, { projectName: "豊川稲荷 人形焼き" }, 2);
   assert.ok(morning.indexOf("朝の確認") !== -1);
   assert.ok(morning.indexOf("豊川稲荷") !== -1);
   assert.ok(messages.buildTestMessage().indexOf("接続テスト") !== -1);
   assert.ok(messages.buildHelpMessage().indexOf("メニュー") !== -1);
+  var capture = messages.buildUserIdCaptureMessage("Uabcdef0123456789abcdef0123456789");
+  assert.ok(capture.indexOf("Uabcdef0123456789abcdef0123456789") !== -1);
+  assert.ok(capture.indexOf("LINE_ADMIN_USER_ID") !== -1);
+});
+
+test("env: bootstrap mode when admin missing", function () {
+  var prevSecret = process.env.LINE_CHANNEL_SECRET;
+  var prevToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  var prevAdmin = process.env.LINE_ADMIN_USER_ID;
+  process.env.LINE_CHANNEL_SECRET = "sec";
+  process.env.LINE_CHANNEL_ACCESS_TOKEN = "tok";
+  delete process.env.LINE_ADMIN_USER_ID;
+  var cfg = env.getLineConfig();
+  assert.strictEqual(env.isAdminBootstrapMode(cfg), true);
+  assert.strictEqual(env.assertWebhookReady(cfg).length, 0);
+  assert.ok(env.assertLineConfigured(cfg).indexOf("LINE_ADMIN_USER_ID") !== -1);
+  process.env.LINE_ADMIN_USER_ID = "Uadmin";
+  assert.strictEqual(env.isAdminBootstrapMode(env.getLineConfig()), false);
+  if (prevSecret == null) delete process.env.LINE_CHANNEL_SECRET; else process.env.LINE_CHANNEL_SECRET = prevSecret;
+  if (prevToken == null) delete process.env.LINE_CHANNEL_ACCESS_TOKEN; else process.env.LINE_CHANNEL_ACCESS_TOKEN = prevToken;
+  if (prevAdmin == null) delete process.env.LINE_ADMIN_USER_ID; else process.env.LINE_ADMIN_USER_ID = prevAdmin;
 });
 
 test("messages: project actions use nextActions", function () {

@@ -82,11 +82,17 @@ Smile AI Studio v1.5.0 の LINE Messaging API 連携（MVP）です。
 2. Messaging API の自動応答と併用する場合は、二重返信に注意
 
 ### 手順7：友だち追加と管理者 User ID
-1. 公式アカウントを友だち追加
-2. User ID の確認方法例：
-   - Developers Console のチャネルで自分の User ID を確認
-   - または Webhook ログで `source.userId` を確認（本番ログに秘密情報を出さない）
-3. `LINE_ADMIN_USER_ID` にその値を登録
+
+`LINE_ADMIN_USER_ID` が未設定のあいだ、Webhook は **管理者取得モード** になります。
+
+1. 公式アカウントを友だち追加する（または何かメッセージを送る）
+2. LINE から User ID が返信されます
+3. Smile AI Studio → **その他 → LINE司令塔** にも同じ ID が表示されます
+4. Netlify → Site configuration → Environment variables で  
+   `LINE_ADMIN_USER_ID` = 取得した値 を追加して保存
+5. 再デプロイ（または環境変数反映）後、取得モードは自動で終了します
+
+（開発者本人の場合）LINE Developers Console → Basic settings → **Your user ID** でも確認できます。
 
 ### 手順8：テスト
 1. Smile AI Studio → **その他 → LINE司令塔 → テストメッセージを送る**
@@ -97,10 +103,14 @@ Smile AI Studio v1.5.0 の LINE Messaging API 連携（MVP）です。
 ## 5. Netlify側の設定
 
 1. Site settings → Environment variables に上記4変数を登録
-2. `netlify.toml` により Functions と朝送信スケジュールが定義済み  
+2. 特に `LINE_ADMIN_USER_ID` は、手順7で取得した User ID を登録
+3. `netlify.toml` により Functions と朝送信スケジュールが定義済み  
    - `line-send-morning` : `0 23 * * *`（UTC）= **日本時間 08:00**
-3. デプロイ後、Webhook URL を LINE へ登録
-4. Scheduled Functions が有効であることを Netlify 管理画面で確認
+4. デプロイ後、Webhook URL を LINE へ登録
+5. Scheduled Functions が有効であることを Netlify 管理画面で確認
+
+Webhook URL 例:
+`https://<あなたのNetlifyドメイン>/.netlify/functions/line-webhook`
 
 ---
 

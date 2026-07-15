@@ -3366,6 +3366,43 @@ body:has(.app--secretary-first)::before {
   border: 1px solid #6ee7b7;
 }
 
+.line-userid-box {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-radius: 14px;
+  background: #ecfdf5;
+  border: 2px solid #06c755;
+}
+
+.line-userid-box__title {
+  margin: 0 0 10px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #047857;
+}
+
+.line-userid-box__value {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(6, 199, 85, 0.35);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  word-break: break-all;
+  color: var(--color-text);
+}
+
+.line-userid-box__hint {
+  margin: 0 0 12px;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: #065f46;
+}
+
 .line-preview {
   margin-bottom: 16px;
   padding: 14px;

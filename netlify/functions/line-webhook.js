@@ -6,7 +6,29 @@ var signature = require("./shared/line-signature");
 var lineClient = require("./shared/line-client");
 var router = require("./shared/command-router");
 var projectStore = require("./shared/project-store");
+var messages = require("./shared/message-builder");
 var dedupe = require("./shared/event-dedupe");
+
+async function rememberSeenUser(userId, sourceType) {
+  if (!userId) return;
+  var meta = await projectStore.getLineMeta();
+  var recent = Array.isArray(meta.recentUserIds) ? meta.recentUserIds.slice() : [];
+  recent = recent.filter(function (row) {
+    return row && row.userId !== userId;
+  });
+  recent.unshift({
+    userId: userId,
+    at: new Date().toISOString(),
+    sourceType: sourceType || "message"
+  });
+  recent = recent.slice(0, 10);
+  await projectStore.patchLineMeta({
+    lastWebhookAt: new Date().toISOString(),
+    lastSeenUserId: userId,
+    lastSeenUserAt: new Date().toISOString(),
+    recentUserIds: recent
+  });
+}
 
 exports.handler = async function (event) {
   if (event.httpMethod === "OPTIONS") return http.options();
@@ -15,9 +37,12 @@ exports.handler = async function (event) {
   }
 
   var config = env.getLineConfig();
-  if (!config.channelSecret || !config.accessToken || !config.adminUserId) {
+  var webhookMissing = env.assertWebhookReady(config);
+  if (webhookMissing.length) {
     return http.json(503, { ok: false, error: "line_not_configured" });
   }
+
+  var bootstrapMode = env.isAdminBootstrapMode(config);
 
   var rawBody = event.isBase64Encoded
     ? Buffer.from(event.body || "", "base64").toString("utf8")
@@ -45,8 +70,25 @@ exports.handler = async function (event) {
       if (dedupe.rememberEvent(ev.webhookEventId || ev.replyToken + ":" + (ev.timestamp || i))) {
         continue;
       }
-      if (ev.type !== "message" || !ev.message || ev.message.type !== "text") continue;
+
       var userId = ev.source && ev.source.userId ? String(ev.source.userId) : "";
+
+      // Admin bootstrap: capture User ID from follow / text message
+      if (bootstrapMode) {
+        if ((ev.type === "follow" || (ev.type === "message" && ev.message && ev.message.type === "text")) && userId) {
+          await rememberSeenUser(userId, ev.type);
+          if (ev.replyToken) {
+            await lineClient.replyMessage(
+              config.accessToken,
+              ev.replyToken,
+              messages.buildUserIdCaptureMessage(userId)
+            );
+          }
+        }
+        continue;
+      }
+
+      if (ev.type !== "message" || !ev.message || ev.message.type !== "text") continue;
       if (!userId || userId !== config.adminUserId) {
         if (ev.replyToken) {
           await lineClient.replyMessage(
@@ -62,7 +104,6 @@ exports.handler = async function (event) {
         await lineClient.replyMessage(config.accessToken, ev.replyToken, result.text);
       }
     } catch (err) {
-      // Continue other events; do not leak secrets
       console.log(JSON.stringify({
         at: new Date().toISOString(),
         stage: "webhook-event",
@@ -72,5 +113,8 @@ exports.handler = async function (event) {
     }
   }
 
-  return http.json(200, { ok: true });
+  return http.json(200, {
+    ok: true,
+    bootstrapMode: bootstrapMode
+  });
 };

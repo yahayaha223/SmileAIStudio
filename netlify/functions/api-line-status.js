@@ -20,11 +20,25 @@ exports.handler = async function (event) {
     ? await conversationStore.getConversation(config.adminUserId)
     : null;
   var projects = await projectStore.listEnabledProjects();
+  var bootstrapMode = env.isAdminBootstrapMode(config);
+  var lastSeenUserId = String(meta.lastSeenUserId || "");
+  var recentUserIds = Array.isArray(meta.recentUserIds) ? meta.recentUserIds : [];
 
   return http.json(200, {
     ok: true,
     configured: missing.length === 0,
     missing: missing,
+    bootstrapMode: bootstrapMode,
+    // User ID は管理者登録のために一時表示する（Channel Secret / Token は出さない）
+    lastSeenUserId: lastSeenUserId,
+    lastSeenUserAt: meta.lastSeenUserAt || "",
+    recentUserIds: recentUserIds.slice(0, 5).map(function (row) {
+      return {
+        userId: String(row.userId || ""),
+        at: String(row.at || ""),
+        sourceType: String(row.sourceType || "")
+      };
+    }),
     secrets: {
       LINE_CHANNEL_SECRET: env.maskSecret(config.channelSecret),
       LINE_CHANNEL_ACCESS_TOKEN: env.maskSecret(config.accessToken),
@@ -37,6 +51,8 @@ exports.handler = async function (event) {
     conversationStage: conversation && !conversation.expired ? (conversation.stage || "") : "",
     todayPriority: priority,
     morningPreview: messages.buildMorningMessage(projects, priority, 0),
-    schedule: "0 23 * * * (UTC) = 日本時間 08:00"
+    schedule: "0 23 * * * (UTC) = 日本時間 08:00",
+    netlifyHint:
+      "Netlify → Site configuration → Environment variables → LINE_ADMIN_USER_ID を追加"
   });
 };
