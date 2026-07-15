@@ -268,6 +268,10 @@ test("defaults: five standard projects", function () {
       }]
     });
     assert.strictEqual(text, "抽出OK");
+    var nested = openaiClient.extractOutputText({
+      output_text: "helperOK"
+    });
+    assert.strictEqual(nested, "helperOK");
   });
 
   openaiClient.createResponse = originalCreate;

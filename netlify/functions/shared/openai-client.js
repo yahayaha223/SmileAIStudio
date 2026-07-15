@@ -3,22 +3,61 @@
 var https = require("https");
 var config = require("./openai-config");
 
+/**
+ * Extract assistant text from Responses API payload.
+ * Handles output_text helper, message content arrays, and nested text fields.
+ */
 function extractOutputText(payload) {
   if (!payload || typeof payload !== "object") return "";
   if (typeof payload.output_text === "string" && payload.output_text.trim()) {
     return payload.output_text.trim();
   }
+
   var parts = [];
-  var output = Array.isArray(payload.output) ? payload.output : [];
-  output.forEach(function (item) {
-    if (!item || item.type !== "message") return;
-    var content = Array.isArray(item.content) ? item.content : [];
+
+  function pushText(value) {
+    var s = String(value || "").trim();
+    if (s) parts.push(s);
+  }
+
+  function walkContent(content) {
+    if (!content) return;
+    if (typeof content === "string") {
+      pushText(content);
+      return;
+    }
+    if (!Array.isArray(content)) return;
     content.forEach(function (c) {
       if (!c) return;
-      if (c.type === "output_text" && c.text) parts.push(String(c.text));
-      else if (c.type === "text" && c.text) parts.push(String(c.text));
+      if (typeof c === "string") {
+        pushText(c);
+        return;
+      }
+      if (c.type === "output_text" || c.type === "text" || c.type === "input_text") {
+        pushText(c.text);
+      } else if (c.text) {
+        pushText(c.text);
+      }
     });
+  }
+
+  var output = Array.isArray(payload.output) ? payload.output : [];
+  output.forEach(function (item) {
+    if (!item || typeof item !== "object") return;
+    if (item.type === "message" || item.role === "assistant") {
+      walkContent(item.content);
+      return;
+    }
+    // Some payloads place text directly on output items
+    if (item.type === "output_text" || item.type === "text") {
+      pushText(item.text);
+    }
   });
+
+  if (!parts.length && Array.isArray(payload.content)) {
+    walkContent(payload.content);
+  }
+
   return parts.join("\n").trim();
 }
 
@@ -41,7 +80,6 @@ function extractApiErrorMessage(parsed, raw) {
 
 function logOpenAiFailure(details) {
   details = details || {};
-  // Never log API keys. Include status / message / stack for Netlify function logs.
   console.log("[openai-error] status=", details.status);
   console.log("[openai-error] message=", details.message);
   console.log("[openai-error] stack=", details.stack || "");
@@ -81,17 +119,18 @@ function postResponses(apiKey, body, timeoutMs) {
           var parsed = null;
           try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
           var text = extractOutputText(parsed);
-          var ok = res.statusCode >= 200 && res.statusCode < 300 && !!text;
+          var httpOk = res.statusCode >= 200 && res.statusCode < 300;
+          var ok = httpOk && !!text;
           var message = ok ? "" : extractApiErrorMessage(parsed, raw);
           resolve({
             ok: ok,
             status: res.statusCode,
             text: text,
             latencyMs: Date.now() - started,
-            error: ok ? "" : "openai_http_error",
+            error: ok ? "" : (httpOk && !text ? "empty_output_text" : "openai_http_error"),
             message: message,
             stack: "",
-            rawBodyPreview: ok ? "" : String(raw || "").slice(0, 1000),
+            rawBodyPreview: String(raw || "").slice(0, 1500),
             usage: parsed && parsed.usage ? {
               input_tokens: parsed.usage.input_tokens,
               output_tokens: parsed.usage.output_tokens
@@ -133,10 +172,6 @@ function postResponses(apiKey, body, timeoutMs) {
   });
 }
 
-/**
- * Call OpenAI Responses API.
- * inputMessages: [{ role: 'user'|'assistant', content: string }]
- */
 async function createResponse(apiKey, options) {
   options = options || {};
   if (!apiKey) {
@@ -188,6 +223,19 @@ async function createResponse(apiKey, options) {
     };
   }
 
+  // 1) OpenAIから返ってきた回答全文
+  console.log("[debug] OpenAI answer full text=", result && result.text != null ? String(result.text) : result && result.text);
+  console.log("[debug] OpenAI answer meta=", JSON.stringify({
+    ok: !!(result && result.ok),
+    status: result && result.status,
+    error: result && result.error,
+    textType: result && result.text === null ? "null" : (result && result.text === undefined ? "undefined" : typeof (result && result.text)),
+    textLen: result && result.text != null ? String(result.text).length : 0
+  }));
+  if (result && result.rawBodyPreview && !(result.text && String(result.text).trim())) {
+    console.log("[debug] OpenAI rawBodyPreview (no extractable text)=", result.rawBodyPreview);
+  }
+
   if (!result.ok) {
     logOpenAiFailure({
       stage: "openai-responses",
@@ -198,9 +246,6 @@ async function createResponse(apiKey, options) {
       model: body.model,
       latencyMs: result.latencyMs
     });
-    if (result.rawBodyPreview) {
-      console.log("[openai-error] rawBodyPreview=", result.rawBodyPreview);
-    }
   } else {
     console.log(JSON.stringify({
       at: new Date().toISOString(),
@@ -209,6 +254,7 @@ async function createResponse(apiKey, options) {
       model: body.model,
       latencyMs: result.latencyMs,
       inputItems: body.input.length,
+      textLen: String(result.text || "").length,
       usage: result.usage || null
     }));
   }

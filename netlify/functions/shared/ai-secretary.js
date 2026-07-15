@@ -12,11 +12,9 @@ var MSG_API_FAIL =
   "いまAI会話へ接続できませんでした。\n司令塔コマンドは利用できます。";
 var MSG_TIMEOUT =
   "いま少し応答が遅れています。\n『メニュー』や『状況』は使えます。少ししてからもう一度話しかけてください。";
+var MSG_EMPTY =
+  "返事の文章を取り出せませんでした。\nもう一度送るか、『メニュー』『ヘルプ』を試してください。";
 
-/**
- * Lightweight future hook: detect possible company data ops.
- * Does NOT apply changes — only suggests confirmation.
- */
 function detectCompanyOpCandidate(text) {
   var t = String(text || "");
   if (/保留/.test(t) && /(人形焼き|豊川|プロジェクト|これ)/.test(t)) {
@@ -80,6 +78,8 @@ async function replyAsSecretary(userId, text) {
     return { text: MSG_API_FAIL, ok: false, kind: "chat", source: "ai-secretary" };
   }
 
+  console.log("[debug] ai-secretary OpenAI result.text=", result && result.text != null ? String(result.text) : result && result.text);
+
   if (!result.ok) {
     console.log("[ai-secretary] OpenAI call failed; LINE gets safe fallback only");
     console.log("[openai-error] status=", result.status);
@@ -89,16 +89,28 @@ async function replyAsSecretary(userId, text) {
     return { text: failText, ok: false, kind: "chat", source: "ai-secretary" };
   }
 
-  var reply = String(result.text || "").trim().slice(0, 1800);
+  var reply = String(result.text == null ? "" : result.text).trim().slice(0, 1800);
+  if (!reply) {
+    console.log("[debug] ai-secretary empty text after OpenAI ok=true — using MSG_EMPTY");
+    reply = MSG_EMPTY;
+  }
+
   var candidate = detectCompanyOpCandidate(text);
   if (candidate && candidate.hint && reply.indexOf("変更しますか") === -1) {
     reply = reply + candidate.hint;
   }
 
-  await memoryStore.appendChatMessages(userId, [
-    { role: "user", content: text },
-    { role: "assistant", content: reply }
-  ]);
+  // Do not let memory persistence block LINE reply after a successful OpenAI answer.
+  try {
+    await memoryStore.appendChatMessages(userId, [
+      { role: "user", content: text },
+      { role: "assistant", content: reply }
+    ]);
+  } catch (memErr) {
+    console.log("[ai-secretary] chat memory save failed (reply still returned)");
+    console.log("[openai-error] message=", memErr && memErr.message ? memErr.message : memErr);
+    console.log("[openai-error] stack=", memErr && memErr.stack ? memErr.stack : "");
+  }
 
   try {
     await projectStore.patchLineMeta({
@@ -107,6 +119,8 @@ async function replyAsSecretary(userId, text) {
   } catch (e) {
     /* ignore */
   }
+
+  console.log("[debug] ai-secretary returning text=", reply);
 
   return {
     text: reply,
@@ -122,5 +136,6 @@ module.exports = {
   detectCompanyOpCandidate: detectCompanyOpCandidate,
   MSG_NO_KEY: MSG_NO_KEY,
   MSG_API_FAIL: MSG_API_FAIL,
-  MSG_TIMEOUT: MSG_TIMEOUT
+  MSG_TIMEOUT: MSG_TIMEOUT,
+  MSG_EMPTY: MSG_EMPTY
 };

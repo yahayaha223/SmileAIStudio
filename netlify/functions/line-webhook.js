@@ -100,8 +100,48 @@ exports.handler = async function (event) {
         continue;
       }
       var result = await router.routeIncomingText(userId, ev.message.text || "");
+
+      // 2) router.routeIncomingText() の戻り値
+      console.log("[debug] routeIncomingText result=", JSON.stringify({
+        ok: result ? result.ok : null,
+        source: result ? result.source : null,
+        kind: result ? result.kind : null,
+        textType: !result || result.text === null
+          ? "null"
+          : (result.text === undefined ? "undefined" : typeof result.text),
+        textLen: result && result.text != null ? String(result.text).length : 0,
+        text: result && result.text != null ? String(result.text) : result && result.text
+      }));
+
+      var replyText = "";
+      if (result && result.text != null) {
+        replyText = String(result.text);
+      }
+      if (!String(replyText || "").trim()) {
+        console.log("[debug] reply text empty/null/undefined — applying webhook fallback");
+        replyText = "返事を作れませんでした。『メニュー』または『ヘルプ』と送ってください。";
+      }
+
+      // 3) lineClient.replyMessage() に渡す text
+      console.log("[debug] replyMessage text=", replyText);
+      console.log("[debug] replyMessage textLen=", String(replyText).length);
+
       if (ev.replyToken) {
-        await lineClient.replyMessage(config.accessToken, ev.replyToken, result.text);
+        var replyResult = await lineClient.replyMessage(
+          config.accessToken,
+          ev.replyToken,
+          replyText
+        );
+        console.log("[debug] replyMessage LINE API result=", JSON.stringify({
+          ok: !!(replyResult && replyResult.ok),
+          status: replyResult && replyResult.status,
+          body: replyResult && replyResult.body
+            ? String(replyResult.body).slice(0, 300)
+            : "",
+          reason: replyResult && replyResult.reason ? replyResult.reason : ""
+        }));
+      } else {
+        console.log("[debug] replyMessage skipped: missing replyToken");
       }
     } catch (err) {
       // Keep LINE reply safe for users; log OpenAI/runtime details for Netlify logs.
