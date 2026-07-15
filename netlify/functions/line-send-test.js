@@ -32,12 +32,20 @@ exports.handler = async function (event) {
       messages.buildTestMessage()
     );
     if (!result.ok) {
+      console.log("[line-send-test] LINE push failed");
+      console.log("[openai-error] status=", result.status != null ? result.status : "");
+      console.log("[openai-error] message=", result.body || result.reason || "send_failed");
+      console.log("[openai-error] stack=", "");
       return http.json(502, { ok: false, error: "send_failed" });
     }
     lastSentAt = now;
     await projectStore.patchLineMeta({ lastTestPushAt: new Date().toISOString() });
     return http.json(200, { ok: true });
   } catch (e) {
+    console.log("[line-send-test] exception");
+    console.log("[openai-error] status=", e && e.status != null ? e.status : "");
+    console.log("[openai-error] message=", e && e.message ? e.message : String(e));
+    console.log("[openai-error] stack=", e && e.stack ? e.stack : "");
     return http.json(502, { ok: false, error: "send_failed" });
   }
 };

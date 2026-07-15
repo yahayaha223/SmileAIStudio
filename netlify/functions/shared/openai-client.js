@@ -22,6 +22,42 @@ function extractOutputText(payload) {
   return parts.join("\n").trim();
 }
 
+function extractApiErrorMessage(parsed, raw) {
+  if (parsed && parsed.error) {
+    if (typeof parsed.error === "string") return parsed.error;
+    if (parsed.error.message) return String(parsed.error.message);
+    try {
+      return JSON.stringify(parsed.error).slice(0, 1000);
+    } catch (e) {
+      return "openai_error_object";
+    }
+  }
+  if (parsed && parsed.status && !extractOutputText(parsed)) {
+    return "no_output_text status=" + parsed.status;
+  }
+  if (raw) return String(raw).slice(0, 1000);
+  return "unknown_openai_error";
+}
+
+function logOpenAiFailure(details) {
+  details = details || {};
+  // Never log API keys. Include status / message / stack for Netlify function logs.
+  console.log("[openai-error] status=", details.status);
+  console.log("[openai-error] message=", details.message);
+  console.log("[openai-error] stack=", details.stack || "");
+  console.log(JSON.stringify({
+    at: new Date().toISOString(),
+    stage: details.stage || "openai-responses",
+    ok: false,
+    status: details.status == null ? "" : details.status,
+    message: String(details.message || "").slice(0, 1000),
+    stack: String(details.stack || "").slice(0, 2000),
+    error: details.error || "",
+    model: details.model || "",
+    latencyMs: details.latencyMs || 0
+  }));
+}
+
 function postResponses(apiKey, body, timeoutMs) {
   return new Promise(function (resolve) {
     var started = Date.now();
@@ -46,12 +82,16 @@ function postResponses(apiKey, body, timeoutMs) {
           try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
           var text = extractOutputText(parsed);
           var ok = res.statusCode >= 200 && res.statusCode < 300 && !!text;
+          var message = ok ? "" : extractApiErrorMessage(parsed, raw);
           resolve({
             ok: ok,
             status: res.statusCode,
             text: text,
             latencyMs: Date.now() - started,
             error: ok ? "" : "openai_http_error",
+            message: message,
+            stack: "",
+            rawBodyPreview: ok ? "" : String(raw || "").slice(0, 1000),
             usage: parsed && parsed.usage ? {
               input_tokens: parsed.usage.input_tokens,
               output_tokens: parsed.usage.output_tokens
@@ -62,24 +102,28 @@ function postResponses(apiKey, body, timeoutMs) {
     );
 
     req.setTimeout(timeoutMs || config.timeoutMs, function () {
-      req.destroy();
+      var err = new Error("OpenAI Responses API timeout after " + (timeoutMs || config.timeoutMs) + "ms");
       resolve({
         ok: false,
         status: 0,
         text: "",
         latencyMs: Date.now() - started,
         error: "timeout",
+        message: err.message,
+        stack: err.stack || "",
         usage: null
       });
     });
 
-    req.on("error", function () {
+    req.on("error", function (err) {
       resolve({
         ok: false,
         status: 0,
         text: "",
         latencyMs: Date.now() - started,
         error: "network_error",
+        message: err && err.message ? err.message : "network_error",
+        stack: err && err.stack ? err.stack : "",
         usage: null
       });
     });
@@ -96,7 +140,23 @@ function postResponses(apiKey, body, timeoutMs) {
 async function createResponse(apiKey, options) {
   options = options || {};
   if (!apiKey) {
-    return { ok: false, error: "missing_api_key", text: "", latencyMs: 0 };
+    var missing = {
+      ok: false,
+      error: "missing_api_key",
+      text: "",
+      status: 0,
+      message: "OPENAI_API_KEY is missing",
+      stack: "",
+      latencyMs: 0
+    };
+    logOpenAiFailure({
+      stage: "openai-responses",
+      status: missing.status,
+      message: missing.message,
+      stack: missing.stack,
+      error: missing.error
+    });
+    return missing;
   }
 
   var input = Array.isArray(options.input) ? options.input : [];
@@ -112,24 +172,52 @@ async function createResponse(apiKey, options) {
     max_output_tokens: options.maxOutputTokens || config.maxOutputTokens
   };
 
-  var result = await postResponses(apiKey, body, options.timeoutMs || config.timeoutMs);
+  var result;
+  try {
+    result = await postResponses(apiKey, body, options.timeoutMs || config.timeoutMs);
+  } catch (err) {
+    result = {
+      ok: false,
+      status: 0,
+      text: "",
+      latencyMs: 0,
+      error: "exception",
+      message: err && err.message ? err.message : "exception",
+      stack: err && err.stack ? err.stack : "",
+      usage: null
+    };
+  }
 
-  // Safe usage log (no secrets, no full message)
-  console.log(JSON.stringify({
-    at: new Date().toISOString(),
-    stage: "openai-responses",
-    ok: !!result.ok,
-    model: body.model,
-    latencyMs: result.latencyMs,
-    inputItems: body.input.length,
-    error: result.error || "",
-    usage: result.usage || null
-  }));
+  if (!result.ok) {
+    logOpenAiFailure({
+      stage: "openai-responses",
+      status: result.status,
+      message: result.message || result.error || "openai_failed",
+      stack: result.stack || "",
+      error: result.error || "",
+      model: body.model,
+      latencyMs: result.latencyMs
+    });
+    if (result.rawBodyPreview) {
+      console.log("[openai-error] rawBodyPreview=", result.rawBodyPreview);
+    }
+  } else {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      stage: "openai-responses",
+      ok: true,
+      model: body.model,
+      latencyMs: result.latencyMs,
+      inputItems: body.input.length,
+      usage: result.usage || null
+    }));
+  }
 
   return result;
 }
 
 module.exports = {
   createResponse: createResponse,
-  extractOutputText: extractOutputText
+  extractOutputText: extractOutputText,
+  logOpenAiFailure: logOpenAiFailure
 };

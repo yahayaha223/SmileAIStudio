@@ -104,11 +104,19 @@ exports.handler = async function (event) {
         await lineClient.replyMessage(config.accessToken, ev.replyToken, result.text);
       }
     } catch (err) {
+      // Keep LINE reply safe for users; log OpenAI/runtime details for Netlify logs.
+      console.log("[line-webhook] event handler failed");
+      console.log("[openai-error] status=", err && err.status != null ? err.status : "");
+      console.log("[openai-error] message=", err && err.message ? err.message : String(err));
+      console.log("[openai-error] stack=", err && err.stack ? err.stack : "");
       console.log(JSON.stringify({
         at: new Date().toISOString(),
         stage: "webhook-event",
         ok: false,
-        type: ev.type || "unknown"
+        type: ev.type || "unknown",
+        status: err && err.status != null ? err.status : "",
+        message: err && err.message ? String(err.message).slice(0, 1000) : "",
+        stack: err && err.stack ? String(err.stack).slice(0, 2000) : ""
       }));
     }
   }

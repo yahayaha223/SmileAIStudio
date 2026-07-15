@@ -66,12 +66,25 @@ async function replyAsSecretary(userId, text) {
   });
   input.push({ role: "user", content: String(text || "").slice(0, 1500) });
 
-  var result = await openaiClient.createResponse(config.openaiApiKey, {
-    instructions: instructions,
-    input: input
-  });
+  var result;
+  try {
+    result = await openaiClient.createResponse(config.openaiApiKey, {
+      instructions: instructions,
+      input: input
+    });
+  } catch (err) {
+    console.log("[ai-secretary] OpenAI call threw");
+    console.log("[openai-error] status=", 0);
+    console.log("[openai-error] message=", err && err.message ? err.message : err);
+    console.log("[openai-error] stack=", err && err.stack ? err.stack : "");
+    return { text: MSG_API_FAIL, ok: false, kind: "chat", source: "ai-secretary" };
+  }
 
   if (!result.ok) {
+    console.log("[ai-secretary] OpenAI call failed; LINE gets safe fallback only");
+    console.log("[openai-error] status=", result.status);
+    console.log("[openai-error] message=", result.message || result.error || "");
+    console.log("[openai-error] stack=", result.stack || "");
     var failText = result.error === "timeout" ? MSG_TIMEOUT : MSG_API_FAIL;
     return { text: failText, ok: false, kind: "chat", source: "ai-secretary" };
   }
