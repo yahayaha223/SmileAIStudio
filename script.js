@@ -15,17 +15,18 @@
   var CURSOR_HANDOFFS_KEY = "smileAIStudio_cursorHandoffs";
   var FAMILY_PHOTO_KEY = "smileAIStudio_familyPhoto";
   var TOP_PRIORITY_KEY = "smileAIStudio_topPriority";
+  var MEETING_LOGS_KEY = "smileAIStudio_meetingLogs";
   var CURSOR_AGENT_URL = "https://cursor.com/agents";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.2.0",
-    build: 32,
+    version: "1.3.0",
+    build: 33,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 85,
+    progress: 88,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -39,15 +40,16 @@
       "AI秘書ファーストUI",
       "Mission / Vision表示",
       "家族写真エリア",
-      "朝ダッシュボード"
+      "朝ダッシュボード",
+      "AI会議ログ"
     ],
     upcoming: [
-      { label: "AI会議ログ", status: "準備中" },
       { label: "GitHub自動Push", status: "準備中" },
       { label: "Netlify公開", status: "準備中" },
       { label: "Cursor連携", status: "準備中" },
       { label: "通知", status: "準備中" },
-      { label: "音声入力", status: "準備中" }
+      { label: "音声入力", status: "準備中" },
+      { label: "AI検索（会議ログ）", status: "準備中" }
     ]
   };
 
@@ -91,13 +93,15 @@
   var DEFAULT_TOP_PRIORITY = "Smile AI Studio 朝ダッシュボードを整える";
 
   var FUTURE_FEATURES = [
-    "AI会議ログ",
     "GitHub自動Push",
     "Netlify公開",
     "Cursor連携",
     "通知",
-    "音声入力"
+    "音声入力",
+    "AI検索（会議ログ）"
   ];
+
+  var MEETING_CATEGORIES = ["開発", "経営", "ホームページ", "イベント", "AI", "その他"];
 
   var DEFAULT_TODAY_TODOS = [
     { id: "todo-giftcanvas", text: "GiftCanvas修正", done: false },
@@ -334,6 +338,10 @@
   var webCenterDraftsView = document.getElementById("web-center-drafts-view");
   var webCenterPublishedView = document.getElementById("web-center-published-view");
   var webCenterInstructionView = document.getElementById("web-center-instruction-view");
+  var meetingLogsModal = document.getElementById("meeting-logs-modal");
+  var meetingListView = document.getElementById("meeting-list-view");
+  var meetingFormView = document.getElementById("meeting-form-view");
+  var meetingDetailView = document.getElementById("meeting-detail-view");
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
   var secretaryResultView = document.getElementById("secretary-result-view");
@@ -416,6 +424,7 @@
       (projectModal && projectModal.classList.contains("is-open")) ||
       (projectDetailModal && projectDetailModal.classList.contains("is-open")) ||
       (webCenterModal && webCenterModal.classList.contains("is-open")) ||
+      (meetingLogsModal && meetingLogsModal.classList.contains("is-open")) ||
       (secretaryModal && secretaryModal.classList.contains("is-open")) ||
       (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
@@ -1968,6 +1977,9 @@
       { id: "cursor-handoff-modal", label: "Cursor連携モーダル" },
       { id: "btn-web-center", label: "Web管理センター入口" },
       { id: "web-center-modal", label: "Web管理センターモーダル" },
+      { id: "btn-meeting-logs", label: "AI会議ログ入口" },
+      { id: "meeting-logs-modal", label: "AI会議ログモーダル" },
+      { id: "meeting-logs-list", label: "AI会議ログ一覧" },
       { id: "project-list", label: "プロジェクト一覧描画先" },
       { id: "staff-list", label: "AIスタッフ一覧描画先" },
       { id: "recent-requests", label: "最近の依頼描画先" },
@@ -2361,6 +2373,19 @@
           !!(window.smileAIStudioStatus.registeredActions || {}).openWebCenter;
       },
       closeCheck: function () { return typeof closeWebCenter === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "meeting-logs-modal",
+      label: "AI会議ログモーダル",
+      closeIds: ["meeting-logs-close", "btn-meeting-back-list", "btn-meeting-detail-back"],
+      openAction: "openMeetingLogs",
+      openCheck: function () {
+        return typeof openMeetingLogs === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openMeetingLogs;
+      },
+      closeCheck: function () { return typeof closeMeetingLogs === "function"; },
       allowOpenDuringCheck: false
     });
 
@@ -4241,6 +4266,287 @@
     }
   }
 
+  /* ========== AI会議ログ（Company Memory） ========== */
+
+  function createMeetingLogId() {
+    return "meeting-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+  }
+
+  function formatMeetingDateLabel(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return (
+      d.getFullYear() + "/" +
+      String(d.getMonth() + 1).padStart(2, "0") + "/" +
+      String(d.getDate()).padStart(2, "0") + " " +
+      String(d.getHours()).padStart(2, "0") + ":" +
+      String(d.getMinutes()).padStart(2, "0")
+    );
+  }
+
+  function normalizeMeetingLog(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var id = String(raw.id || "").trim();
+    var title = String(raw.title || "").trim();
+    var content = String(raw.content || "").trim();
+    if (!id || !title || !content) return null;
+    var category = String(raw.category || "その他").trim();
+    if (MEETING_CATEGORIES.indexOf(category) === -1) category = "その他";
+    var createdAt = String(raw.createdAt || raw.date || new Date().toISOString());
+    var date = String(raw.date || createdAt);
+    var summary = String(raw.summary || "").trim();
+    return {
+      id: id,
+      date: date,
+      title: title,
+      category: category,
+      content: content,
+      summary: summary,
+      createdAt: createdAt
+    };
+  }
+
+  /**
+   * 将来：AI検索 / 開発履歴 / チャット履歴 / Cursor履歴と統合する入口。
+   * 今回は localStorage からの読み込みのみ。
+   */
+  function loadMeetingLogs() {
+    try {
+      var raw = localStorage.getItem(MEETING_LOGS_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeMeetingLog).filter(Boolean).sort(function (a, b) {
+        return String(b.createdAt).localeCompare(String(a.createdAt));
+      });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function persistMeetingLogs(list) {
+    localStorage.setItem(MEETING_LOGS_KEY, JSON.stringify(list || []));
+  }
+
+  /**
+   * 1件追加して保存。将来は同期API差し替え用に分離。
+   */
+  function saveMeetingLog(entry) {
+    var normalized = normalizeMeetingLog(entry);
+    if (!normalized) return null;
+    var list = loadMeetingLogs();
+    list.unshift(normalized);
+    list.sort(function (a, b) {
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    });
+    try {
+      persistMeetingLogs(list);
+    } catch (e) {
+      showToast("保存に失敗しました");
+      return null;
+    }
+    return normalized;
+  }
+
+  /**
+   * 今回はダミー要約。将来はAI接続に差し替え。
+   */
+  function generateMeetingSummary(title, content, category) {
+    var t = String(title || "").trim() || "会議";
+    var body = String(content || "").trim().replace(/\s+/g, " ");
+    var short = body.length > 60 ? body.slice(0, 60) + "…" : body;
+    var cat = String(category || "").trim();
+    var catLine = cat ? "（カテゴリ：" + cat + "）" : "";
+    return (
+      "今回の会議では\n" +
+      t + "について方針を整理しました" + catLine + "。\n" +
+      (short ? short : "詳細は本文を参照してください。") +
+      "\n（AI要約・ダミー）"
+    );
+  }
+
+  function filterMeetingLogs(logs, query, category) {
+    var q = String(query || "").trim().toLowerCase();
+    var cat = String(category || "").trim();
+    return (logs || []).filter(function (log) {
+      if (cat && log.category !== cat) return false;
+      if (!q) return true;
+      var hay = (
+        log.title + " " +
+        log.content + " " +
+        log.summary + " " +
+        log.category
+      ).toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }
+
+  function getMeetingFilterState() {
+    var searchEl = document.getElementById("meeting-search");
+    var catEl = document.getElementById("meeting-filter-category");
+    return {
+      query: searchEl ? searchEl.value : "",
+      category: catEl ? catEl.value : ""
+    };
+  }
+
+  function renderMeetingLogs(logs) {
+    var container = document.getElementById("meeting-logs-list");
+    if (!container) return;
+    var state = getMeetingFilterState();
+    var filtered = filterMeetingLogs(logs || loadMeetingLogs(), state.query, state.category);
+
+    if (!filtered.length) {
+      container.innerHTML = '<p class="empty-message">会議ログがありません。右下から追加できます。</p>';
+      return;
+    }
+
+    container.innerHTML = filtered.map(function (log) {
+      var overview = log.summary
+        ? String(log.summary).replace(/\n/g, " ").slice(0, 72)
+        : String(log.content).replace(/\n/g, " ").slice(0, 72);
+      if ((log.summary || log.content || "").length > 72) overview += "…";
+      return (
+        '<button type="button" class="meeting-card" data-meeting-id="' + escapeHtml(log.id) + '">' +
+          '<div class="meeting-card__top">' +
+            '<span class="meeting-card__date">' + escapeHtml(formatMeetingDateLabel(log.date || log.createdAt)) + "</span>" +
+            '<span class="meeting-card__cat">' + escapeHtml(log.category) + "</span>" +
+          "</div>" +
+          '<strong class="meeting-card__title">' + escapeHtml(log.title) + "</strong>" +
+          '<p class="meeting-card__overview">' + escapeHtml(overview) + "</p>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function showMeetingView(name) {
+    if (meetingListView) meetingListView.hidden = name !== "list";
+    if (meetingFormView) meetingFormView.hidden = name !== "form";
+    if (meetingDetailView) meetingDetailView.hidden = name !== "detail";
+  }
+
+  function resetMeetingForm() {
+    var title = document.getElementById("meeting-title");
+    var content = document.getElementById("meeting-content");
+    var category = document.getElementById("meeting-category");
+    var err = document.getElementById("meeting-form-error");
+    if (title) title.value = "";
+    if (content) content.value = "";
+    if (category) category.value = "";
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+  }
+
+  function openMeetingLogs() {
+    if (!meetingLogsModal) return;
+    resetMeetingForm();
+    showMeetingView("list");
+    renderMeetingLogs();
+    meetingLogsModal.classList.add("is-open");
+    meetingLogsModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
+  function closeMeetingLogs() {
+    if (!meetingLogsModal) return;
+    meetingLogsModal.classList.remove("is-open");
+    meetingLogsModal.setAttribute("aria-hidden", "true");
+    showMeetingView("list");
+    resetMeetingForm();
+    syncBodyScroll();
+  }
+
+  function openMeetingForm() {
+    resetMeetingForm();
+    showMeetingView("form");
+    setTimeout(function () {
+      var title = document.getElementById("meeting-title");
+      if (title) title.focus();
+    }, 40);
+  }
+
+  function openMeetingDetail(id) {
+    var log = loadMeetingLogs().find(function (item) { return item.id === id; });
+    if (!log) {
+      showToast("会議ログが見つかりません");
+      return;
+    }
+    var meta = document.getElementById("meeting-detail-meta");
+    var title = document.getElementById("meeting-detail-title");
+    var category = document.getElementById("meeting-detail-category");
+    var summary = document.getElementById("meeting-detail-summary");
+    var content = document.getElementById("meeting-detail-content");
+    if (meta) meta.textContent = formatMeetingDateLabel(log.date || log.createdAt);
+    if (title) title.textContent = log.title;
+    if (category) category.textContent = log.category;
+    if (summary) summary.textContent = log.summary || "（要約なし）";
+    if (content) content.textContent = log.content;
+    showMeetingView("detail");
+  }
+
+  function handleMeetingSave() {
+    var titleEl = document.getElementById("meeting-title");
+    var contentEl = document.getElementById("meeting-content");
+    var categoryEl = document.getElementById("meeting-category");
+    var err = document.getElementById("meeting-form-error");
+    var title = titleEl ? String(titleEl.value || "").trim() : "";
+    var content = contentEl ? String(contentEl.value || "").trim() : "";
+    var category = categoryEl ? String(categoryEl.value || "").trim() : "";
+
+    function showErr(msg) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = msg;
+      }
+      showToast(msg);
+    }
+
+    if (!title) {
+      showErr("タイトルを入力してください");
+      if (titleEl) titleEl.focus();
+      return;
+    }
+    if (!content) {
+      showErr("今日決めたことを入力してください");
+      if (contentEl) contentEl.focus();
+      return;
+    }
+    if (!category || MEETING_CATEGORIES.indexOf(category) === -1) {
+      showErr("カテゴリを選択してください");
+      if (categoryEl) categoryEl.focus();
+      return;
+    }
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+
+    var now = new Date().toISOString();
+    var summary = generateMeetingSummary(title, content, category);
+    var saved = saveMeetingLog({
+      id: createMeetingLogId(),
+      date: now,
+      title: title,
+      category: category,
+      content: content,
+      summary: summary,
+      createdAt: now
+    });
+    if (!saved) return;
+    showToast("会議ログを保存しました");
+    resetMeetingForm();
+    showMeetingView("list");
+    renderMeetingLogs();
+  }
+
+  function handleMeetingListClick(e) {
+    var card = e.target.closest(".meeting-card");
+    if (!card) return;
+    openMeetingDetail(card.getAttribute("data-meeting-id"));
+  }
+
   /* ========== AI秘書（今日何した？） ========== */
 
   function clearSecretaryPhoto() {
@@ -4868,6 +5174,42 @@
   }, "openWebCenter");
   onClick("web-center-close", closeWebCenter, "closeWebCenter");
   onClick("btn-web-center-close-menu", closeWebCenter);
+  onClick("btn-meeting-logs", function () {
+    openMeetingLogs();
+  }, "openMeetingLogs");
+  onClick("meeting-logs-close", closeMeetingLogs, "closeMeetingLogs");
+  onClick("btn-meeting-new", openMeetingForm);
+  onClick("btn-meeting-save", handleMeetingSave);
+  onClick("btn-meeting-back-list", function () {
+    resetMeetingForm();
+    showMeetingView("list");
+    renderMeetingLogs();
+  });
+  onClick("btn-meeting-detail-back", function () {
+    showMeetingView("list");
+    renderMeetingLogs();
+  });
+  var meetingSearch = document.getElementById("meeting-search");
+  if (meetingSearch) {
+    meetingSearch.addEventListener("input", function () {
+      renderMeetingLogs();
+    });
+  }
+  var meetingFilterCategory = document.getElementById("meeting-filter-category");
+  if (meetingFilterCategory) {
+    meetingFilterCategory.addEventListener("change", function () {
+      renderMeetingLogs();
+    });
+  }
+  var meetingLogsList = document.getElementById("meeting-logs-list");
+  if (meetingLogsList) {
+    meetingLogsList.addEventListener("click", handleMeetingListClick);
+  }
+  if (meetingLogsModal) {
+    meetingLogsModal.addEventListener("click", function (e) {
+      if (e.target === meetingLogsModal) closeMeetingLogs();
+    });
+  }
   onClick("btn-web-new-diary", function () {
     openWebDiaryForm(null);
   });
@@ -5114,6 +5456,20 @@
         return;
       }
       closeWebCenter();
+      return;
+    }
+    if (meetingLogsModal && meetingLogsModal.classList.contains("is-open")) {
+      if (meetingFormView && !meetingFormView.hidden) {
+        showMeetingView("list");
+        renderMeetingLogs();
+        return;
+      }
+      if (meetingDetailView && !meetingDetailView.hidden) {
+        showMeetingView("list");
+        renderMeetingLogs();
+        return;
+      }
+      closeMeetingLogs();
       return;
     }
     if (projectDetailModal && projectDetailModal.classList.contains("is-open")) {

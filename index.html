@@ -166,6 +166,9 @@
           <button type="button" class="more-menu__btn" id="btn-web-center">
             <span aria-hidden="true">🌐</span> Web管理センター
           </button>
+          <button type="button" class="more-menu__btn" id="btn-meeting-logs">
+            <span aria-hidden="true">🧠</span> AI会議ログ
+          </button>
           <button type="button" class="more-menu__btn" id="btn-ai-secretary">
             <span aria-hidden="true">💬</span> AI秘書（詳細入力）
           </button>
@@ -767,6 +770,92 @@
           <button type="button" class="btn btn--secondary btn--touch" id="btn-cursor-copy-again">もう一度コピー</button>
           <button type="button" class="btn btn--secondary btn--touch" id="btn-cursor-show-instruction">指示内容を見る</button>
           <button type="button" class="btn btn--ghost btn--touch" id="btn-cursor-handoff-close">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI会議ログ（Company Memory） -->
+  <div class="modal-overlay" id="meeting-logs-modal" aria-hidden="true">
+    <div class="modal modal--meeting" role="dialog" aria-labelledby="meeting-logs-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="meeting-logs-title">🧠 AI会議ログ</h3>
+        <button type="button" class="modal__close" id="meeting-logs-close" aria-label="閉じる">✕</button>
+      </div>
+
+      <!-- 一覧 -->
+      <div class="modal__body meeting-list-view" id="meeting-list-view">
+        <div class="meeting-toolbar">
+          <label class="visually-hidden" for="meeting-search">検索</label>
+          <input
+            type="search"
+            id="meeting-search"
+            class="meeting-search"
+            placeholder="タイトル・内容を検索"
+            autocomplete="off"
+          >
+          <label class="visually-hidden" for="meeting-filter-category">カテゴリ</label>
+          <select id="meeting-filter-category" class="meeting-filter">
+            <option value="">すべてのカテゴリ</option>
+            <option value="開発">開発</option>
+            <option value="経営">経営</option>
+            <option value="ホームページ">ホームページ</option>
+            <option value="イベント">イベント</option>
+            <option value="AI">AI</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <div class="meeting-list" id="meeting-logs-list"></div>
+        <button type="button" class="meeting-fab" id="btn-meeting-new" aria-label="新しい会議ログ">
+          ＋ 新しい会議ログ
+        </button>
+      </div>
+
+      <!-- 新規 -->
+      <form class="modal__form" id="meeting-form-view" hidden novalidate>
+        <div class="form-error" id="meeting-form-error" role="alert" hidden></div>
+        <div class="form-group">
+          <label for="meeting-title">タイトル <span class="required-mark">必須</span></label>
+          <input type="text" id="meeting-title" maxlength="80" placeholder="例：ホーム画面の方針会議">
+        </div>
+        <div class="form-group">
+          <label for="meeting-content">今日決めたこと <span class="required-mark">必須</span></label>
+          <textarea id="meeting-content" rows="8" placeholder="決めたこと・理由をそのまま書いてください"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="meeting-category">カテゴリ <span class="required-mark">必須</span></label>
+          <select id="meeting-category">
+            <option value="">選択してください</option>
+            <option value="開発">開発</option>
+            <option value="経営">経営</option>
+            <option value="ホームページ">ホームページ</option>
+            <option value="イベント">イベント</option>
+            <option value="AI">AI</option>
+            <option value="その他">その他</option>
+          </select>
+        </div>
+        <p class="form-hint">保存時にAI要約（ダミー）を自動生成します。</p>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--primary btn--touch" id="btn-meeting-save">保存する</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-meeting-back-list">一覧に戻る</button>
+        </div>
+      </form>
+
+      <!-- 詳細 -->
+      <div class="modal__body" id="meeting-detail-view" hidden>
+        <p class="meeting-detail__meta" id="meeting-detail-meta"></p>
+        <h4 class="meeting-detail__title" id="meeting-detail-title"></h4>
+        <span class="meeting-detail__category" id="meeting-detail-category"></span>
+        <section class="meeting-detail__block" aria-labelledby="meeting-detail-summary-heading">
+          <h5 class="meeting-detail__label" id="meeting-detail-summary-heading">AI要約</h5>
+          <p class="meeting-detail__summary" id="meeting-detail-summary"></p>
+        </section>
+        <section class="meeting-detail__block" aria-labelledby="meeting-detail-content-heading">
+          <h5 class="meeting-detail__label" id="meeting-detail-content-heading">全文</h5>
+          <p class="meeting-detail__content" id="meeting-detail-content"></p>
+        </section>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-meeting-detail-back">一覧に戻る</button>
         </div>
       </div>
     </div>
