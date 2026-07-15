@@ -14,17 +14,18 @@
   var DIARY_ENTRIES_KEY = "smileAIStudio_diaryEntries";
   var CURSOR_HANDOFFS_KEY = "smileAIStudio_cursorHandoffs";
   var FAMILY_PHOTO_KEY = "smileAIStudio_familyPhoto";
+  var TOP_PRIORITY_KEY = "smileAIStudio_topPriority";
   var CURSOR_AGENT_URL = "https://cursor.com/agents";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.1.0",
-    build: 31,
+    version: "1.2.0",
+    build: 32,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 82,
+    progress: 85,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -37,7 +38,8 @@
       "Cursorへ送る連携",
       "AI秘書ファーストUI",
       "Mission / Vision表示",
-      "家族写真エリア"
+      "家族写真エリア",
+      "朝ダッシュボード"
     ],
     upcoming: [
       { label: "AI会議ログ", status: "準備中" },
@@ -67,10 +69,26 @@
   };
 
   var CURRENT_GOALS = [
-    { id: "smile-ai-studio", label: "Smile AI Studio" },
-    { id: "corporate-site", label: "CorporateSite" },
-    { id: "event-lp", label: "イベント相談LP" }
+    { id: "smile-ai-studio", label: "Smile AI Studio", progress: 82 },
+    { id: "corporate-site", label: "CorporateSite", progress: 60 },
+    { id: "event-lp", label: "イベント相談LP", progress: 40 }
   ];
+
+  var DAILY_WORDS = [
+    "今日の一歩が、\n未来の笑顔につながる。",
+    "昨日より少しだけ前へ。",
+    "小さく始めて、確かに届ける。",
+    "安心できる速さを、今日も。",
+    "笑顔をつくる仕事に、時間を返す。"
+  ];
+
+  var DUMMY_SCHEDULE = [
+    { time: "09:00", title: "ミーティング" },
+    { time: "14:00", title: "ホームページ更新" },
+    { time: "16:30", title: "システムチェック" }
+  ];
+
+  var DEFAULT_TOP_PRIORITY = "Smile AI Studio 朝ダッシュボードを整える";
 
   var FUTURE_FEATURES = [
     "AI会議ログ",
@@ -1933,7 +1951,10 @@
       { id: "view-more", label: "その他画面" },
       { id: "home-family-photo", label: "家族写真" },
       { id: "home-mission", label: "Mission折りたたみ" },
+      { id: "home-daily-word", label: "今日のひとこと" },
       { id: "home-vision", label: "Vision折りたたみ" },
+      { id: "home-schedule-list", label: "今日の予定" },
+      { id: "home-top-priority", label: "今日の最優先" },
       { id: "home-goals-list", label: "現在の目標" },
       { id: "home-secretary-input", label: "ホーム秘書入力欄" },
       { id: "btn-home-ai-run", label: "ホームAIに任せる" },
@@ -3621,13 +3642,110 @@
     var list = document.getElementById("home-goals-list");
     if (!list) return;
     list.innerHTML = CURRENT_GOALS.map(function (g) {
+      var pct = Math.max(0, Math.min(100, Number(g.progress) || 0));
       return (
-        '<li class="home-goals__item" data-goal-id="' + escapeHtml(g.id) + '">' +
-          '<span class="home-goals__dot" aria-hidden="true"></span>' +
-          '<span>' + escapeHtml(g.label) + "</span>" +
+        '<li class="home-goals__item home-goals__item--progress" data-goal-id="' + escapeHtml(g.id) + '">' +
+          '<div class="home-goals__row">' +
+            '<span class="home-goals__name">' + escapeHtml(g.label) + "</span>" +
+            '<span class="home-goals__pct">' + pct + "%</span>" +
+          "</div>" +
+          '<div class="home-goals__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '" aria-label="' + escapeHtml(g.label) + 'の進捗">' +
+            '<span class="home-goals__bar-fill" style="width:' + pct + '%"></span>' +
+          "</div>" +
         "</li>"
       );
     }).join("");
+  }
+
+  function renderDailyWord() {
+    var el = document.getElementById("home-daily-word");
+    if (!el || !DAILY_WORDS.length) return;
+    var daySeed = new Date();
+    var idx = (daySeed.getFullYear() * 372 + (daySeed.getMonth() + 1) * 31 + daySeed.getDate()) % DAILY_WORDS.length;
+    el.textContent = DAILY_WORDS[idx];
+  }
+
+  function renderHomeSchedule() {
+    var list = document.getElementById("home-schedule-list");
+    if (!list) return;
+    list.innerHTML = DUMMY_SCHEDULE.map(function (item) {
+      return (
+        '<li class="home-schedule__item">' +
+          '<span class="home-schedule__time">' + escapeHtml(item.time) + "</span>" +
+          '<span class="home-schedule__title">' + escapeHtml(item.title) + "</span>" +
+        "</li>"
+      );
+    }).join("");
+  }
+
+  function loadTopPriority() {
+    try {
+      var raw = localStorage.getItem(TOP_PRIORITY_KEY);
+      if (raw == null || raw === "") return DEFAULT_TOP_PRIORITY;
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.text === "string" && parsed.text.trim()) {
+        return parsed.text.trim();
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return DEFAULT_TOP_PRIORITY;
+  }
+
+  function saveTopPriority(text) {
+    var value = String(text || "").trim();
+    if (!value) value = DEFAULT_TOP_PRIORITY;
+    try {
+      localStorage.setItem(TOP_PRIORITY_KEY, JSON.stringify({
+        text: value,
+        updatedAt: new Date().toISOString()
+      }));
+    } catch (e) {
+      showToast("保存に失敗しました");
+      return false;
+    }
+    return true;
+  }
+
+  function setTopPriorityEditMode(editing) {
+    var textEl = document.getElementById("home-top-priority-text");
+    var input = document.getElementById("home-top-priority-input");
+    var editBtn = document.getElementById("btn-top-priority-edit");
+    var saveBtn = document.getElementById("btn-top-priority-save");
+    if (!textEl || !input) return;
+    if (editing) {
+      input.value = textEl.textContent || "";
+      textEl.hidden = true;
+      input.hidden = false;
+      if (editBtn) editBtn.hidden = true;
+      if (saveBtn) saveBtn.hidden = false;
+      setTimeout(function () { input.focus(); }, 30);
+    } else {
+      textEl.hidden = false;
+      input.hidden = true;
+      if (editBtn) editBtn.hidden = false;
+      if (saveBtn) saveBtn.hidden = true;
+    }
+  }
+
+  function renderTopPriority() {
+    var textEl = document.getElementById("home-top-priority-text");
+    if (!textEl) return;
+    textEl.textContent = loadTopPriority();
+    setTopPriorityEditMode(false);
+  }
+
+  function handleTopPrioritySave() {
+    var input = document.getElementById("home-top-priority-input");
+    var text = input ? String(input.value || "").trim() : "";
+    if (!text) {
+      showToast("最優先を入力してください");
+      if (input) input.focus();
+      return;
+    }
+    if (!saveTopPriority(text)) return;
+    renderTopPriority();
+    showToast("今日の最優先を保存しました");
   }
 
   function applyFamilyPhoto(src) {
@@ -4708,6 +4826,19 @@
   if (familyPhotoInput) {
     familyPhotoInput.addEventListener("change", handleFamilyPhotoChange);
   }
+  onClick("btn-top-priority-edit", function () {
+    setTopPriorityEditMode(true);
+  });
+  onClick("btn-top-priority-save", handleTopPrioritySave);
+  var topPriorityInput = document.getElementById("home-top-priority-input");
+  if (topPriorityInput) {
+    topPriorityInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleTopPrioritySave();
+      }
+    });
+  }
 
   onClick("btn-manage-projects", function () {
     openProjectModal({ mode: "list" });
@@ -5022,6 +5153,9 @@
   try {
     updateHomeGreeting();
     renderHomePurpose();
+    renderDailyWord();
+    renderHomeSchedule();
+    renderTopPriority();
     renderHomeGoals();
     loadFamilyPhoto();
     showAppView("home");

@@ -30,7 +30,7 @@
           <input type="file" id="home-family-photo-input" accept="image/*" hidden>
         </div>
 
-        <!-- ② Mission / ③ Vision（折りたたみ） -->
+        <!-- ② Mission / 今日のひとこと / Vision -->
         <div class="home-purpose">
           <details class="home-accordion" id="home-mission">
             <summary class="home-accordion__summary">
@@ -39,6 +39,8 @@
             </summary>
             <div class="home-accordion__body" id="home-mission-body"></div>
           </details>
+
+          <p class="home-word" id="home-daily-word" aria-live="polite"></p>
 
           <details class="home-accordion" id="home-vision">
             <summary class="home-accordion__summary">
@@ -82,9 +84,41 @@
           </div>
         </section>
 
-        <!-- ⑤ 現在の目標 -->
+        <!-- ⑥ 今日の予定 -->
+        <section class="home-dash-card" aria-labelledby="home-schedule-heading">
+          <h2 class="home-dash-card__title" id="home-schedule-heading">
+            <span aria-hidden="true">📅</span> 今日の予定
+          </h2>
+          <p class="home-dash-card__hint">サンプル表示です（カレンダー未連携）</p>
+          <ul class="home-schedule" id="home-schedule-list"></ul>
+        </section>
+
+        <!-- ⑦ 今日の最優先 -->
+        <section class="home-dash-card home-dash-card--priority" aria-labelledby="home-top-priority-heading">
+          <h2 class="home-dash-card__title" id="home-top-priority-heading">
+            <span aria-hidden="true">🔥</span> 今日の最優先
+          </h2>
+          <div class="home-top-priority" id="home-top-priority">
+            <p class="home-top-priority__text" id="home-top-priority-text"></p>
+            <label class="visually-hidden" for="home-top-priority-input">今日の最優先</label>
+            <input
+              type="text"
+              id="home-top-priority-input"
+              class="home-top-priority__input"
+              maxlength="80"
+              placeholder="今日いちばん大切なことを1つ"
+              hidden
+            >
+            <div class="home-top-priority__actions">
+              <button type="button" class="btn btn--secondary btn--touch" id="btn-top-priority-edit">編集</button>
+              <button type="button" class="btn btn--primary btn--touch" id="btn-top-priority-save" hidden>保存</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ⑧ 現在の目標（進捗） -->
         <section class="home-goals" aria-labelledby="home-goals-heading">
-          <h2 class="home-goals__title" id="home-goals-heading">現在の目標</h2>
+          <h2 class="home-goals__title" id="home-goals-heading">今日の進捗</h2>
           <ul class="home-goals__list" id="home-goals-list"></ul>
         </section>
       </section>
