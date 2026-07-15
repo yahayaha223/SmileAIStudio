@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="¶Ï™Àßü	">
+  <defs>
+    <linearGradient id="sky" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dbeafe"/>
+      <stop offset="55%" stop-color="#fef3c7"/>
+      <stop offset="100%" stop-color="#fde68a"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#bbf7d0"/>
+      <stop offset="100%" stop-color="#86efac"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#sky)"/>
+  <ellipse cx="400" cy="520" rx="520" ry="180" fill="url(#ground)"/>
+  <!-- sun -->
+  <circle cx="640" cy="110" r="42" fill="#fcd34d" opacity="0.9"/>
+  <!-- figures (simple, warm) -->
+  <g fill="#64748b" opacity="0.85">
+    <circle cx="280" cy="250" r="36"/>
+    <rect x="250" y="286" width="60" height="90" rx="20"/>
+    <circle cx="380" cy="240" r="40"/>
+    <rect x="346" y="280" width="68" height="100" rx="22"/>
+    <circle cx="470" cy="270" r="28"/>
+    <rect x="448" y="298" width="44" height="70" rx="16"/>
+  </g>
+  <text x="400" y="450" text-anchor="middle" fill="#475569" font-family="Hiragino Sans, Meiryo, sans-serif" font-size="22" font-weight="600">¶Ï™BhK‰	ôgM~Y	</text>
+</svg>

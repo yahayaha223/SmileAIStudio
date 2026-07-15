@@ -13,17 +13,18 @@
   var CURRENT_FOCUS_KEY = "smileAIStudio_currentFocus";
   var DIARY_ENTRIES_KEY = "smileAIStudio_diaryEntries";
   var CURSOR_HANDOFFS_KEY = "smileAIStudio_cursorHandoffs";
+  var FAMILY_PHOTO_KEY = "smileAIStudio_familyPhoto";
   var CURSOR_AGENT_URL = "https://cursor.com/agents";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "0.9.0",
-    build: 29,
+    version: "1.1.0",
+    build: 31,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 75,
+    progress: 82,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -33,7 +34,10 @@
       "スマホファーストUI",
       "Web管理センター",
       "AI秘書",
-      "Cursorへ送る連携"
+      "Cursorへ送る連携",
+      "AI秘書ファーストUI",
+      "Mission / Vision表示",
+      "家族写真エリア"
     ],
     upcoming: [
       { label: "AI会議ログ", status: "準備中" },
@@ -44,6 +48,29 @@
       { label: "音声入力", status: "準備中" }
     ]
   };
+
+  /* VISION.md / README.md に基づく表示文（折りたたみ用） */
+  var COMPANY_MISSION = {
+    quote: "笑顔をつくる仕事に、人の時間を返す。",
+    paragraphs: [
+      "株式会社えがおのきろくは、イベント・ギフト・体験づくりを通じて「笑顔の記録」を届けています。",
+      "AIは人を置き換える道具ではなく、人がもっと人らしい仕事に集中できる環境をつくる道具です。繰り返し作業はAIに任せ、企画・対話・判断には人が向き合う——そのために会社を動かしています。"
+    ]
+  };
+
+  var COMPANY_VISION = {
+    quote: "同じ笑顔の品質で、届け続けられる基盤をつくる。",
+    paragraphs: [
+      "すべてのプロジェクトを一つの開発文化のもとに置き、依頼→実装→テスト→デプロイ→通知までを再現可能なフローにします。",
+      "目的は、ただ速くすることではありません。信頼できる形で速くすること。えがおのきろくの開発文化を、個人の経験に頼らず組織の資産として残すことが Smile AI Studio の存在意義です。"
+    ]
+  };
+
+  var CURRENT_GOALS = [
+    { id: "smile-ai-studio", label: "Smile AI Studio" },
+    { id: "corporate-site", label: "CorporateSite" },
+    { id: "event-lp", label: "イベント相談LP" }
+  ];
 
   var FUTURE_FEATURES = [
     "AI会議ログ",
@@ -719,6 +746,8 @@
     var container = document.getElementById("project-list");
     if (!container) return;
     var enabled = getEnabledProjects();
+    var focus = loadCurrentFocus();
+    var focusId = focus && focus.projectId ? focus.projectId : "";
 
     if (enabled.length === 0) {
       container.innerHTML = '<p class="empty-message">表示できるプロジェクトがありません。管理画面から追加または有効化してください。</p>';
@@ -726,21 +755,31 @@
     }
 
     container.innerHTML = enabled.map(function (p) {
+      var isFocus = p.id === focusId;
+      var cardClass = "card project-card project-card--simple" +
+        (isFocus ? " project-card--focus" : " project-card--compact");
       return (
-        '<article class="card project-card project-card--simple" data-project-id="' + escapeHtml(p.id) + '" tabindex="0" role="button" aria-label="' + escapeHtml(p.name) + 'の詳細">' +
+        '<article class="' + cardClass + '" data-project-id="' + escapeHtml(p.id) + '" tabindex="0" role="button" aria-label="' + escapeHtml(p.name) + 'の詳細">' +
           '<div class="card__header">' +
             '<h3 class="card__title">' +
               '<span class="project-card__icon" aria-hidden="true">' + escapeHtml(p.icon) + "</span>" +
               escapeHtml(p.name) +
+              (isFocus ? '<span class="project-card__focus-tag">現在開発中</span>' : "") +
             "</h3>" +
           "</div>" +
           '<div class="card__meta">' +
             '<span class="badge ' + statusBadgeClass(p.status) + '">' + escapeHtml(p.status) + "</span>" +
-            '<span class="badge ' + priorityBadgeClass(p.priority) + '">優先度：' + escapeHtml(p.priority) + "</span>" +
+            (isFocus
+              ? '<span class="badge ' + priorityBadgeClass(p.priority) + '">優先度：' + escapeHtml(p.priority) + "</span>"
+              : "") +
           "</div>" +
-          '<div class="card__actions">' +
-            '<button type="button" class="btn btn--primary btn-develop" data-project-id="' + escapeHtml(p.id) + '">開発</button>' +
-          "</div>" +
+          (isFocus
+            ? '<div class="card__actions">' +
+                '<button type="button" class="btn btn--primary btn-develop" data-project-id="' + escapeHtml(p.id) + '">開発</button>' +
+              "</div>"
+            : '<div class="card__actions card__actions--compact">' +
+                '<button type="button" class="btn btn--ghost btn-develop" data-project-id="' + escapeHtml(p.id) + '">開発</button>' +
+              "</div>") +
         "</article>"
       );
     }).join("");
@@ -1889,11 +1928,20 @@
 
   function checkRequiredDom() {
     var required = [
+      { id: "view-home", label: "ホーム画面" },
+      { id: "view-projects", label: "プロジェクト画面" },
+      { id: "view-more", label: "その他画面" },
+      { id: "home-family-photo", label: "家族写真" },
+      { id: "home-mission", label: "Mission折りたたみ" },
+      { id: "home-vision", label: "Vision折りたたみ" },
+      { id: "home-goals-list", label: "現在の目標" },
+      { id: "home-secretary-input", label: "ホーム秘書入力欄" },
+      { id: "btn-home-ai-run", label: "ホームAIに任せる" },
       { id: "today-todos", label: "今日やること描画先" },
       { id: "priority-tasks", label: "今日の優先タスク描画先" },
       { id: "current-focus-panel", label: "現在開発中描画先" },
       { id: "release-home-panel", label: "リリース状況描画先" },
-      { id: "btn-ai-request-hero", label: "AIへ依頼ヒーロー" },
+      { id: "btn-ai-request-hero", label: "AIへ依頼入口" },
       { id: "btn-ai-secretary", label: "AI秘書入口" },
       { id: "secretary-modal", label: "AI秘書モーダル" },
       { id: "cursor-handoff-modal", label: "Cursor連携モーダル" },
@@ -1904,8 +1952,10 @@
       { id: "recent-requests", label: "最近の依頼描画先" },
       { id: "iphone-settings", label: "iPhone運用設定描画先" },
       { id: "upcoming-panel", label: "今後追加予定描画先" },
-      { id: "btn-new-request", label: "AI依頼クイックボタン" },
-      { id: "btn-quick-projects", label: "プロジェクトクイックボタン" },
+      { id: "btn-new-request", label: "AI依頼ボタン" },
+      { id: "btn-nav-home", label: "ホームナビ" },
+      { id: "btn-nav-projects", label: "プロジェクトナビ" },
+      { id: "btn-nav-more", label: "その他ナビ" },
       { id: "btn-manage-projects", label: "プロジェクト管理ボタン" },
       { id: "btn-add-project", label: "プロジェクト追加ボタン" },
       { id: "btn-system-check", label: "システムチェックボタン" },
@@ -3533,10 +3583,127 @@
   }
 
   function scrollToProjects() {
-    var section = document.getElementById("projects-section");
-    if (section) {
-      section.scrollIntoView({ behavior: "smooth", block: "start" });
+    showAppView("projects");
+  }
+
+  function updateHomeGreeting() {
+    var el = document.getElementById("home-greeting");
+    if (!el) return;
+    var hour = new Date().getHours();
+    var hello = "こんにちは";
+    if (hour < 5) hello = "こんばんは";
+    else if (hour < 11) hello = "おはよう";
+    else if (hour < 18) hello = "こんにちは";
+    else hello = "こんばんは";
+    el.textContent = hello + "、YAHA😊";
+  }
+
+  function renderHomePurpose() {
+    var missionBody = document.getElementById("home-mission-body");
+    var visionBody = document.getElementById("home-vision-body");
+    if (missionBody) {
+      missionBody.innerHTML =
+        '<p class="home-accordion__quote">' + escapeHtml(COMPANY_MISSION.quote) + "</p>" +
+        COMPANY_MISSION.paragraphs.map(function (p) {
+          return "<p>" + escapeHtml(p) + "</p>";
+        }).join("");
     }
+    if (visionBody) {
+      visionBody.innerHTML =
+        '<p class="home-accordion__quote">' + escapeHtml(COMPANY_VISION.quote) + "</p>" +
+        COMPANY_VISION.paragraphs.map(function (p) {
+          return "<p>" + escapeHtml(p) + "</p>";
+        }).join("");
+    }
+  }
+
+  function renderHomeGoals() {
+    var list = document.getElementById("home-goals-list");
+    if (!list) return;
+    list.innerHTML = CURRENT_GOALS.map(function (g) {
+      return (
+        '<li class="home-goals__item" data-goal-id="' + escapeHtml(g.id) + '">' +
+          '<span class="home-goals__dot" aria-hidden="true"></span>' +
+          '<span>' + escapeHtml(g.label) + "</span>" +
+        "</li>"
+      );
+    }).join("");
+  }
+
+  function applyFamilyPhoto(src) {
+    var img = document.getElementById("home-family-photo");
+    if (!img || !src) return;
+    img.src = src;
+  }
+
+  function loadFamilyPhoto() {
+    try {
+      var saved = localStorage.getItem(FAMILY_PHOTO_KEY);
+      if (saved && saved.indexOf("data:image") === 0) {
+        applyFamilyPhoto(saved);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function handleFamilyPhotoChange() {
+    var input = document.getElementById("home-family-photo-input");
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    if (!file.type || file.type.indexOf("image/") !== 0) {
+      showToast("画像ファイルを選んでください");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var dataUrl = String(reader.result || "");
+      if (!dataUrl) {
+        showToast("写真の読み込みに失敗しました");
+        return;
+      }
+      try {
+        localStorage.setItem(FAMILY_PHOTO_KEY, dataUrl);
+      } catch (e) {
+        showToast("保存に失敗しました（容量超過の可能性）");
+        applyFamilyPhoto(dataUrl);
+        return;
+      }
+      applyFamilyPhoto(dataUrl);
+      showToast("家族写真を更新しました");
+    };
+    reader.onerror = function () {
+      showToast("写真の読み込みに失敗しました");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function showAppView(name) {
+    var views = ["home", "projects", "more"];
+    if (views.indexOf(name) === -1) name = "home";
+
+    views.forEach(function (v) {
+      var el = document.getElementById("view-" + v);
+      if (!el) return;
+      var active = v === name;
+      el.hidden = !active;
+      if (active) el.classList.add("is-active");
+      else el.classList.remove("is-active");
+    });
+
+    var navMap = {
+      home: "btn-nav-home",
+      projects: "btn-nav-projects",
+      more: "btn-nav-more"
+    };
+    Object.keys(navMap).forEach(function (key) {
+      var btn = document.getElementById(navMap[key]);
+      if (!btn) return;
+      if (key === name) btn.classList.add("quick-nav__btn--active");
+      else btn.classList.remove("quick-nav__btn--active");
+    });
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   /* ========== Web管理センター（活動日記） ========== */
@@ -3964,17 +4131,28 @@
     }
     secretaryPhotoUrl = "";
     secretaryPhotoName = "";
-    var input = document.getElementById("secretary-photo");
-    var preview = document.getElementById("secretary-photo-preview");
-    var img = document.getElementById("secretary-photo-img");
-    if (input) input.value = "";
-    if (img) img.removeAttribute("src");
-    if (preview) preview.hidden = true;
+
+    ["secretary-photo", "home-secretary-photo"].forEach(function (id) {
+      var input = document.getElementById(id);
+      if (input) input.value = "";
+    });
+
+    var modalPreview = document.getElementById("secretary-photo-preview");
+    var modalImg = document.getElementById("secretary-photo-img");
+    if (modalImg) modalImg.removeAttribute("src");
+    if (modalPreview) modalPreview.hidden = true;
+
+    var homePreview = document.getElementById("home-photo-preview");
+    var homeImg = document.getElementById("home-photo-img");
+    if (homeImg) homeImg.removeAttribute("src");
+    if (homePreview) homePreview.hidden = true;
   }
 
   function resetSecretaryInput() {
     var input = document.getElementById("secretary-input");
     if (input) input.value = "";
+    var homeInput = document.getElementById("home-secretary-input");
+    if (homeInput) homeInput.value = "";
     clearSecretaryPhoto();
     currentSecretaryResults = null;
   }
@@ -3984,16 +4162,29 @@
     if (secretaryResultView) secretaryResultView.hidden = name !== "result";
   }
 
+  function openSecretaryResultModal() {
+    if (!secretaryModal) return;
+    showSecretaryView("result");
+    secretaryModal.classList.add("is-open");
+    secretaryModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
   function openAiSecretary() {
     if (!secretaryModal) return;
-    resetSecretaryInput();
     showSecretaryView("input");
     secretaryModal.classList.add("is-open");
     secretaryModal.setAttribute("aria-hidden", "false");
     syncBodyScroll();
     setTimeout(function () {
       var input = document.getElementById("secretary-input");
-      if (input) input.focus();
+      if (input) {
+        var homeInput = document.getElementById("home-secretary-input");
+        if (homeInput && homeInput.value && !input.value) {
+          input.value = homeInput.value;
+        }
+        input.focus();
+      }
     }, 50);
   }
 
@@ -4004,7 +4195,6 @@
     if (!secretaryModal) return;
     secretaryModal.classList.remove("is-open");
     secretaryModal.setAttribute("aria-hidden", "true");
-    clearSecretaryPhoto();
     currentSecretaryResults = null;
     currentCursorInstruction = "";
     currentCursorHandoff = null;
@@ -4012,22 +4202,38 @@
     syncBodyScroll();
   }
 
-  function handleSecretaryPhotoChange() {
-    var input = document.getElementById("secretary-photo");
-    var preview = document.getElementById("secretary-photo-preview");
-    var img = document.getElementById("secretary-photo-img");
-    if (!input || !input.files || !input.files[0]) {
+  function applySecretaryPhotoFile(file, previewId, imgId) {
+    if (!file) {
       clearSecretaryPhoto();
       return;
     }
-    var file = input.files[0];
     if (secretaryPhotoUrl) {
       try { URL.revokeObjectURL(secretaryPhotoUrl); } catch (e) { /* ignore */ }
     }
     secretaryPhotoUrl = URL.createObjectURL(file);
     secretaryPhotoName = file.name || "photo.jpg";
+    var preview = document.getElementById(previewId);
+    var img = document.getElementById(imgId);
     if (img) img.src = secretaryPhotoUrl;
     if (preview) preview.hidden = false;
+  }
+
+  function handleSecretaryPhotoChange() {
+    var input = document.getElementById("secretary-photo");
+    if (!input || !input.files || !input.files[0]) {
+      clearSecretaryPhoto();
+      return;
+    }
+    applySecretaryPhotoFile(input.files[0], "secretary-photo-preview", "secretary-photo-img");
+  }
+
+  function handleHomePhotoChange() {
+    var input = document.getElementById("home-secretary-photo");
+    if (!input || !input.files || !input.files[0]) {
+      clearSecretaryPhoto();
+      return;
+    }
+    applySecretaryPhotoFile(input.files[0], "home-photo-preview", "home-photo-img");
   }
 
   /**
@@ -4136,16 +4342,11 @@
     }).join("");
   }
 
-  function handleSecretaryRun() {
-    var input = document.getElementById("secretary-input");
-    var text = input ? String(input.value || "").trim() : "";
+  function runSecretaryGeneration(text, btn) {
     if (!text) {
       showToast("今日やったことを入力してください");
-      if (input) input.focus();
       return;
     }
-
-    var btn = document.getElementById("btn-secretary-run");
     if (btn) btn.disabled = true;
 
     generateSecretaryOutputs({
@@ -4156,13 +4357,39 @@
       currentCursorInstruction = "";
       currentCursorHandoff = null;
       renderSecretaryResults(results);
-      showSecretaryView("result");
+      openSecretaryResultModal();
       showToast("下書きを作成しました");
     }).catch(function () {
       showToast("生成に失敗しました");
     }).then(function () {
       if (btn) btn.disabled = false;
     });
+  }
+
+  function handleHomeAiRun() {
+    var input = document.getElementById("home-secretary-input");
+    var text = input ? String(input.value || "").trim() : "";
+    if (!text) {
+      showToast("今日やったことを入力してください");
+      if (input) input.focus();
+      return;
+    }
+    var modalInput = document.getElementById("secretary-input");
+    if (modalInput) modalInput.value = text;
+    runSecretaryGeneration(text, document.getElementById("btn-home-ai-run"));
+  }
+
+  function handleSecretaryRun() {
+    var input = document.getElementById("secretary-input");
+    var text = input ? String(input.value || "").trim() : "";
+    if (!text) {
+      showToast("今日やったことを入力してください");
+      if (input) input.focus();
+      return;
+    }
+    var homeInput = document.getElementById("home-secretary-input");
+    if (homeInput) homeInput.value = text;
+    runSecretaryGeneration(text, document.getElementById("btn-secretary-run"));
   }
 
   function handleSecretaryResultsClick(e) {
@@ -4422,17 +4649,24 @@
   onClick("secretary-close", closeAiSecretary, "closeAiSecretary");
   onClick("btn-secretary-close-result", closeAiSecretary);
   onClick("btn-secretary-run", handleSecretaryRun);
+  onClick("btn-home-ai-run", handleHomeAiRun, "runHomeSecretary");
   onClick("btn-secretary-again", function () {
-    showSecretaryView("input");
+    closeAiSecretary();
+    showAppView("home");
     setTimeout(function () {
-      var input = document.getElementById("secretary-input");
+      var input = document.getElementById("home-secretary-input");
       if (input) input.focus();
     }, 50);
   });
   onClick("btn-secretary-photo-clear", clearSecretaryPhoto);
+  onClick("btn-home-photo-clear", clearSecretaryPhoto);
   var secretaryPhotoInput = document.getElementById("secretary-photo");
   if (secretaryPhotoInput) {
     secretaryPhotoInput.addEventListener("change", handleSecretaryPhotoChange);
+  }
+  var homePhotoInput = document.getElementById("home-secretary-photo");
+  if (homePhotoInput) {
+    homePhotoInput.addEventListener("change", handleHomePhotoChange);
   }
   var secretaryResultsEl = document.getElementById("secretary-results");
   if (secretaryResultsEl) {
@@ -4455,9 +4689,25 @@
     });
   }
 
-  onClick("btn-quick-projects", function () {
-    scrollToProjects();
+  onClick("btn-nav-home", function () {
+    showAppView("home");
+  }, "showHomeView");
+  onClick("btn-nav-projects", function () {
+    showAppView("projects");
   }, "scrollToProjects");
+  onClick("btn-nav-more", function () {
+    showAppView("more");
+  }, "showMoreView");
+  onClick("btn-back-home-from-projects", function () {
+    showAppView("home");
+  });
+  onClick("btn-back-home-from-more", function () {
+    showAppView("home");
+  });
+  var familyPhotoInput = document.getElementById("home-family-photo-input");
+  if (familyPhotoInput) {
+    familyPhotoInput.addEventListener("change", handleFamilyPhotoChange);
+  }
 
   onClick("btn-manage-projects", function () {
     openProjectModal({ mode: "list" });
@@ -4770,6 +5020,11 @@
 
   /* ========== Init ========== */
   try {
+    updateHomeGreeting();
+    renderHomePurpose();
+    renderHomeGoals();
+    loadFamilyPhoto();
+    showAppView("home");
     loadProjects();
     renderTodayTodos();
     renderPriorityTasks();
