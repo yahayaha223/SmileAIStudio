@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.3.0",
-    build: 33,
+    version: "1.4.0",
+    build: 34,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 88,
+    progress: 90,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -41,7 +41,8 @@
       "Mission / Vision表示",
       "家族写真エリア",
       "朝ダッシュボード",
-      "AI会議ログ"
+      "AI会議ログ",
+      "Cursor完了報告 → AI会議ログ取り込み"
     ],
     upcoming: [
       { label: "GitHub自動Push", status: "準備中" },
@@ -342,6 +343,9 @@
   var meetingListView = document.getElementById("meeting-list-view");
   var meetingFormView = document.getElementById("meeting-form-view");
   var meetingDetailView = document.getElementById("meeting-detail-view");
+  var meetingImportView = document.getElementById("meeting-import-view");
+  var meetingImportPreviewView = document.getElementById("meeting-import-preview-view");
+  var currentCursorImportDraft = null;
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
   var secretaryResultView = document.getElementById("secretary-result-view");
@@ -1980,6 +1984,12 @@
       { id: "btn-meeting-logs", label: "AI会議ログ入口" },
       { id: "meeting-logs-modal", label: "AI会議ログモーダル" },
       { id: "meeting-logs-list", label: "AI会議ログ一覧" },
+      { id: "btn-cursor-report-import", label: "Cursor報告取り込みボタン" },
+      { id: "meeting-import-view", label: "取り込みモーダル（貼り付け）" },
+      { id: "cursor-report-input", label: "Cursor報告貼り付け欄" },
+      { id: "btn-cursor-report-parse", label: "ログに変換ボタン" },
+      { id: "meeting-import-preview-view", label: "取り込み確認画面" },
+      { id: "btn-import-save", label: "会議ログへ保存ボタン" },
       { id: "project-list", label: "プロジェクト一覧描画先" },
       { id: "staff-list", label: "AIスタッフ一覧描画先" },
       { id: "recent-requests", label: "最近の依頼描画先" },
@@ -4295,6 +4305,13 @@
     var createdAt = String(raw.createdAt || raw.date || new Date().toISOString());
     var date = String(raw.date || createdAt);
     var summary = String(raw.summary || "").trim();
+    var changedFiles = Array.isArray(raw.changedFiles)
+      ? raw.changedFiles.map(function (f) { return String(f || "").trim(); }).filter(Boolean)
+      : [];
+    var uniqueFiles = [];
+    changedFiles.forEach(function (f) {
+      if (uniqueFiles.indexOf(f) === -1) uniqueFiles.push(f);
+    });
     return {
       id: id,
       date: date,
@@ -4302,7 +4319,17 @@
       category: category,
       content: content,
       summary: summary,
-      createdAt: createdAt
+      createdAt: createdAt,
+      sourceType: String(raw.sourceType || "").trim(),
+      sourceText: String(raw.sourceText || "").trim(),
+      version: String(raw.version || "").trim(),
+      build: raw.build == null || raw.build === "" ? "" : String(raw.build).trim(),
+      commitId: String(raw.commitId || "").trim(),
+      changedFiles: uniqueFiles,
+      verification: String(raw.verification || "").trim(),
+      remainingIssues: String(raw.remainingIssues || "").trim(),
+      recommendations: String(raw.recommendations || "").trim(),
+      importedAt: String(raw.importedAt || "").trim()
     };
   }
 
@@ -4342,7 +4369,11 @@
     try {
       persistMeetingLogs(list);
     } catch (e) {
-      showToast("保存に失敗しました");
+      var msg = "保存に失敗しました";
+      if (e && (e.name === "QuotaExceededError" || e.code === 22)) {
+        msg = "保存容量を超えました。古いログを減らしてから再試行してください";
+      }
+      showToast(msg);
       return null;
     }
     return normalized;
@@ -4371,11 +4402,20 @@
     return (logs || []).filter(function (log) {
       if (cat && log.category !== cat) return false;
       if (!q) return true;
+      var files = (log.changedFiles || []).join(" ");
       var hay = (
         log.title + " " +
         log.content + " " +
         log.summary + " " +
-        log.category
+        log.category + " " +
+        (log.commitId || "") + " " +
+        (log.version || "") + " " +
+        (log.build || "") + " " +
+        files + " " +
+        (log.remainingIssues || "") + " " +
+        (log.recommendations || "") + " " +
+        (log.verification || "") + " " +
+        (log.sourceText || "")
       ).toLowerCase();
       return hay.indexOf(q) !== -1;
     });
@@ -4406,6 +4446,9 @@
         ? String(log.summary).replace(/\n/g, " ").slice(0, 72)
         : String(log.content).replace(/\n/g, " ").slice(0, 72);
       if ((log.summary || log.content || "").length > 72) overview += "…";
+      var badge = log.sourceType === "cursor-report"
+        ? '<span class="meeting-card__source">Cursor</span>'
+        : "";
       return (
         '<button type="button" class="meeting-card" data-meeting-id="' + escapeHtml(log.id) + '">' +
           '<div class="meeting-card__top">' +
@@ -4413,6 +4456,7 @@
             '<span class="meeting-card__cat">' + escapeHtml(log.category) + "</span>" +
           "</div>" +
           '<strong class="meeting-card__title">' + escapeHtml(log.title) + "</strong>" +
+          badge +
           '<p class="meeting-card__overview">' + escapeHtml(overview) + "</p>" +
         "</button>"
       );
@@ -4423,6 +4467,8 @@
     if (meetingListView) meetingListView.hidden = name !== "list";
     if (meetingFormView) meetingFormView.hidden = name !== "form";
     if (meetingDetailView) meetingDetailView.hidden = name !== "detail";
+    if (meetingImportView) meetingImportView.hidden = name !== "import";
+    if (meetingImportPreviewView) meetingImportPreviewView.hidden = name !== "import-preview";
   }
 
   function resetMeetingForm() {
@@ -4442,6 +4488,7 @@
   function openMeetingLogs() {
     if (!meetingLogsModal) return;
     resetMeetingForm();
+    currentCursorImportDraft = null;
     showMeetingView("list");
     renderMeetingLogs();
     meetingLogsModal.classList.add("is-open");
@@ -4455,6 +4502,7 @@
     meetingLogsModal.setAttribute("aria-hidden", "true");
     showMeetingView("list");
     resetMeetingForm();
+    currentCursorImportDraft = null;
     syncBodyScroll();
   }
 
@@ -4465,6 +4513,50 @@
       var title = document.getElementById("meeting-title");
       if (title) title.focus();
     }, 40);
+  }
+
+  function renderMeetingDetailExtra(log) {
+    var extra = document.getElementById("meeting-detail-extra");
+    if (!extra) return;
+    if (!log || log.sourceType !== "cursor-report") {
+      extra.hidden = true;
+      extra.innerHTML = "";
+      return;
+    }
+    var files = (log.changedFiles || []).length
+      ? (log.changedFiles || []).map(function (f) { return escapeHtml(f); }).join("<br>")
+      : "—";
+    var versionLine = log.version
+      ? escapeHtml(log.version) + (log.build ? " / build " + escapeHtml(log.build) : "")
+      : (log.build ? "build " + escapeHtml(log.build) : "—");
+    extra.hidden = false;
+    extra.innerHTML =
+      '<section class="meeting-detail__block">' +
+        '<h5 class="meeting-detail__label">取込情報</h5>' +
+        '<p class="meeting-detail__content">取込元：Cursor完了報告</p>' +
+        '<p class="meeting-detail__content"><strong>バージョン：</strong>' + versionLine + "</p>" +
+        '<p class="meeting-detail__content"><strong>コミットID：</strong>' + escapeHtml(log.commitId || "—") + "</p>" +
+        '<p class="meeting-detail__content"><strong>変更ファイル：</strong><br>' + files + "</p>" +
+        (log.verification
+          ? '<p class="meeting-detail__content"><strong>動作確認：</strong><br>' + escapeHtml(log.verification) + "</p>"
+          : "") +
+        (log.remainingIssues
+          ? '<p class="meeting-detail__content"><strong>残っている課題：</strong><br>' + escapeHtml(log.remainingIssues) + "</p>"
+          : "") +
+        (log.recommendations
+          ? '<p class="meeting-detail__content"><strong>次におすすめ：</strong><br>' + escapeHtml(log.recommendations) + "</p>"
+          : "") +
+      "</section>" +
+      (log.sourceText
+        ? '<details class="meeting-source-fold">' +
+            "<summary>元の報告全文を見る</summary>" +
+            '<pre class="meeting-source-fold__body"></pre>' +
+          "</details>"
+        : "");
+    if (log.sourceText) {
+      var pre = extra.querySelector(".meeting-source-fold__body");
+      if (pre) pre.textContent = log.sourceText;
+    }
   }
 
   function openMeetingDetail(id) {
@@ -4483,6 +4575,7 @@
     if (category) category.textContent = log.category;
     if (summary) summary.textContent = log.summary || "（要約なし）";
     if (content) content.textContent = log.content;
+    renderMeetingDetailExtra(log);
     showMeetingView("detail");
   }
 
@@ -4545,6 +4638,367 @@
     var card = e.target.closest(".meeting-card");
     if (!card) return;
     openMeetingDetail(card.getAttribute("data-meeting-id"));
+  }
+
+  /* ========== Cursor完了報告 → AI会議ログ取り込み ========== */
+
+  function truncateText(str, max) {
+    var s = String(str || "").trim().replace(/\s+/g, " ");
+    if (s.length <= max) return s;
+    return s.slice(0, max) + "…";
+  }
+
+  function extractSection(text, headings) {
+    var src = String(text || "").replace(/\r\n/g, "\n");
+    var i;
+    for (i = 0; i < headings.length; i++) {
+      var heading = String(headings[i] || "").trim();
+      if (!heading) continue;
+      var markerRe = new RegExp(
+        "(?:^|\\n)\\s*【?\\s*" + heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*】?\\s*[:：]?\\s*(?:\\n|$)",
+        "i"
+      );
+      var match = markerRe.exec(src);
+      if (!match) continue;
+      var start = match.index + match[0].length;
+      var rest = src.slice(start);
+      var endMatch = rest.search(/\n\s*【[^】\n]+】|\n\s*(?:コミットID|Commit(?:\s*ID)?|commit(?:\s*id)?|Version|バージョン|Build|ビルド)\s*[:：]/i);
+      var body = endMatch >= 0 ? rest.slice(0, endMatch) : rest;
+      body = String(body || "").trim();
+      if (body) return body;
+    }
+    return "";
+  }
+
+  function extractTitle(text) {
+    var src = String(text || "").replace(/\r\n/g, "\n");
+    var m = src.match(/【\s*開発完了\s*】\s*([^\n]+)/);
+    if (m && m[1]) return truncateText(m[1], 40);
+    var done = extractSection(src, ["今回やったこと", "今回"]);
+    if (done) {
+      var firstLine = done.split(/\n/).map(function (l) {
+        return l.replace(/^[\s・\-\*●○]+/, "").trim();
+      }).filter(Boolean)[0];
+      if (firstLine) return truncateText(firstLine, 40);
+    }
+    var commitMsg = src.match(/(?:コミットメッセージ|commit\s*message)\s*[:：]\s*([^\n]+)/i);
+    if (commitMsg && commitMsg[1]) return truncateText(commitMsg[1], 40);
+    return truncateText(src.replace(/\n+/g, " "), 40) || "Cursor完了報告";
+  }
+
+  function detectMeetingCategory(text) {
+    var src = String(text || "");
+    var rules = [
+      {
+        name: "開発",
+        words: ["実装", "修正", "コード", "ファイル", "バージョン", "コミット", "push", "GitHub", "Netlify", "Cursor", "バグ", "UI", "機能"]
+      },
+      {
+        name: "経営",
+        words: ["売上", "利益", "採用", "経営", "資金", "組織", "目標", "会社"]
+      },
+      {
+        name: "ホームページ",
+        words: ["ホームページ", "Web", "CorporateSite", "日記", "SEO", "LP", "記事", "公開"]
+      },
+      {
+        name: "イベント",
+        words: ["イベント", "出演", "会場", "パフォーマー", "ステージ", "縁日", "ふわふわ"]
+      },
+      {
+        name: "AI",
+        words: ["AI", "AI秘書", "AIルーター", "AI会議", "自動化", "ChatGPT", "Cursor Agent"]
+      }
+    ];
+    var scores = {};
+    rules.forEach(function (rule) {
+      scores[rule.name] = 0;
+      rule.words.forEach(function (w) {
+        var re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        var matches = src.match(re);
+        if (matches) scores[rule.name] += matches.length;
+      });
+    });
+    var best = "その他";
+    var bestScore = 0;
+    Object.keys(scores).forEach(function (name) {
+      if (scores[name] > bestScore) {
+        bestScore = scores[name];
+        best = name;
+      }
+    });
+    if (bestScore === 0) return "その他";
+    if (scores["開発"] === scores["AI"] && scores["開発"] === bestScore && scores["開発"] > 0) {
+      var codeHints = /index\.html|script\.js|style\.css|変更したファイル|コミット|build|バージョン/i.test(src);
+      return codeHints ? "開発" : "AI";
+    }
+    return best;
+  }
+
+  function extractVersionInfo(text) {
+    var src = String(text || "");
+    var version = "";
+    var build = "";
+    var vMatch = src.match(/(?:バージョン|Version)\s*[:：]?\s*v?(\d+\.\d+\.\d+)/i) ||
+      src.match(/\bv(\d+\.\d+\.\d+)\b/i) ||
+      src.match(/\b(\d+\.\d+\.\d+)\b/);
+    if (vMatch) version = vMatch[1];
+    var bMatch = src.match(/(?:ビルド|Build)\s*[:：]?\s*(\d+)/i) ||
+      src.match(/\bbuild\s*[:：]?\s*(\d+)/i);
+    if (bMatch) build = bMatch[1];
+    return { version: version, build: build };
+  }
+
+  function extractCommitId(text) {
+    var src = String(text || "");
+    var near = src.match(/(?:コミットID|commit(?:\s*id)?)\s*[:：]?\s*([a-f0-9]{7,40})\b/i);
+    if (near) return near[1];
+    var all = src.match(/\b([a-f0-9]{7,40})\b/gi) || [];
+    var filtered = all.filter(function (id) {
+      return !/^\d+$/.test(id) && id.length >= 7;
+    });
+    if (!filtered.length) return "";
+    filtered.sort(function (a, b) { return b.length - a.length; });
+    return filtered[0];
+  }
+
+  function extractChangedFiles(text) {
+    var section = extractSection(text, ["変更したファイル", "変更ファイル"]);
+    var src = section || String(text || "");
+    var found = src.match(/(?:^|[\s・\-\*])((?:[\w.\-\/]+\/)*[\w.\-]+\.(?:html?|css|js|ts|tsx|jsx|md|json|svg|txt))/gim) || [];
+    var files = [];
+    found.forEach(function (raw) {
+      var name = String(raw).replace(/^[\s・\-\*]+/, "").trim();
+      if (name && files.indexOf(name) === -1) files.push(name);
+    });
+    return files;
+  }
+
+  function linesToBullets(sectionText, maxLines) {
+    var lines = String(sectionText || "").split(/\n/).map(function (l) {
+      return l.replace(/^[\s・\-\*●○]+/, "").trim();
+    }).filter(Boolean);
+    var unique = [];
+    lines.forEach(function (l) {
+      var key = l.toLowerCase();
+      var dup = unique.some(function (u) { return u.toLowerCase() === key || u.indexOf(l) !== -1 || l.indexOf(u) !== -1; });
+      if (!dup) unique.push(l);
+    });
+    return unique.slice(0, maxLines || 6).map(function (l) { return "・" + l; }).join("\n");
+  }
+
+  function buildMeetingContent(parsedSections) {
+    var parts = [];
+    if (parsedSections.did) parts.push(linesToBullets(parsedSections.did, 4));
+    if (parsedSections.reason) parts.push(linesToBullets(parsedSections.reason, 2));
+    if (parsedSections.value) parts.push(linesToBullets(parsedSections.value, 2));
+    var joined = parts.filter(Boolean).join("\n");
+    if (joined) return joined;
+    return linesToBullets(parsedSections.fallback || "", 4) || "・Cursor完了報告を取り込みました";
+  }
+
+  function buildMeetingSummary(draft) {
+    var title = draft.title || "今回の開発";
+    var content = String(draft.content || "").replace(/^・/gm, "").replace(/\n/g, "、");
+    var short = truncateText(content, 80);
+    return (
+      "今回の開発では、" + title + "を進め、" +
+      (short || "必要な変更を反映しました") + "。" +
+      (draft.category ? "カテゴリは「" + draft.category + "」です。" : "")
+    );
+  }
+
+  function parseCursorReport(rawText) {
+    var text = String(rawText || "").replace(/\r\n/g, "\n").trim();
+    var shortWarning = text.length > 0 && text.length < 40;
+    var did = extractSection(text, ["今回やったこと", "今回追加された価値", "今回", "変更内容"]);
+    var reason = extractSection(text, ["変更理由"]);
+    var value = extractSection(text, ["今回追加された価値"]);
+    var verification = extractSection(text, ["動作確認", "確認した内容"]);
+    var remainingIssues = extractSection(text, ["残っている課題"]);
+    var recommendations = extractSection(text, ["次におすすめする作業", "次におすすめ", "改善提案"]);
+    var versionInfo = extractVersionInfo(text);
+    var commitId = extractCommitId(text);
+    var changedFiles = extractChangedFiles(text);
+    var title = extractTitle(text);
+    var category = detectMeetingCategory(text);
+    var content = buildMeetingContent({
+      did: did || extractSection(text, ["変更内容"]),
+      reason: reason,
+      value: value,
+      fallback: text.slice(0, 400)
+    });
+    var draft = {
+      title: title,
+      category: category,
+      content: content,
+      summary: "",
+      version: versionInfo.version,
+      build: versionInfo.build,
+      commitId: commitId,
+      changedFiles: changedFiles,
+      verification: linesToBullets(verification, 4) || truncateText(verification, 200),
+      remainingIssues: linesToBullets(remainingIssues, 4) || truncateText(remainingIssues, 200),
+      recommendations: linesToBullets(recommendations, 4) || truncateText(recommendations, 200),
+      sourceType: "cursor-report",
+      sourceText: text,
+      shortWarning: shortWarning
+    };
+    draft.summary = buildMeetingSummary(draft);
+    return draft;
+  }
+
+  function openCursorReportImport() {
+    currentCursorImportDraft = null;
+    var input = document.getElementById("cursor-report-input");
+    var err = document.getElementById("meeting-import-error");
+    var hint = document.getElementById("meeting-import-hint");
+    if (input) input.value = "";
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    if (hint) {
+      hint.hidden = true;
+      hint.textContent = "";
+    }
+    showMeetingView("import");
+    setTimeout(function () {
+      if (input) input.focus();
+    }, 40);
+  }
+
+  function closeCursorReportImport() {
+    currentCursorImportDraft = null;
+    showMeetingView("list");
+    renderMeetingLogs();
+  }
+
+  function renderImportPreview(draft) {
+    currentCursorImportDraft = draft;
+    var title = document.getElementById("import-preview-title");
+    var category = document.getElementById("import-preview-category");
+    var content = document.getElementById("import-preview-content");
+    var summary = document.getElementById("import-preview-summary");
+    var meta = document.getElementById("import-preview-meta");
+    var note = document.getElementById("meeting-import-preview-note");
+    var err = document.getElementById("meeting-import-preview-error");
+    var fold = document.getElementById("import-source-fold");
+    var sourceText = document.getElementById("import-source-text");
+    if (title) title.value = draft.title || "";
+    if (category) category.value = draft.category || "その他";
+    if (content) content.value = draft.content || "";
+    if (summary) summary.value = draft.summary || "";
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    if (note) {
+      if (draft.shortWarning) {
+        note.hidden = false;
+        note.textContent = "内容が短いため、一部を手動で確認してください";
+      } else {
+        note.hidden = true;
+        note.textContent = "";
+      }
+    }
+    if (meta) {
+      meta.innerHTML =
+        '<p><strong>バージョン：</strong>' + escapeHtml(draft.version || "—") +
+          (draft.build ? " / build " + escapeHtml(draft.build) : "") + "</p>" +
+        '<p><strong>コミットID：</strong>' + escapeHtml(draft.commitId || "—") + "</p>" +
+        '<p><strong>変更ファイル：</strong>' +
+          escapeHtml((draft.changedFiles || []).length ? draft.changedFiles.join(", ") : "—") + "</p>" +
+        '<p><strong>残っている課題：</strong><br>' + escapeHtml(draft.remainingIssues || "—") + "</p>" +
+        '<p><strong>次におすすめ：</strong><br>' + escapeHtml(draft.recommendations || "—") + "</p>";
+    }
+    if (fold) fold.hidden = true;
+    if (sourceText) sourceText.textContent = draft.sourceText || "";
+    showMeetingView("import-preview");
+  }
+
+  function handleCursorReportParse() {
+    var input = document.getElementById("cursor-report-input");
+    var err = document.getElementById("meeting-import-error");
+    var text = input ? String(input.value || "").trim() : "";
+    if (!text) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = "Cursorの完了報告を貼り付けてください";
+      }
+      showToast("Cursorの完了報告を貼り付けてください");
+      if (input) input.focus();
+      return;
+    }
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    var draft = parseCursorReport(text);
+    renderImportPreview(draft);
+  }
+
+  function readImportPreviewDraft() {
+    var title = document.getElementById("import-preview-title");
+    var category = document.getElementById("import-preview-category");
+    var content = document.getElementById("import-preview-content");
+    var summary = document.getElementById("import-preview-summary");
+    var base = currentCursorImportDraft || {};
+    return {
+      title: title ? String(title.value || "").trim() : "",
+      category: category ? String(category.value || "").trim() : "その他",
+      content: content ? String(content.value || "").trim() : "",
+      summary: summary ? String(summary.value || "").trim() : "",
+      version: base.version || "",
+      build: base.build || "",
+      commitId: base.commitId || "",
+      changedFiles: base.changedFiles || [],
+      verification: base.verification || "",
+      remainingIssues: base.remainingIssues || "",
+      recommendations: base.recommendations || "",
+      sourceType: "cursor-report",
+      sourceText: base.sourceText || ""
+    };
+  }
+
+  function saveImportedMeetingLog() {
+    var draft = readImportPreviewDraft();
+    var err = document.getElementById("meeting-import-preview-error");
+    if (!draft.title || !draft.content) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = "タイトルと今日決めたことを入力してください";
+      }
+      showToast("タイトルと今日決めたことを入力してください");
+      return;
+    }
+    if (MEETING_CATEGORIES.indexOf(draft.category) === -1) draft.category = "その他";
+    if (!draft.summary) draft.summary = buildMeetingSummary(draft);
+    var now = new Date().toISOString();
+    var saved = saveMeetingLog({
+      id: createMeetingLogId(),
+      date: now,
+      title: draft.title,
+      category: draft.category,
+      content: draft.content,
+      summary: draft.summary,
+      createdAt: now,
+      sourceType: "cursor-report",
+      sourceText: draft.sourceText,
+      version: draft.version,
+      build: draft.build,
+      commitId: draft.commitId,
+      changedFiles: draft.changedFiles,
+      verification: draft.verification,
+      remainingIssues: draft.remainingIssues,
+      recommendations: draft.recommendations,
+      importedAt: now
+    });
+    if (!saved) return;
+    currentCursorImportDraft = null;
+    showToast("AI会議ログへ保存しました");
+    showMeetingView("list");
+    renderMeetingLogs();
   }
 
   /* ========== AI秘書（今日何した？） ========== */
@@ -5189,6 +5643,18 @@
     showMeetingView("list");
     renderMeetingLogs();
   });
+  onClick("btn-cursor-report-import", openCursorReportImport, "openCursorReportImport");
+  onClick("btn-cursor-report-parse", handleCursorReportParse);
+  onClick("btn-cursor-report-close", closeCursorReportImport, "closeCursorReportImport");
+  onClick("btn-import-save", saveImportedMeetingLog);
+  onClick("btn-import-show-source", function () {
+    var fold = document.getElementById("import-source-fold");
+    if (!fold) return;
+    fold.hidden = false;
+    fold.open = true;
+  });
+  onClick("btn-import-retry", openCursorReportImport);
+  onClick("btn-import-cancel", closeCursorReportImport);
   var meetingSearch = document.getElementById("meeting-search");
   if (meetingSearch) {
     meetingSearch.addEventListener("input", function () {
@@ -5459,6 +5925,14 @@
       return;
     }
     if (meetingLogsModal && meetingLogsModal.classList.contains("is-open")) {
+      if (meetingImportPreviewView && !meetingImportPreviewView.hidden) {
+        openCursorReportImport();
+        return;
+      }
+      if (meetingImportView && !meetingImportView.hidden) {
+        closeCursorReportImport();
+        return;
+      }
       if (meetingFormView && !meetingFormView.hidden) {
         showMeetingView("list");
         renderMeetingLogs();

@@ -158,8 +158,9 @@ body:has(.app--secretary-first)::before {
 .home-purpose {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   margin-bottom: 28px;
+  --philosophy-serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "YuMincho", "Noto Serif JP", "MS PMincho", serif;
 }
 
 .home-accordion {
@@ -167,6 +168,22 @@ body:has(.app--secretary-first)::before {
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
   overflow: hidden;
+}
+
+.home-accordion--mission,
+.home-accordion--vision {
+  border: none;
+  border-radius: 22px;
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.14);
+}
+
+.home-accordion--mission {
+  background: #0b1f3a;
+}
+
+.home-accordion--vision {
+  background: linear-gradient(145deg, #0f2a5c 0%, #1e3a8a 42%, #4c1d95 100%);
 }
 
 .home-accordion__summary {
@@ -179,6 +196,12 @@ body:has(.app--secretary-first)::before {
   padding: 16px 18px;
   min-height: 56px;
   -webkit-tap-highlight-color: transparent;
+}
+
+.home-accordion--mission .home-accordion__summary,
+.home-accordion--vision .home-accordion__summary {
+  padding: 22px 22px 18px;
+  min-height: 72px;
 }
 
 .home-accordion__summary::-webkit-details-marker {
@@ -194,6 +217,11 @@ body:has(.app--secretary-first)::before {
   transition: transform 0.2s ease;
 }
 
+.home-accordion--mission .home-accordion__summary::after,
+.home-accordion--vision .home-accordion__summary::after {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .home-accordion[open] .home-accordion__summary::after {
   transform: rotate(-90deg);
 }
@@ -206,12 +234,31 @@ body:has(.app--secretary-first)::before {
   color: var(--color-text);
 }
 
+.home-accordion--mission .home-accordion__label,
+.home-accordion--vision .home-accordion__label {
+  font-family: var(--philosophy-serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #fff;
+  line-height: 1.3;
+}
+
 .home-accordion__hint {
   flex: 1;
   text-align: right;
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--color-text-muted);
+}
+
+.home-accordion--mission .home-accordion__hint,
+.home-accordion--vision .home-accordion__hint {
+  font-family: var(--philosophy-serif);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .home-accordion__body {
@@ -221,8 +268,26 @@ body:has(.app--secretary-first)::before {
   line-height: 1.75;
 }
 
+.home-accordion--mission .home-accordion__body,
+.home-accordion--vision .home-accordion__body {
+  padding: 4px 22px 26px;
+  color: rgba(255, 255, 255, 0.94);
+  font-family: var(--philosophy-serif);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.85;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .home-accordion__body p {
   margin-bottom: 10px;
+}
+
+.home-accordion--mission .home-accordion__body p,
+.home-accordion--vision .home-accordion__body p {
+  margin-bottom: 14px;
 }
 
 .home-accordion__body p:last-child {
@@ -235,6 +300,36 @@ body:has(.app--secretary-first)::before {
   letter-spacing: -0.01em;
   line-height: 1.55;
   margin-bottom: 12px;
+}
+
+.home-accordion--mission .home-accordion__quote,
+.home-accordion--vision .home-accordion__quote {
+  font-family: var(--philosophy-serif);
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.55;
+  color: #fff;
+  margin-bottom: 18px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (min-width: 430px) {
+  .home-accordion--mission .home-accordion__label,
+  .home-accordion--vision .home-accordion__label {
+    font-size: 1.625rem;
+  }
+
+  .home-accordion--mission .home-accordion__quote,
+  .home-accordion--vision .home-accordion__quote {
+    font-size: 1.75rem;
+  }
+
+  .home-accordion--mission .home-accordion__body,
+  .home-accordion--vision .home-accordion__body {
+    font-size: 1.1875rem;
+  }
 }
 
 .home-word {
@@ -3008,6 +3103,95 @@ body:has(.app--secretary-first)::before {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.meeting-card__source {
+  display: inline-block;
+  margin: 0 0 8px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  color: #4338ca;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.meeting-import__label {
+  display: block;
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+  color: var(--color-text);
+}
+
+.meeting-import__textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: #f8fafc;
+  font-family: var(--font);
+  font-size: 0.975rem;
+  line-height: 1.65;
+  color: var(--color-text);
+  resize: vertical;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.meeting-import__textarea:focus {
+  outline: none;
+  border-color: rgba(79, 110, 247, 0.4);
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(79, 110, 247, 0.1);
+}
+
+.meeting-import-meta {
+  margin: 8px 0 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f8fafc;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.meeting-import-meta p {
+  margin-bottom: 8px;
+}
+
+.meeting-import-meta p:last-child {
+  margin-bottom: 0;
+}
+
+.meeting-source-fold {
+  margin-top: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 10px 14px;
+}
+
+.meeting-source-fold summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--color-primary);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.meeting-source-fold__body {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--font);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  max-height: 240px;
+  overflow: auto;
 }
 
 .meeting-fab {
