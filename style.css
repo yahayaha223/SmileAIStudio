@@ -1031,6 +1031,24 @@ body:has(.app--secretary-first)::before {
   background: #f1f5f9;
 }
 
+.btn--line {
+  background: #06c755;
+  color: #fff;
+  border: none;
+  min-height: 56px;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.btn--line:hover {
+  background: #05b34c;
+}
+
+.btn--line:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .btn--staff {
   width: 100%;
   margin-top: 12px;
@@ -3271,4 +3289,122 @@ body:has(.app--secretary-first)::before {
   color: var(--color-text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* ========== LINE司令塔 ========== */
+
+.modal--line {
+  max-height: 92dvh;
+}
+
+.line-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.line-status__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.line-status__label {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.line-status__value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: right;
+  max-width: 55%;
+  overflow-wrap: anywhere;
+}
+
+.line-status__value.is-ok {
+  color: #059669;
+}
+
+.line-status__value.is-warn {
+  color: #b45309;
+}
+
+.line-status__value.is-bad {
+  color: #dc2626;
+}
+
+.line-status__value.is-unknown {
+  color: var(--color-text-muted);
+}
+
+.line-banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.line-banner--warn {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.line-banner--ok {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+
+.line-preview {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #f0fdf4;
+  border: 1px solid rgba(6, 199, 85, 0.25);
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-text);
+  max-height: 220px;
+  overflow: auto;
+}
+
+.line-history {
+  margin-bottom: 16px;
+}
+
+.line-history__title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin: 0 0 8px;
+  letter-spacing: 0.04em;
+}
+
+.line-history__item {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.line-history__meta {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
 }

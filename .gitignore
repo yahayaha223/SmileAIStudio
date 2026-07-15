@@ -1,0 +1,28 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local LINE / Netlify data
+.data/
+.netlify/
+
+# Dependencies
+node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Verification temp (do not commit)
+scripts/_*/
+scripts/_*.js
+scripts/_*.json
+scripts/_*.txt
+!scripts/mock-line-webhook.js
+!scripts/run-line-unit-tests.js

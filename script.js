@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.4.0",
-    build: 34,
+    version: "1.5.0",
+    build: 35,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 90,
+    progress: 92,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -42,12 +42,14 @@
       "家族写真エリア",
       "朝ダッシュボード",
       "AI会議ログ",
-      "Cursor完了報告 → AI会議ログ取り込み"
+      "Cursor完了報告 → AI会議ログ取り込み",
+      "LINE双方向司令塔 MVP",
+      "LINE判断 → 会議ログ自動保存"
     ],
     upcoming: [
       { label: "GitHub自動Push", status: "準備中" },
       { label: "Netlify公開", status: "準備中" },
-      { label: "Cursor連携", status: "準備中" },
+      { label: "Cursor自動実行（要確認）", status: "準備中" },
       { label: "通知", status: "準備中" },
       { label: "音声入力", status: "準備中" },
       { label: "AI検索（会議ログ）", status: "準備中" }
@@ -346,6 +348,18 @@
   var meetingImportView = document.getElementById("meeting-import-view");
   var meetingImportPreviewView = document.getElementById("meeting-import-preview-view");
   var currentCursorImportDraft = null;
+  var lineCommandModal = document.getElementById("line-command-modal");
+  var lineStatusCache = null;
+  var lineHistoryCache = null;
+  var lineApiConnected = false;
+  var lineTestSending = false;
+  var LINE_API = {
+    status: "/.netlify/functions/api-line-status",
+    history: "/.netlify/functions/api-command-history",
+    projects: "/.netlify/functions/api-project-status",
+    meetingLogs: "/.netlify/functions/api-meeting-logs",
+    sendTest: "/.netlify/functions/line-send-test"
+  };
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
   var secretaryResultView = document.getElementById("secretary-result-view");
@@ -429,6 +443,7 @@
       (projectDetailModal && projectDetailModal.classList.contains("is-open")) ||
       (webCenterModal && webCenterModal.classList.contains("is-open")) ||
       (meetingLogsModal && meetingLogsModal.classList.contains("is-open")) ||
+      (lineCommandModal && lineCommandModal.classList.contains("is-open")) ||
       (secretaryModal && secretaryModal.classList.contains("is-open")) ||
       (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
@@ -1984,6 +1999,10 @@
       { id: "btn-meeting-logs", label: "AI会議ログ入口" },
       { id: "meeting-logs-modal", label: "AI会議ログモーダル" },
       { id: "meeting-logs-list", label: "AI会議ログ一覧" },
+      { id: "btn-line-command", label: "LINE司令塔入口" },
+      { id: "line-command-modal", label: "LINE司令塔モーダル" },
+      { id: "line-status-panel", label: "LINE接続状況パネル" },
+      { id: "btn-line-send-test", label: "LINEテスト送信ボタン" },
       { id: "btn-cursor-report-import", label: "Cursor報告取り込みボタン" },
       { id: "meeting-import-view", label: "取り込みモーダル（貼り付け）" },
       { id: "cursor-report-input", label: "Cursor報告貼り付け欄" },
@@ -2400,6 +2419,19 @@
     });
 
     checkOne({
+      id: "line-command-modal",
+      label: "LINE司令塔モーダル",
+      closeIds: ["line-command-close", "btn-line-command-close"],
+      openAction: "openLineCommand",
+      openCheck: function () {
+        return typeof openLineCommand === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openLineCommand;
+      },
+      closeCheck: function () { return typeof closeLineCommand === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
       id: "secretary-modal",
       label: "AI秘書モーダル",
       closeIds: ["secretary-close", "btn-secretary-close-result"],
@@ -2620,6 +2652,130 @@
       "依頼サンプル: " + sampleRequests.length + " / プロジェクトサンプル: " + sampleProjects.length + "（localStorage未保存）");
   }
 
+  function checkLineCommandDom() {
+    var ids = [
+      "btn-line-command",
+      "line-command-modal",
+      "line-status-panel",
+      "line-morning-preview",
+      "line-history-panel",
+      "btn-line-send-test",
+      "btn-line-refresh"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("line-dom", "LINE管理画面DOM", "fail",
+        "LINE司令塔の必須要素が不足しています", missing.join(", "));
+    }
+    return makeCheckResult("line-dom", "LINE管理画面DOM", "ok",
+      "LINE司令塔の管理画面DOMは揃っています", "確認: " + ids.length + "件");
+  }
+
+  function checkLineApiEndpoints() {
+    var required = ["status", "history", "projects", "meetingLogs", "sendTest"];
+    var missing = required.filter(function (k) {
+      return !LINE_API[k] || String(LINE_API[k]).indexOf("/.netlify/functions/") !== 0;
+    });
+    if (missing.length) {
+      return makeCheckResult("line-api-def", "LINE APIエンドポイント定義", "fail",
+        "APIパス定義が不正です", missing.join(", "));
+    }
+    var details = required.map(function (k) {
+      return k + ": " + LINE_API[k];
+    }).join("\n");
+    return makeCheckResult("line-api-def", "LINE APIエンドポイント定義", "ok",
+      "Netlify Functions のパス定義を確認しました", details);
+  }
+
+  function checkLineEnvStatus() {
+    if (!lineStatusCache) {
+      return makeCheckResult("line-env", "LINE環境変数設定状況", "unknown",
+        "未確認（API未接続のため）",
+        "ローカルで file:// 表示中、または Functions 未起動の可能性があります。本体公開禁止にはしません。");
+    }
+    var secrets = lineStatusCache.secrets || {};
+    var lines = Object.keys(secrets).map(function (k) {
+      return k + ": " + secrets[k];
+    });
+    if (lineStatusCache.configured) {
+      return makeCheckResult("line-env", "LINE環境変数設定状況", "ok",
+        "必須環境変数は設定済みと報告されています", lines.join("\n"));
+    }
+    return makeCheckResult("line-env", "LINE環境変数設定状況", "warn",
+      "LINE連携の環境変数が未設定です（本体は公開可）",
+      (lineStatusCache.missing || []).join(", ") || lines.join("\n"));
+  }
+
+  function checkLineStorageStatus() {
+    if (!lineApiConnected) {
+      return makeCheckResult("line-storage", "LINEストレージ接続状況", "unknown",
+        "未確認（API未接続）",
+        "Netlify Blobs / ローカル .data の接続は Functions 起動後に確認できます。");
+    }
+    if (lineStatusCache && lineStatusCache.ok) {
+      return makeCheckResult("line-storage", "LINEストレージ接続状況", "ok",
+        "ステータスAPI経由でストレージ応答を確認しました",
+        "todayPriority / conversationStage を取得可能");
+    }
+    return makeCheckResult("line-storage", "LINEストレージ接続状況", "warn",
+      "ストレージ応答を確認できませんでした", "LINE司令塔画面で再読み込みしてください");
+  }
+
+  function checkLineWebhookMeta() {
+    if (!lineStatusCache) {
+      return makeCheckResult("line-webhook", "最終Webhook受信", "unknown",
+        "未確認", "API未接続のため最終受信時刻は不明です");
+    }
+    if (lineStatusCache.lastWebhookAt) {
+      return makeCheckResult("line-webhook", "最終Webhook受信", "ok",
+        "最終受信: " + lineStatusCache.lastWebhookAt, "");
+    }
+    return makeCheckResult("line-webhook", "最終Webhook受信", "warn",
+      "まだWebhook受信記録がありません", "LINE Webhook設定後に更新されます");
+  }
+
+  function checkLineLastSend() {
+    if (!lineStatusCache) {
+      return makeCheckResult("line-send", "最終メッセージ送信", "unknown",
+        "未確認", "API未接続のため最終送信時刻は不明です");
+    }
+    var last = lineStatusCache.lastTestPushAt || lineStatusCache.lastMorningPushAt || "";
+    if (last) {
+      return makeCheckResult("line-send", "最終メッセージ送信", "ok",
+        "最終送信: " + last,
+        "テスト: " + (lineStatusCache.lastTestPushAt || "—") +
+        "\n朝送信: " + (lineStatusCache.lastMorningPushAt || "—"));
+    }
+    return makeCheckResult("line-send", "最終メッセージ送信", "warn",
+      "まだ送信記録がありません", "テスト送信または朝メッセージ後に更新されます");
+  }
+
+  function checkLineAdminId() {
+    if (!lineStatusCache || !lineStatusCache.secrets) {
+      return makeCheckResult("line-admin", "管理者ID設定", "unknown",
+        "未確認", "API未接続のため管理者IDの登録有無は不明です");
+    }
+    var admin = lineStatusCache.secrets.LINE_ADMIN_USER_ID;
+    if (admin === "設定済み") {
+      return makeCheckResult("line-admin", "管理者ID設定", "ok",
+        "管理者ユーザーIDは設定済みです", "値そのものは表示しません");
+    }
+    return makeCheckResult("line-admin", "管理者ID設定", "warn",
+      "管理者ユーザーIDが未設定です（本体は公開可）",
+      "Netlify環境変数 LINE_ADMIN_USER_ID を設定してください");
+  }
+
+  function checkLineScheduleConfig() {
+    if (!lineStatusCache) {
+      return makeCheckResult("line-schedule", "Scheduled Function設定", "unknown",
+        "未確認",
+        "netlify.toml では line-send-morning を UTC 23:00（JST 08:00）に設定済み。本番反映はNetlify側で確認。");
+    }
+    return makeCheckResult("line-schedule", "Scheduled Function設定", "ok",
+      "スケジュール定義を確認しました",
+      lineStatusCache.schedule || "0 23 * * * (UTC) = 日本時間 08:00");
+  }
+
   function calculateOverallHealth(results) {
     var counts = { ok: 0, warn: 0, fail: 0, unknown: 0 };
     results.forEach(function (r) {
@@ -2831,7 +2987,15 @@
       ["project-select", "プロジェクト選択欄", checkProjectSelect],
       ["urls", "URL登録チェック", checkProjectUrls],
       ["rendering", "基本表示", checkBasicRendering],
-      ["compat", "データ互換性", checkDataCompatibility]
+      ["compat", "データ互換性", checkDataCompatibility],
+      ["line-dom", "LINE管理画面DOM", checkLineCommandDom],
+      ["line-api-def", "LINE APIエンドポイント定義", checkLineApiEndpoints],
+      ["line-env", "LINE環境変数設定状況", checkLineEnvStatus],
+      ["line-storage", "LINEストレージ接続状況", checkLineStorageStatus],
+      ["line-webhook", "最終Webhook受信", checkLineWebhookMeta],
+      ["line-send", "最終メッセージ送信", checkLineLastSend],
+      ["line-admin", "管理者ID設定", checkLineAdminId],
+      ["line-schedule", "Scheduled Function設定", checkLineScheduleConfig]
     ];
 
     latestSystemCheckResults = checks.map(function (item) {
@@ -4506,6 +4670,221 @@
     syncBodyScroll();
   }
 
+  /* ========== LINE司令塔 ========== */
+
+  function lineApiBase() {
+    try {
+      if (location.protocol === "file:") return "";
+      return "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function fetchLineJson(path, options) {
+    options = options || {};
+    var url = lineApiBase() + path;
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = null;
+    if (ctrl) {
+      timer = setTimeout(function () { try { ctrl.abort(); } catch (e) { /* ignore */ } }, 8000);
+    }
+    return fetch(url, {
+      method: options.method || "GET",
+      headers: options.headers || { Accept: "application/json" },
+      body: options.body || undefined,
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, error: "invalid_json", status: res.status };
+      }).then(function (data) {
+        data = data || {};
+        data._httpStatus = res.status;
+        data._okHttp = res.ok;
+        return data;
+      });
+    }).finally(function () {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
+  function formatLineDate(iso) {
+    if (!iso) return "—";
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString("ja-JP");
+    } catch (e) {
+      return String(iso);
+    }
+  }
+
+  function lineValueClass(text) {
+    var t = String(text || "");
+    if (t === "設定済み" || t.indexOf("正常") === 0) return "is-ok";
+    if (t === "未設定" || t === "未確認") return "is-unknown";
+    if (t.indexOf("注意") === 0 || t.indexOf("未") === 0) return "is-warn";
+    return "";
+  }
+
+  function renderLineStatusPanel(status, connected) {
+    var panel = document.getElementById("line-status-panel");
+    var hint = document.getElementById("line-command-hint");
+    var preview = document.getElementById("line-morning-preview");
+    if (!panel) return;
+
+    if (!connected || !status) {
+      if (hint) hint.textContent = "LINE司令塔へ接続できません。既存機能には影響しません。";
+      panel.innerHTML =
+        '<div class="line-banner line-banner--warn">LINE司令塔へ接続できません</div>' +
+        '<div class="line-status__row">' +
+          '<span class="line-status__label">接続</span>' +
+          '<span class="line-status__value is-warn">未接続</span>' +
+        "</div>" +
+        '<div class="line-status__row">' +
+          '<span class="line-status__label">備考</span>' +
+          '<span class="line-status__value is-unknown">Netlify Functions 起動後に再読み込み</span>' +
+        "</div>";
+      if (preview) {
+        preview.hidden = true;
+        preview.textContent = "";
+      }
+      return;
+    }
+
+    if (hint) {
+      hint.textContent = status.configured
+        ? "サーバー連携は応答しています。秘密情報は表示しません。"
+        : "接続は可能ですが、環境変数が未設定です。";
+    }
+
+    var secrets = status.secrets || {};
+    var rows = [
+      ["接続", status.ok ? "正常" : "注意", status.ok ? "is-ok" : "is-warn"],
+      ["設定完了", status.configured ? "設定済み" : "未設定", status.configured ? "is-ok" : "is-warn"],
+      ["LINE_CHANNEL_SECRET", secrets.LINE_CHANNEL_SECRET || "未設定", lineValueClass(secrets.LINE_CHANNEL_SECRET)],
+      ["LINE_CHANNEL_ACCESS_TOKEN", secrets.LINE_CHANNEL_ACCESS_TOKEN || "未設定", lineValueClass(secrets.LINE_CHANNEL_ACCESS_TOKEN)],
+      ["LINE_ADMIN_USER_ID", secrets.LINE_ADMIN_USER_ID || "未設定", lineValueClass(secrets.LINE_ADMIN_USER_ID)],
+      ["APP_BASE_URL", secrets.APP_BASE_URL || "未設定", lineValueClass(secrets.APP_BASE_URL)],
+      ["最終Webhook", formatLineDate(status.lastWebhookAt), ""],
+      ["最終朝送信", formatLineDate(status.lastMorningPushAt), ""],
+      ["最終テスト送信", formatLineDate(status.lastTestPushAt), ""],
+      ["会話ステージ", status.conversationStage || "なし", ""],
+      ["今日の最優先", (status.todayPriority && status.todayPriority.projectName) || "未設定", ""],
+      ["朝スケジュール", status.schedule || "—", ""]
+    ];
+
+    panel.innerHTML = (status.configured
+      ? '<div class="line-banner line-banner--ok">LINE司令塔に接続できました</div>'
+      : '<div class="line-banner line-banner--warn">環境変数が未設定です（秘密情報は表示しません）</div>') +
+      rows.map(function (r) {
+        return (
+          '<div class="line-status__row">' +
+            '<span class="line-status__label">' + escapeHtml(r[0]) + "</span>" +
+            '<span class="line-status__value ' + escapeHtml(r[2] || "") + '">' + escapeHtml(r[1]) + "</span>" +
+          "</div>"
+        );
+      }).join("");
+
+    if (preview) {
+      if (status.morningPreview) {
+        preview.hidden = false;
+        preview.textContent = "【朝メッセージ プレビュー】\n\n" + status.morningPreview;
+      } else {
+        preview.hidden = true;
+        preview.textContent = "";
+      }
+    }
+  }
+
+  function renderLineHistoryPanel(history) {
+    var el = document.getElementById("line-history-panel");
+    if (!el) return;
+    if (!history || !history.length) {
+      el.innerHTML =
+        '<p class="line-history__title">直近のLINE操作履歴</p>' +
+        '<p class="empty-message">まだ履歴がありません</p>';
+      return;
+    }
+    el.innerHTML =
+      '<p class="line-history__title">直近のLINE操作履歴</p>' +
+      history.slice(0, 8).map(function (h) {
+        return (
+          '<div class="line-history__item">' +
+            escapeHtml(h.summary || h.type || "操作") +
+            '<span class="line-history__meta">' +
+              escapeHtml(formatLineDate(h.createdAt || h.at)) +
+            "</span>" +
+          "</div>"
+        );
+      }).join("");
+  }
+
+  function refreshLineCommandData() {
+    var panel = document.getElementById("line-status-panel");
+    if (panel) panel.innerHTML = '<p class="empty-message">読み込み中…</p>';
+
+    return Promise.all([
+      fetchLineJson(LINE_API.status).catch(function () { return null; }),
+      fetchLineJson(LINE_API.history).catch(function () { return null; })
+    ]).then(function (pair) {
+      var status = pair[0];
+      var historyRes = pair[1];
+      lineApiConnected = !!(status && status.ok);
+      lineStatusCache = lineApiConnected ? status : null;
+      lineHistoryCache = (historyRes && historyRes.ok && Array.isArray(historyRes.history))
+        ? historyRes.history
+        : [];
+      renderLineStatusPanel(status, lineApiConnected);
+      renderLineHistoryPanel(lineHistoryCache);
+    }).catch(function () {
+      lineApiConnected = false;
+      lineStatusCache = null;
+      lineHistoryCache = [];
+      renderLineStatusPanel(null, false);
+      renderLineHistoryPanel([]);
+    });
+  }
+
+  function openLineCommand() {
+    if (!lineCommandModal) return;
+    lineCommandModal.classList.add("is-open");
+    lineCommandModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    refreshLineCommandData();
+  }
+
+  function closeLineCommand() {
+    if (!lineCommandModal) return;
+    lineCommandModal.classList.remove("is-open");
+    lineCommandModal.setAttribute("aria-hidden", "true");
+    syncBodyScroll();
+  }
+
+  function handleLineSendTest() {
+    if (lineTestSending) return;
+    if (!window.confirm("管理者へテストメッセージを送信しますか？")) return;
+    var btn = document.getElementById("btn-line-send-test");
+    lineTestSending = true;
+    if (btn) btn.disabled = true;
+    fetchLineJson(LINE_API.sendTest, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}"
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast("テストメッセージを送信しました");
+        return refreshLineCommandData();
+      }
+      showToast("送信できませんでした。設定を確認してください");
+    }).catch(function () {
+      showToast("送信できませんでした。設定を確認してください");
+    }).finally(function () {
+      lineTestSending = false;
+      if (btn) btn.disabled = false;
+    });
+  }
+
   function openMeetingForm() {
     resetMeetingForm();
     showMeetingView("form");
@@ -5632,6 +6011,20 @@
     openMeetingLogs();
   }, "openMeetingLogs");
   onClick("meeting-logs-close", closeMeetingLogs, "closeMeetingLogs");
+  onClick("btn-line-command", function () {
+    openLineCommand();
+  }, "openLineCommand");
+  onClick("line-command-close", closeLineCommand, "closeLineCommand");
+  onClick("btn-line-command-close", closeLineCommand);
+  onClick("btn-line-refresh", function () {
+    refreshLineCommandData();
+  });
+  onClick("btn-line-send-test", handleLineSendTest);
+  if (lineCommandModal) {
+    lineCommandModal.addEventListener("click", function (e) {
+      if (e.target === lineCommandModal) closeLineCommand();
+    });
+  }
   onClick("btn-meeting-new", openMeetingForm);
   onClick("btn-meeting-save", handleMeetingSave);
   onClick("btn-meeting-back-list", function () {

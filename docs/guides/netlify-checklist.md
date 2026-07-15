@@ -12,11 +12,13 @@
 - [ ] 主要導線（トップ → CTA → フォーム等）が通る
 - [ ] コンソールに重大なエラーが出ていない
 
-## 報告フォーマット
+## Netlify 確認後の補足（LINE司令塔）
 
-```
-- デプロイ URL:
-- デプロイ状態: 成功 / 失敗
-- 確認した画面:
-- 問題: なし / あり（内容）
-```
+LINE双方向司令塔を使う場合は、デプロイ後に以下も確認してください。
+
+- [ ] 環境変数 `LINE_CHANNEL_SECRET` / `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_ADMIN_USER_ID` が設定されている
+- [ ] Webhook URL: `https://<domain>/.netlify/functions/line-webhook` が LINE に登録され有効
+- [ ] Scheduled Function `line-send-morning`（UTC 23:00 = JST 08:00）が有効
+- [ ] Smile AI Studio「その他 → LINE司令塔」で接続状況とテスト送信が動く
+
+詳細手順: [`docs/guides/LINE_COMMAND_CENTER.md`](./LINE_COMMAND_CENTER.md)

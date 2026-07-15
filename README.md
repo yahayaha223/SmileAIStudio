@@ -78,6 +78,7 @@ SmileAIStudio/
 - [DEVELOPMENT_RULES.md](./DEVELOPMENT_RULES.md) — 開発ルール
 - [REQUEST_TEMPLATE.md](./REQUEST_TEMPLATE.md) — 依頼テンプレート
 - [ROADMAP.md](./ROADMAP.md) — ロードマップ
+- [docs/guides/LINE_COMMAND_CENTER.md](./docs/guides/LINE_COMMAND_CENTER.md) — LINE双方向司令塔の設定手順
 
 ---
 

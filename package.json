@@ -1,0 +1,17 @@
+{
+  "name": "smile-ai-studio",
+  "version": "1.5.0",
+  "private": true,
+  "description": "Smile AI Studio — LINE command center backend",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test:line": "node scripts/run-line-unit-tests.js",
+    "mock:webhook": "node scripts/mock-line-webhook.js",
+    "dev:netlify": "npx netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
