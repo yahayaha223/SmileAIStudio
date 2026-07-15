@@ -1983,3 +1983,94 @@ body::before {
     flex: 1;
   }
 }
+
+/* ========== Web管理センター ========== */
+
+.web-center-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 80px;
+  padding: 16px;
+  border: 1px solid rgba(79, 110, 247, 0.25);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font);
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.web-center-card:active {
+  transform: scale(0.985);
+  box-shadow: var(--shadow-md);
+}
+
+.web-center-card__icon {
+  font-size: 1.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.web-center-card__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.web-center-card__text strong {
+  font-size: 1.125rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.web-center-card__text small {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.web-center-card__chevron {
+  font-size: 1.75rem;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.web-center-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+
+.web-center-ai-row {
+  margin: 8px 0 16px;
+}
+
+.modal--web-center {
+  max-height: 92dvh;
+}
+
+.web-diary-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.web-diary-card__preview {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 12px;
+}

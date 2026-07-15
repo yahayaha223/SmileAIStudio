@@ -11,23 +11,25 @@
   var TODAY_TODOS_KEY = "smileAIStudio_todayTodos";
   var IPHONE_SETTINGS_KEY = "smileAIStudio_iphoneSettings";
   var CURRENT_FOCUS_KEY = "smileAIStudio_currentFocus";
+  var DIARY_ENTRIES_KEY = "smileAIStudio_diaryEntries";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "0.6.0",
-    build: 26,
-    updatedAt: "2026-07-11"
+    version: "0.7.0",
+    build: 27,
+    updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 65,
+    progress: 68,
     completed: [
       "AIルーター",
       "指示書生成",
       "プロジェクト管理",
       "システムチェック",
       "リリースセンター",
-      "スマホファーストUI"
+      "スマホファーストUI",
+      "Web管理センター"
     ],
     upcoming: [
       { label: "AI会議ログ", status: "準備中" },
@@ -277,6 +279,12 @@
   var projectDetailModal = document.getElementById("project-detail-modal");
   var projectDetailBody = document.getElementById("project-detail-body");
   var projectDetailTitle = document.getElementById("project-detail-title");
+  var webCenterModal = document.getElementById("web-center-modal");
+  var webCenterMenuView = document.getElementById("web-center-menu-view");
+  var webCenterFormView = document.getElementById("web-center-form-view");
+  var webCenterDraftsView = document.getElementById("web-center-drafts-view");
+  var webCenterPublishedView = document.getElementById("web-center-published-view");
+  var webCenterInstructionView = document.getElementById("web-center-instruction-view");
   var form = document.getElementById("request-form");
   var toast = document.getElementById("toast");
   var formError = document.getElementById("form-error");
@@ -299,6 +307,8 @@
   var detailsOpen = false;
   var currentRoute = null;
   var editingProjectId = null;
+  var editingDiaryId = null;
+  var currentDiaryInstruction = "";
 
   /* ========== Utils ========== */
   function showToast(message) {
@@ -347,6 +357,7 @@
       (promptViewModal && promptViewModal.classList.contains("is-open")) ||
       (projectModal && projectModal.classList.contains("is-open")) ||
       (projectDetailModal && projectDetailModal.classList.contains("is-open")) ||
+      (webCenterModal && webCenterModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
       (releaseCenterModal && releaseCenterModal.classList.contains("is-open"))
     );
@@ -1868,6 +1879,8 @@
       { id: "current-focus-panel", label: "現在開発中描画先" },
       { id: "release-home-panel", label: "リリース状況描画先" },
       { id: "btn-ai-request-hero", label: "AIへ依頼ヒーロー" },
+      { id: "btn-web-center", label: "Web管理センター入口" },
+      { id: "web-center-modal", label: "Web管理センターモーダル" },
       { id: "project-list", label: "プロジェクト一覧描画先" },
       { id: "staff-list", label: "AIスタッフ一覧描画先" },
       { id: "recent-requests", label: "最近の依頼描画先" },
@@ -2246,6 +2259,19 @@
       closeIds: ["project-detail-close", "btn-detail-close"],
       openCheck: function () { return typeof openProjectDetail === "function"; },
       closeCheck: function () { return typeof closeProjectDetail === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "web-center-modal",
+      label: "Web管理センターモーダル",
+      closeIds: ["web-center-close", "btn-web-center-close-menu"],
+      openAction: "openWebCenter",
+      openCheck: function () {
+        return typeof openWebCenter === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openWebCenter;
+      },
+      closeCheck: function () { return typeof closeWebCenter === "function"; },
       allowOpenDuringCheck: false
     });
 
@@ -3470,6 +3496,423 @@
     }
   }
 
+  /* ========== Web管理センター（活動日記） ========== */
+
+  function loadDiaryEntries() {
+    try {
+      var raw = localStorage.getItem(DIARY_ENTRIES_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map(normalizeDiaryEntry).filter(Boolean);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveDiaryEntries(list) {
+    try {
+      localStorage.setItem(DIARY_ENTRIES_KEY, JSON.stringify(list || []));
+    } catch (e) {
+      showToast("保存に失敗しました");
+    }
+  }
+
+  function normalizeDiaryEntry(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var id = String(raw.id || "").trim();
+    if (!id) id = "diary-" + Date.now();
+    var status = raw.status === "published" ? "published" : "draft";
+    return {
+      id: id,
+      title: String(raw.title || "").trim(),
+      body: String(raw.body || "").trim(),
+      publishDate: String(raw.publishDate || "").trim(),
+      photoMemo: String(raw.photoMemo || "").trim(),
+      status: status,
+      createdAt: raw.createdAt || new Date().toISOString(),
+      updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString()
+    };
+  }
+
+  function getDiaryById(id) {
+    return loadDiaryEntries().find(function (d) { return d.id === id; }) || null;
+  }
+
+  function formatDiaryDisplayDate(isoDate) {
+    if (!isoDate) return "";
+    var parts = String(isoDate).split("-");
+    if (parts.length !== 3) return isoDate;
+    return parts[0] + "." + parts[1] + "." + parts[2];
+  }
+
+  function todayInputDate() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+
+  function showWebCenterView(name) {
+    var views = {
+      menu: webCenterMenuView,
+      form: webCenterFormView,
+      drafts: webCenterDraftsView,
+      published: webCenterPublishedView,
+      instruction: webCenterInstructionView
+    };
+    Object.keys(views).forEach(function (key) {
+      var el = views[key];
+      if (!el) return;
+      if (key === name) el.hidden = false;
+      else el.hidden = true;
+    });
+  }
+
+  function clearWebDiaryFormError() {
+    var el = document.getElementById("web-diary-form-error");
+    if (!el) return;
+    el.hidden = true;
+    el.textContent = "";
+  }
+
+  function showWebDiaryFormError(message) {
+    var el = document.getElementById("web-diary-form-error");
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = message;
+  }
+
+  function resetWebDiaryForm() {
+    editingDiaryId = null;
+    currentDiaryInstruction = "";
+    clearWebDiaryFormError();
+    var idEl = document.getElementById("web-diary-edit-id");
+    var titleEl = document.getElementById("web-diary-title");
+    var bodyEl = document.getElementById("web-diary-body");
+    var dateEl = document.getElementById("web-diary-date");
+    var memoEl = document.getElementById("web-diary-photo-memo");
+    if (idEl) idEl.value = "";
+    if (titleEl) titleEl.value = "";
+    if (bodyEl) bodyEl.value = "";
+    if (dateEl) dateEl.value = todayInputDate();
+    if (memoEl) memoEl.value = "";
+  }
+
+  function fillWebDiaryForm(entry) {
+    editingDiaryId = entry ? entry.id : null;
+    currentDiaryInstruction = "";
+    clearWebDiaryFormError();
+    var idEl = document.getElementById("web-diary-edit-id");
+    var titleEl = document.getElementById("web-diary-title");
+    var bodyEl = document.getElementById("web-diary-body");
+    var dateEl = document.getElementById("web-diary-date");
+    var memoEl = document.getElementById("web-diary-photo-memo");
+    if (idEl) idEl.value = entry ? entry.id : "";
+    if (titleEl) titleEl.value = entry ? entry.title : "";
+    if (bodyEl) bodyEl.value = entry ? entry.body : "";
+    if (dateEl) dateEl.value = entry && entry.publishDate ? entry.publishDate : todayInputDate();
+    if (memoEl) memoEl.value = entry ? entry.photoMemo : "";
+  }
+
+  function readWebDiaryFormValues() {
+    return {
+      title: (document.getElementById("web-diary-title") || {}).value || "",
+      body: (document.getElementById("web-diary-body") || {}).value || "",
+      publishDate: (document.getElementById("web-diary-date") || {}).value || "",
+      photoMemo: (document.getElementById("web-diary-photo-memo") || {}).value || ""
+    };
+  }
+
+  function validateWebDiaryForm(values) {
+    if (!String(values.title || "").trim()) {
+      showWebDiaryFormError("タイトルを入力してください");
+      return false;
+    }
+    if (!String(values.body || "").trim()) {
+      showWebDiaryFormError("本文を入力してください");
+      return false;
+    }
+    if (!String(values.publishDate || "").trim()) {
+      showWebDiaryFormError("公開日を入力してください");
+      return false;
+    }
+    clearWebDiaryFormError();
+    return true;
+  }
+
+  function openWebCenter() {
+    if (!webCenterModal) return;
+    showWebCenterView("menu");
+    webCenterModal.classList.add("is-open");
+    webCenterModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
+  function closeWebCenter() {
+    if (!webCenterModal) return;
+    webCenterModal.classList.remove("is-open");
+    webCenterModal.setAttribute("aria-hidden", "true");
+    editingDiaryId = null;
+    currentDiaryInstruction = "";
+    showWebCenterView("menu");
+    syncBodyScroll();
+  }
+
+  function openWebDiaryForm(entry) {
+    if (entry) fillWebDiaryForm(entry);
+    else resetWebDiaryForm();
+    showWebCenterView("form");
+    setTimeout(function () {
+      var titleEl = document.getElementById("web-diary-title");
+      if (titleEl) titleEl.focus();
+    }, 50);
+  }
+
+  /**
+   * 将来AI接続用。今回はダミー文章を返すだけ。
+   * @param {{ title?: string, body?: string, publishDate?: string, photoMemo?: string }} context
+   * @returns {Promise<{ title: string, body: string }>}
+   */
+  function generateDiaryWithAI(context) {
+    context = context || {};
+    var dateLabel = formatDiaryDisplayDate(context.publishDate || todayInputDate()) || "本日";
+    return Promise.resolve({
+      title: context.title && context.title.trim()
+        ? context.title.trim()
+        : "活動日記（" + dateLabel + "）",
+      body: [
+        "株式会社えがおのきろくの活動日記です。",
+        "",
+        "（AI下書き・ダミー）" + dateLabel + "のできごとをここにまとめます。",
+        "イベント準備や現場の様子、これから伝えたいことを書き足してください。",
+        "",
+        "写真がある場合は、写真メモ欄にファイル名や置き場所を書いておくと更新指示書に反映されます。"
+      ].join("\n")
+    });
+  }
+
+  function handleWebAiWrite() {
+    var values = readWebDiaryFormValues();
+    generateDiaryWithAI(values).then(function (result) {
+      var titleEl = document.getElementById("web-diary-title");
+      var bodyEl = document.getElementById("web-diary-body");
+      if (titleEl && (!titleEl.value || !titleEl.value.trim())) {
+        titleEl.value = result.title;
+      }
+      if (bodyEl) {
+        if (bodyEl.value && bodyEl.value.trim()) {
+          bodyEl.value = bodyEl.value.replace(/\s+$/, "") + "\n\n" + result.body;
+        } else {
+          bodyEl.value = result.body;
+        }
+      }
+      showToast("AI下書き（ダミー）を入れました");
+    }).catch(function () {
+      showToast("AI下書きに失敗しました");
+    });
+  }
+
+  function saveWebDiary(status) {
+    var values = readWebDiaryFormValues();
+    if (!validateWebDiaryForm(values)) return null;
+
+    var list = loadDiaryEntries();
+    var now = new Date().toISOString();
+    var id = editingDiaryId || ("diary-" + Date.now());
+    var existing = list.find(function (d) { return d.id === id; });
+    var entry = normalizeDiaryEntry({
+      id: id,
+      title: values.title.trim(),
+      body: values.body.trim(),
+      publishDate: values.publishDate.trim(),
+      photoMemo: values.photoMemo.trim(),
+      status: status,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now
+    });
+
+    if (existing) {
+      list = list.map(function (d) { return d.id === id ? entry : d; });
+    } else {
+      list.unshift(entry);
+    }
+    saveDiaryEntries(list);
+    editingDiaryId = entry.id;
+    var idEl = document.getElementById("web-diary-edit-id");
+    if (idEl) idEl.value = entry.id;
+    return entry;
+  }
+
+  function handleSaveWebDiaryDraft() {
+    var entry = saveWebDiary("draft");
+    if (!entry) return;
+    showToast("下書きを保存しました");
+  }
+
+  function handleSaveWebDiaryPublished() {
+    var entry = saveWebDiary("published");
+    if (!entry) return;
+    showToast("公開済みとして保存しました");
+  }
+
+  function buildHomepageUpdateInstruction(entry) {
+    entry = entry || null;
+    if (!entry) {
+      var values = readWebDiaryFormValues();
+      if (!validateWebDiaryForm(values)) return "";
+      entry = normalizeDiaryEntry({
+        id: editingDiaryId || "unsaved",
+        title: values.title,
+        body: values.body,
+        publishDate: values.publishDate,
+        photoMemo: values.photoMemo,
+        status: "draft"
+      });
+    }
+
+    var displayDate = formatDiaryDisplayDate(entry.publishDate);
+    var lines = [
+      "【ホームページ更新指示書】",
+      "",
+      "対象プロジェクト：CorporateSite（株式会社えがおのきろく 公式ホームページ）",
+      "対象ファイル：diary/index.htm",
+      "文字コード：Shift_JIS（UTF-8へ変更しない）",
+      "",
+      "【目的】",
+      "活動日記を1件追加する",
+      "",
+      "【追加する記事】",
+      "日付：" + displayDate,
+      "タイトル：" + entry.title,
+      "",
+      "本文：",
+      entry.body,
+      "",
+      "写真メモ：",
+      entry.photoMemo ? entry.photoMemo : "（なし・今回は画像タグを追加しない）",
+      "",
+      "【作業ルール】",
+      "・既存の記事・デザイン・CSS・リンク・charsetは変更しない",
+      "・新しい記事だけを、既存の最新記事より上に追加する",
+      "・作業前に diary/backup/ へバックアップを作成する",
+      "・Xserverへのアップロードは指示があるまで行わない",
+      "",
+      "【確認】",
+      "・ローカルで表示確認する",
+      "・文字化けがないか確認する"
+    ];
+    return lines.join("\n");
+  }
+
+  function handleBuildWebInstruction() {
+    var saved = null;
+    if (editingDiaryId) {
+      saved = getDiaryById(editingDiaryId);
+    }
+    var text = buildHomepageUpdateInstruction(saved);
+    if (!text) return;
+    currentDiaryInstruction = text;
+    var pre = document.getElementById("web-instruction-text");
+    if (pre) pre.textContent = text;
+    showWebCenterView("instruction");
+  }
+
+  function handleCopyWebInstruction() {
+    var text = currentDiaryInstruction ||
+      ((document.getElementById("web-instruction-text") || {}).textContent || "");
+    if (!text.trim()) {
+      showToast("指示書がありません");
+      return;
+    }
+    copyText(text).then(function () {
+      showToast("指示書をコピーしました");
+    }).catch(function () {
+      showToast("コピーに失敗しました");
+    });
+  }
+
+  function truncateDiaryPreview(text, maxLen) {
+    var t = String(text || "").replace(/\s+/g, " ").trim();
+    if (t.length <= maxLen) return t;
+    return t.slice(0, maxLen) + "…";
+  }
+
+  function renderWebDiaryList(containerId, status) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var list = loadDiaryEntries().filter(function (d) { return d.status === status; });
+    if (!list.length) {
+      container.innerHTML = '<p class="empty-message">' +
+        (status === "draft" ? "下書きはまだありません。" : "公開済みはまだありません。") +
+        "</p>";
+      return;
+    }
+
+    container.innerHTML = list.map(function (d) {
+      return (
+        '<article class="card web-diary-card" data-diary-id="' + escapeHtml(d.id) + '">' +
+          '<h4 class="card__title">' + escapeHtml(d.title || "無題") + "</h4>" +
+          '<div class="web-diary-card__meta">' +
+            '<span class="badge badge--progress">' + escapeHtml(formatDiaryDisplayDate(d.publishDate) || "日付未設定") + "</span>" +
+            '<span class="badge ' + (d.status === "published" ? "badge--dev" : "badge--improve") + '">' +
+              (d.status === "published" ? "公開済み" : "下書き") +
+            "</span>" +
+          "</div>" +
+          '<p class="web-diary-card__preview">' + escapeHtml(truncateDiaryPreview(d.body, 100)) + "</p>" +
+          '<div class="card__actions">' +
+            '<button type="button" class="btn btn--primary btn--touch btn-web-edit" data-diary-id="' + escapeHtml(d.id) + '">編集</button>' +
+            '<button type="button" class="btn btn--secondary btn--touch btn-web-instruction" data-diary-id="' + escapeHtml(d.id) + '">指示書</button>' +
+            '<button type="button" class="btn btn--danger btn--touch btn-web-delete" data-diary-id="' + escapeHtml(d.id) + '">削除</button>' +
+          "</div>" +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function openWebDrafts() {
+    renderWebDiaryList("web-drafts-list", "draft");
+    showWebCenterView("drafts");
+  }
+
+  function openWebPublished() {
+    renderWebDiaryList("web-published-list", "published");
+    showWebCenterView("published");
+  }
+
+  function handleWebListClick(e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    var id = btn.getAttribute("data-diary-id");
+    if (!id) return;
+    var entry = getDiaryById(id);
+    if (!entry) {
+      showToast("記事が見つかりません");
+      return;
+    }
+
+    if (btn.classList.contains("btn-web-edit")) {
+      openWebDiaryForm(entry);
+      return;
+    }
+    if (btn.classList.contains("btn-web-instruction")) {
+      fillWebDiaryForm(entry);
+      currentDiaryInstruction = buildHomepageUpdateInstruction(entry);
+      var pre = document.getElementById("web-instruction-text");
+      if (pre) pre.textContent = currentDiaryInstruction;
+      showWebCenterView("instruction");
+      return;
+    }
+    if (btn.classList.contains("btn-web-delete")) {
+      if (!window.confirm("この活動日記を削除しますか？\n「" + entry.title + "」")) return;
+      var next = loadDiaryEntries().filter(function (d) { return d.id !== id; });
+      saveDiaryEntries(next);
+      showToast("削除しました");
+      if (entry.status === "published") openWebPublished();
+      else openWebDrafts();
+    }
+  }
+
   /* ========== Events ========== */
   onClick("btn-new-request", function () {
     openModal();
@@ -3505,6 +3948,52 @@
       if (e.target === projectDetailModal) closeProjectDetail();
     });
   }
+
+  onClick("btn-web-center", function () {
+    openWebCenter();
+  }, "openWebCenter");
+  onClick("web-center-close", closeWebCenter, "closeWebCenter");
+  onClick("btn-web-center-close-menu", closeWebCenter);
+  onClick("btn-web-new-diary", function () {
+    openWebDiaryForm(null);
+  });
+  onClick("btn-web-drafts", openWebDrafts);
+  onClick("btn-web-published", openWebPublished);
+  onClick("btn-web-back-menu", function () {
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-back-from-drafts", function () {
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-back-from-published", function () {
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-ai-write", handleWebAiWrite);
+  onClick("btn-web-save-draft", handleSaveWebDiaryDraft);
+  onClick("btn-web-save-published", handleSaveWebDiaryPublished);
+  onClick("btn-web-build-instruction", handleBuildWebInstruction);
+  onClick("btn-web-copy-instruction", handleCopyWebInstruction);
+  onClick("btn-web-back-from-instruction", function () {
+    showWebCenterView("form");
+  });
+  onClick("btn-web-instruction-to-menu", function () {
+    showWebCenterView("menu");
+  });
+  if (webCenterModal) {
+    webCenterModal.addEventListener("click", function (e) {
+      if (e.target === webCenterModal) closeWebCenter();
+    });
+  }
+  if (webCenterFormView) {
+    webCenterFormView.addEventListener("submit", function (e) {
+      e.preventDefault();
+      handleSaveWebDiaryDraft();
+    });
+  }
+  var webDraftsList = document.getElementById("web-drafts-list");
+  if (webDraftsList) webDraftsList.addEventListener("click", handleWebListClick);
+  var webPublishedList = document.getElementById("web-published-list");
+  if (webPublishedList) webPublishedList.addEventListener("click", handleWebListClick);
 
   onClick("btn-new-project", function () {
     openProjectForm(null);
@@ -3678,6 +4167,23 @@
     if (e.key !== "Escape") return;
     if (promptViewModal && promptViewModal.classList.contains("is-open")) {
       closePromptView();
+      return;
+    }
+    if (webCenterModal && webCenterModal.classList.contains("is-open")) {
+      if (webCenterInstructionView && !webCenterInstructionView.hidden) {
+        showWebCenterView("form");
+        return;
+      }
+      if (webCenterFormView && !webCenterFormView.hidden) {
+        showWebCenterView("menu");
+        return;
+      }
+      if ((webCenterDraftsView && !webCenterDraftsView.hidden) ||
+          (webCenterPublishedView && !webCenterPublishedView.hidden)) {
+        showWebCenterView("menu");
+        return;
+      }
+      closeWebCenter();
       return;
     }
     if (projectDetailModal && projectDetailModal.classList.contains("is-open")) {
