@@ -12,16 +12,18 @@
   var IPHONE_SETTINGS_KEY = "smileAIStudio_iphoneSettings";
   var CURRENT_FOCUS_KEY = "smileAIStudio_currentFocus";
   var DIARY_ENTRIES_KEY = "smileAIStudio_diaryEntries";
+  var CURSOR_HANDOFFS_KEY = "smileAIStudio_cursorHandoffs";
+  var CURSOR_AGENT_URL = "https://cursor.com/agents";
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "0.7.0",
-    build: 27,
+    version: "0.9.0",
+    build: 29,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 68,
+    progress: 75,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -29,7 +31,9 @@
       "システムチェック",
       "リリースセンター",
       "スマホファーストUI",
-      "Web管理センター"
+      "Web管理センター",
+      "AI秘書",
+      "Cursorへ送る連携"
     ],
     upcoming: [
       { label: "AI会議ログ", status: "準備中" },
@@ -285,6 +289,10 @@
   var webCenterDraftsView = document.getElementById("web-center-drafts-view");
   var webCenterPublishedView = document.getElementById("web-center-published-view");
   var webCenterInstructionView = document.getElementById("web-center-instruction-view");
+  var secretaryModal = document.getElementById("secretary-modal");
+  var secretaryInputView = document.getElementById("secretary-input-view");
+  var secretaryResultView = document.getElementById("secretary-result-view");
+  var cursorHandoffModal = document.getElementById("cursor-handoff-modal");
   var form = document.getElementById("request-form");
   var toast = document.getElementById("toast");
   var formError = document.getElementById("form-error");
@@ -309,6 +317,11 @@
   var editingProjectId = null;
   var editingDiaryId = null;
   var currentDiaryInstruction = "";
+  var secretaryPhotoUrl = "";
+  var secretaryPhotoName = "";
+  var currentSecretaryResults = null;
+  var currentCursorInstruction = "";
+  var currentCursorHandoff = null;
 
   /* ========== Utils ========== */
   function showToast(message) {
@@ -358,6 +371,8 @@
       (projectModal && projectModal.classList.contains("is-open")) ||
       (projectDetailModal && projectDetailModal.classList.contains("is-open")) ||
       (webCenterModal && webCenterModal.classList.contains("is-open")) ||
+      (secretaryModal && secretaryModal.classList.contains("is-open")) ||
+      (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
       (releaseCenterModal && releaseCenterModal.classList.contains("is-open"))
     );
@@ -1879,6 +1894,9 @@
       { id: "current-focus-panel", label: "現在開発中描画先" },
       { id: "release-home-panel", label: "リリース状況描画先" },
       { id: "btn-ai-request-hero", label: "AIへ依頼ヒーロー" },
+      { id: "btn-ai-secretary", label: "AI秘書入口" },
+      { id: "secretary-modal", label: "AI秘書モーダル" },
+      { id: "cursor-handoff-modal", label: "Cursor連携モーダル" },
       { id: "btn-web-center", label: "Web管理センター入口" },
       { id: "web-center-modal", label: "Web管理センターモーダル" },
       { id: "project-list", label: "プロジェクト一覧描画先" },
@@ -2272,6 +2290,31 @@
           !!(window.smileAIStudioStatus.registeredActions || {}).openWebCenter;
       },
       closeCheck: function () { return typeof closeWebCenter === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "secretary-modal",
+      label: "AI秘書モーダル",
+      closeIds: ["secretary-close", "btn-secretary-close-result"],
+      openAction: "openAiSecretary",
+      openCheck: function () {
+        return typeof openAiSecretary === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openAiSecretary;
+      },
+      closeCheck: function () { return typeof closeAiSecretary === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "cursor-handoff-modal",
+      label: "Cursor連携モーダル",
+      closeIds: ["cursor-handoff-close", "btn-cursor-handoff-close"],
+      openCheck: function () {
+        return typeof openCursorHandoffModal === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openCursorHandoff;
+      },
+      closeCheck: function () { return typeof closeCursorHandoffModal === "function"; },
       allowOpenDuringCheck: false
     });
 
@@ -3913,6 +3956,457 @@
     }
   }
 
+  /* ========== AI秘書（今日何した？） ========== */
+
+  function clearSecretaryPhoto() {
+    if (secretaryPhotoUrl) {
+      try { URL.revokeObjectURL(secretaryPhotoUrl); } catch (e) { /* ignore */ }
+    }
+    secretaryPhotoUrl = "";
+    secretaryPhotoName = "";
+    var input = document.getElementById("secretary-photo");
+    var preview = document.getElementById("secretary-photo-preview");
+    var img = document.getElementById("secretary-photo-img");
+    if (input) input.value = "";
+    if (img) img.removeAttribute("src");
+    if (preview) preview.hidden = true;
+  }
+
+  function resetSecretaryInput() {
+    var input = document.getElementById("secretary-input");
+    if (input) input.value = "";
+    clearSecretaryPhoto();
+    currentSecretaryResults = null;
+  }
+
+  function showSecretaryView(name) {
+    if (secretaryInputView) secretaryInputView.hidden = name !== "input";
+    if (secretaryResultView) secretaryResultView.hidden = name !== "result";
+  }
+
+  function openAiSecretary() {
+    if (!secretaryModal) return;
+    resetSecretaryInput();
+    showSecretaryView("input");
+    secretaryModal.classList.add("is-open");
+    secretaryModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    setTimeout(function () {
+      var input = document.getElementById("secretary-input");
+      if (input) input.focus();
+    }, 50);
+  }
+
+  function closeAiSecretary() {
+    if (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) {
+      closeCursorHandoffModal();
+    }
+    if (!secretaryModal) return;
+    secretaryModal.classList.remove("is-open");
+    secretaryModal.setAttribute("aria-hidden", "true");
+    clearSecretaryPhoto();
+    currentSecretaryResults = null;
+    currentCursorInstruction = "";
+    currentCursorHandoff = null;
+    showSecretaryView("input");
+    syncBodyScroll();
+  }
+
+  function handleSecretaryPhotoChange() {
+    var input = document.getElementById("secretary-photo");
+    var preview = document.getElementById("secretary-photo-preview");
+    var img = document.getElementById("secretary-photo-img");
+    if (!input || !input.files || !input.files[0]) {
+      clearSecretaryPhoto();
+      return;
+    }
+    var file = input.files[0];
+    if (secretaryPhotoUrl) {
+      try { URL.revokeObjectURL(secretaryPhotoUrl); } catch (e) { /* ignore */ }
+    }
+    secretaryPhotoUrl = URL.createObjectURL(file);
+    secretaryPhotoName = file.name || "photo.jpg";
+    if (img) img.src = secretaryPhotoUrl;
+    if (preview) preview.hidden = false;
+  }
+
+  /**
+   * 将来AI接続用。今回はダミー生成のみ。
+   * @param {{ text: string, photoName?: string }} context
+   */
+  function generateSecretaryOutputs(context) {
+    context = context || {};
+    var text = String(context.text || "").trim() || "今日の活動";
+    var photoName = String(context.photoName || "").trim();
+    var photoLine = photoName ? "写真メモ：" + photoName : "写真：なし";
+    var short = text.length > 80 ? text.slice(0, 80) + "…" : text;
+    var today = new Date();
+    var publishDate =
+      today.getFullYear() + "." +
+      String(today.getMonth() + 1).padStart(2, "0") + "." +
+      String(today.getDate()).padStart(2, "0");
+    var articleTitle = "今日のえがお — " + short;
+    var articleBody =
+      text + "\n\n" +
+      "株式会社えがおのきろくでは、現場のできごとを活動日記として公開しています。\n" +
+      photoLine;
+
+    return Promise.resolve({
+      sourceText: text,
+      photoName: photoName,
+      publishDate: publishDate,
+      articleTitle: articleTitle,
+      articleBody: articleBody,
+      diary:
+        "【活動日記 " + publishDate + "】\n" +
+        text + "\n\n" +
+        photoLine + "\n" +
+        "（AI下書き・ダミー）今後この内容を diary/index.htm へ反映できます。",
+      homepage:
+        "【ホームページ記事】\n" +
+        "タイトル：" + articleTitle + "\n\n" +
+        articleBody,
+      instagram:
+        "📱 Instagram投稿（ダミー）\n\n" +
+        text + "\n\n" +
+        "#えがおのきろく #大道芸 #イベント #縁日\n" +
+        photoLine,
+      facebook:
+        "📘 Facebook投稿（ダミー）\n\n" +
+        "本日の活動をご報告します。\n\n" +
+        text + "\n\n" +
+        "詳しくはホームページの活動日記もご覧ください。\n" +
+        photoLine,
+      x:
+        "𝕏 投稿（ダミー）\n\n" +
+        short + "\n" +
+        "#えがおのきろく",
+      devLog:
+        "【Smile AI Studio 開発ログ】\n" +
+        "日時：" + today.toISOString() + "\n" +
+        "入力：" + text + "\n" +
+        photoLine + "\n" +
+        "生成物：活動日記 / HP記事 / Instagram / Facebook / X / 開発ログ\n" +
+        "状態：ダミー生成（AI未接続）"
+    });
+  }
+
+  function renderSecretaryResults(results) {
+    var container = document.getElementById("secretary-results");
+    if (!container || !results) return;
+
+    var homepageText = results.diary
+      ? results.diary + "\n\n----------\n\n" + results.homepage
+      : results.homepage;
+
+    var cards = [
+      {
+        key: "homepage",
+        label: "ホームページ",
+        icon: "🌐",
+        text: homepageText,
+        primaryAction: true
+      },
+      { key: "instagram", label: "Instagram", icon: "📸", text: results.instagram },
+      { key: "facebook", label: "Facebook", icon: "📘", text: results.facebook },
+      { key: "x", label: "X", icon: "𝕏", text: results.x },
+      { key: "devLog", label: "開発ログ", icon: "🛠️", text: results.devLog }
+    ];
+
+    container.innerHTML = cards.map(function (card) {
+      var actionHtml = card.primaryAction
+        ? '<button type="button" class="btn btn--primary btn--touch btn-cursor-send" id="btn-cursor-send">' +
+            "Cursorへ送る</button>" +
+          '<p class="form-hint secretary-card__hint">CorporateSite更新用の完全な指示書をコピーします</p>'
+        : '<button type="button" class="btn btn--secondary btn--touch btn-secretary-copy" data-copy-key="' +
+            escapeHtml(card.key) + '">コピー</button>';
+
+      return (
+        '<article class="secretary-card' + (card.primaryAction ? " secretary-card--primary" : "") +
+          '" data-secretary-key="' + escapeHtml(card.key) + '">' +
+          '<div class="secretary-card__head">' +
+            '<h4 class="secretary-card__title">' +
+              escapeHtml(card.icon + " " + card.label) +
+            "</h4>" +
+          "</div>" +
+          '<div class="secretary-card__body">' + escapeHtml(card.text) + "</div>" +
+          '<div class="secretary-card__actions">' + actionHtml + "</div>" +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function handleSecretaryRun() {
+    var input = document.getElementById("secretary-input");
+    var text = input ? String(input.value || "").trim() : "";
+    if (!text) {
+      showToast("今日やったことを入力してください");
+      if (input) input.focus();
+      return;
+    }
+
+    var btn = document.getElementById("btn-secretary-run");
+    if (btn) btn.disabled = true;
+
+    generateSecretaryOutputs({
+      text: text,
+      photoName: secretaryPhotoName || ""
+    }).then(function (results) {
+      currentSecretaryResults = results;
+      currentCursorInstruction = "";
+      currentCursorHandoff = null;
+      renderSecretaryResults(results);
+      showSecretaryView("result");
+      showToast("下書きを作成しました");
+    }).catch(function () {
+      showToast("生成に失敗しました");
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function handleSecretaryResultsClick(e) {
+    var sendBtn = e.target.closest(".btn-cursor-send");
+    if (sendBtn) {
+      try {
+        var prepared = prepareCorporateSiteHandoff();
+        openCursorHandoffModal();
+        copyText(prepared.instruction).then(function () {
+          showToast("Cursor用の指示をコピーしました");
+        }).catch(function () {
+          showToast("自動コピーに失敗しました。「もう一度コピー」を押してください");
+        });
+      } catch (err) {
+        showToast("指示書の作成に失敗しました");
+      }
+      return;
+    }
+
+    var btn = e.target.closest(".btn-secretary-copy");
+    if (!btn || !currentSecretaryResults) return;
+    var key = btn.getAttribute("data-copy-key");
+    var map = {
+      instagram: currentSecretaryResults.instagram,
+      facebook: currentSecretaryResults.facebook,
+      x: currentSecretaryResults.x,
+      devLog: currentSecretaryResults.devLog
+    };
+    var text = map[key] || "";
+    if (!text) {
+      showToast("コピーする内容がありません");
+      return;
+    }
+    copyText(text).then(function () {
+      showToast("コピーしました");
+    }).catch(function () {
+      showToast("コピーに失敗しました");
+    });
+  }
+
+  /* ========== Cursorへ送る（CorporateSite連携） ========== */
+
+  function loadCursorHandoffs() {
+    try {
+      var raw = localStorage.getItem(CURSOR_HANDOFFS_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCursorHandoffs(list) {
+    try {
+      localStorage.setItem(CURSOR_HANDOFFS_KEY, JSON.stringify((list || []).slice(0, 30)));
+    } catch (e) { /* ignore */ }
+  }
+
+  function buildCorporateSiteInstruction(payload) {
+    payload = payload || currentSecretaryResults || {};
+    var publishDate = payload.publishDate || "";
+    var title = payload.articleTitle || "";
+    var body = payload.articleBody || "";
+    var photoName = payload.photoName || "";
+    var photoSection = photoName
+      ? ("写真名または写真メモ：\n" + photoName + "\n\n" +
+        "写真ファイルそのものはSmile AI Studioから送信されていません。\n" +
+        "写真がCorporateSite内に存在しない場合は、勝手に存在するものとしてHTMLへ追加しないこと。\n" +
+        "必要な保存先とファイル名を報告すること。")
+      : "写真：なし（写真なしの記事として追加する）";
+
+    return [
+      "【作業対象】",
+      "株式会社えがおのきろく公式ホームページ",
+      "CorporateSite",
+      "",
+      "【最初に確認すること】",
+      "・現在開いているプロジェクトがCorporateSiteであること",
+      "・SmileAIStudioではないこと",
+      "・対象ファイルが diary/index.htm であること",
+      "・既存ページの文字コードを確認すること",
+      "・既存の日記記事のHTML構造を確認すること",
+      "",
+      "【重要】",
+      "・Smile AI Studioのindex.html、style.css、script.jsは変更しない",
+      "・CorporateSite以外のファイルを変更しない",
+      "・既存の記事を削除しない",
+      "・既存デザインを壊さない",
+      "・文字コードを勝手に変更しない",
+      "・新しい記事は既存ルールに従った位置へ追加する",
+      "・GitHubへpushしない",
+      "・FTPアップロードしない",
+      "・本番公開しない",
+      "・ローカル確認まで行う",
+      "",
+      "【追加する活動日記】",
+      "公開日：",
+      publishDate,
+      "タイトル：",
+      title,
+      "本文：",
+      body,
+      "写真：",
+      photoName || "なし",
+      "",
+      "【作業内容】",
+      "1. CorporateSiteの構成を確認する",
+      "2. diary/index.htmを確認する",
+      "3. 既存の日記記事の形式を確認する",
+      "4. 新しい記事を既存形式に合わせて追加する",
+      "5. 写真の配置先と参照方法を確認する",
+      "6. 文字化けやHTML崩れがないか確認する",
+      "7. ローカル表示で記事を確認する",
+      "",
+      "【写真について】",
+      photoSection,
+      "",
+      "【完了報告】",
+      "・変更したファイル",
+      "・追加した記事",
+      "・写真の状態",
+      "・ローカル確認結果",
+      "・本番公開前に必要な作業",
+      "・残っている問題"
+    ].join("\n");
+  }
+
+  function prepareCorporateSiteHandoff(payload) {
+    if (!payload && !currentSecretaryResults) {
+      throw new Error("no results");
+    }
+    var source = payload || currentSecretaryResults;
+    var instruction = buildCorporateSiteInstruction(source);
+    currentCursorInstruction = instruction;
+
+    var handoff = {
+      id: "handoff-" + Date.now(),
+      createdAt: new Date().toISOString(),
+      sourceText: source.sourceText || "",
+      articleTitle: source.articleTitle || "",
+      articleBody: source.articleBody || "",
+      publishDate: source.publishDate || "",
+      photoName: source.photoName || "",
+      instruction: instruction,
+      status: "copied"
+    };
+    currentCursorHandoff = handoff;
+
+    var list = loadCursorHandoffs();
+    list.unshift(handoff);
+    saveCursorHandoffs(list);
+    return handoff;
+  }
+
+  function copyCorporateSiteInstruction(payload) {
+    var handoff = prepareCorporateSiteHandoff(payload);
+    return copyText(handoff.instruction).then(function () {
+      return { handoff: handoff, copied: true };
+    }).catch(function () {
+      return { handoff: handoff, copied: false };
+    });
+  }
+
+  function renderCursorInstructionPreview(handoff) {
+    var preview = document.getElementById("cursor-handoff-preview");
+    var full = document.getElementById("cursor-handoff-full");
+    var data = handoff || currentCursorHandoff || {};
+    if (preview) {
+      preview.innerHTML =
+        '<div class="cursor-handoff__summary">' +
+          "<p><strong>作業対象：</strong>CorporateSite</p>" +
+          "<p><strong>対象ファイル：</strong>diary/index.htm</p>" +
+          "<p><strong>記事タイトル：</strong>" + escapeHtml(data.articleTitle || "—") + "</p>" +
+          "<p><strong>公開日：</strong>" + escapeHtml(data.publishDate || "—") + "</p>" +
+        "</div>";
+    }
+    if (full) {
+      full.textContent = data.instruction || currentCursorInstruction || "";
+      full.hidden = true;
+    }
+    var showBtn = document.getElementById("btn-cursor-show-instruction");
+    if (showBtn) showBtn.textContent = "指示内容を見る";
+  }
+
+  function openCursorHandoffModal() {
+    if (!cursorHandoffModal) return;
+    registerAction("openCursorHandoff");
+
+    var photoNote = document.getElementById("cursor-handoff-photo-note");
+    var hasPhoto = !!(currentCursorHandoff && currentCursorHandoff.photoName);
+    if (photoNote) {
+      photoNote.textContent = hasPhoto
+        ? "写真をCorporateSiteの指定フォルダへ追加する作業が別途必要です"
+        : "写真なしの記事として指示書を作成しました";
+    }
+
+    renderCursorInstructionPreview(currentCursorHandoff);
+    cursorHandoffModal.classList.add("is-open");
+    cursorHandoffModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
+  function closeCursorHandoffModal() {
+    if (!cursorHandoffModal) return;
+    cursorHandoffModal.classList.remove("is-open");
+    cursorHandoffModal.setAttribute("aria-hidden", "true");
+    var full = document.getElementById("cursor-handoff-full");
+    if (full) full.hidden = true;
+    syncBodyScroll();
+  }
+
+  function openCursorAgent() {
+    try {
+      window.open(CURSOR_AGENT_URL, "_blank", "noopener,noreferrer");
+      showToast("Cursorを開きました。コピー済みの指示を貼り付けて送信してください");
+    } catch (e) {
+      showToast("Cursorを開けませんでした。手動で開いて貼り付けてください");
+    }
+  }
+
+  function handleCursorCopyAgain() {
+    var text = currentCursorInstruction ||
+      (currentCursorHandoff && currentCursorHandoff.instruction) || "";
+    if (!text) {
+      showToast("指示書がありません");
+      return;
+    }
+    copyText(text).then(function () {
+      showToast("もう一度コピーしました");
+    }).catch(function () {
+      showToast("コピーに失敗しました");
+    });
+  }
+
+  function handleToggleCursorInstruction() {
+    var full = document.getElementById("cursor-handoff-full");
+    var btn = document.getElementById("btn-cursor-show-instruction");
+    if (!full) return;
+    var open = full.hidden;
+    full.hidden = !open;
+    if (btn) btn.textContent = open ? "指示内容を閉じる" : "指示内容を見る";
+  }
+
   /* ========== Events ========== */
   onClick("btn-new-request", function () {
     openModal();
@@ -3921,6 +4415,45 @@
   onClick("btn-ai-request-hero", function () {
     openModal();
   }, "openRequestModalHero");
+
+  onClick("btn-ai-secretary", function () {
+    openAiSecretary();
+  }, "openAiSecretary");
+  onClick("secretary-close", closeAiSecretary, "closeAiSecretary");
+  onClick("btn-secretary-close-result", closeAiSecretary);
+  onClick("btn-secretary-run", handleSecretaryRun);
+  onClick("btn-secretary-again", function () {
+    showSecretaryView("input");
+    setTimeout(function () {
+      var input = document.getElementById("secretary-input");
+      if (input) input.focus();
+    }, 50);
+  });
+  onClick("btn-secretary-photo-clear", clearSecretaryPhoto);
+  var secretaryPhotoInput = document.getElementById("secretary-photo");
+  if (secretaryPhotoInput) {
+    secretaryPhotoInput.addEventListener("change", handleSecretaryPhotoChange);
+  }
+  var secretaryResultsEl = document.getElementById("secretary-results");
+  if (secretaryResultsEl) {
+    secretaryResultsEl.addEventListener("click", handleSecretaryResultsClick);
+  }
+  if (secretaryModal) {
+    secretaryModal.addEventListener("click", function (e) {
+      if (e.target === secretaryModal) closeAiSecretary();
+    });
+  }
+
+  onClick("cursor-handoff-close", closeCursorHandoffModal, "closeCursorHandoff");
+  onClick("btn-cursor-handoff-close", closeCursorHandoffModal);
+  onClick("btn-cursor-open", openCursorAgent, "openCursorAgent");
+  onClick("btn-cursor-copy-again", handleCursorCopyAgain);
+  onClick("btn-cursor-show-instruction", handleToggleCursorInstruction);
+  if (cursorHandoffModal) {
+    cursorHandoffModal.addEventListener("click", function (e) {
+      if (e.target === cursorHandoffModal) closeCursorHandoffModal();
+    });
+  }
 
   onClick("btn-quick-projects", function () {
     scrollToProjects();
@@ -4167,6 +4700,22 @@
     if (e.key !== "Escape") return;
     if (promptViewModal && promptViewModal.classList.contains("is-open")) {
       closePromptView();
+      return;
+    }
+    if (secretaryModal && secretaryModal.classList.contains("is-open")) {
+      if (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) {
+        closeCursorHandoffModal();
+        return;
+      }
+      if (secretaryResultView && !secretaryResultView.hidden) {
+        showSecretaryView("input");
+        return;
+      }
+      closeAiSecretary();
+      return;
+    }
+    if (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) {
+      closeCursorHandoffModal();
       return;
     }
     if (webCenterModal && webCenterModal.classList.contains("is-open")) {

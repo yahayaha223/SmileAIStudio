@@ -20,6 +20,19 @@
     </header>
 
     <main class="main">
+      <!-- AI秘書：今日何した？ -->
+      <section class="section" aria-labelledby="secretary-heading">
+        <h2 id="secretary-heading" class="section__title visually-hidden">AI秘書</h2>
+        <button type="button" class="secretary-hero" id="btn-ai-secretary">
+          <span class="secretary-hero__icon" aria-hidden="true">🤖</span>
+          <span class="secretary-hero__text">
+            <strong>今日何した？</strong>
+            <small>話すだけで、日記もSNSも下書きまで</small>
+          </span>
+          <span class="secretary-hero__chevron" aria-hidden="true">›</span>
+        </button>
+      </section>
+
       <!-- 今日やること -->
       <section class="section" aria-labelledby="today-heading">
         <h2 id="today-heading" class="section__title">
@@ -596,6 +609,80 @@
           <button type="button" class="btn btn--primary btn--block" id="btn-web-copy-instruction">コピーする</button>
           <button type="button" class="btn btn--secondary btn--block" id="btn-web-back-from-instruction">編集に戻る</button>
           <button type="button" class="btn btn--ghost btn--block" id="btn-web-instruction-to-menu">メニューに戻る</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI秘書モーダル -->
+  <div class="modal-overlay" id="secretary-modal" aria-hidden="true">
+    <div class="modal modal--secretary" role="dialog" aria-labelledby="secretary-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="secretary-title">🤖 今日何した？</h3>
+        <button type="button" class="modal__close" id="secretary-close" aria-label="閉じる">✕</button>
+      </div>
+
+      <div class="modal__body" id="secretary-input-view">
+        <label class="secretary-label" for="secretary-input">今日何した？</label>
+        <textarea
+          id="secretary-input"
+          class="secretary-textarea"
+          rows="8"
+          placeholder="例：ラグーナ蒲郡の縁日準備で、風船ダーツと射的を作った。"
+        ></textarea>
+
+        <div class="secretary-photo">
+          <label class="secretary-photo__label" for="secretary-photo">写真（任意）</label>
+          <input type="file" id="secretary-photo" accept="image/*" capture="environment">
+          <div class="secretary-photo__preview" id="secretary-photo-preview" hidden>
+            <img id="secretary-photo-img" alt="選択した写真のプレビュー">
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-secretary-photo-clear">写真を外す</button>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn--primary btn--block btn--touch secretary-submit" id="btn-secretary-run">
+          ✨ AIに任せる
+        </button>
+      </div>
+
+      <div class="modal__body" id="secretary-result-view" hidden>
+        <p class="form-hint" id="secretary-result-note">AIが下書きを作りました（今回はダミーです）</p>
+        <div class="secretary-results" id="secretary-results"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-secretary-again">もう一度書く</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-secretary-close-result">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cursor連携完了モーダル -->
+  <div class="modal-overlay" id="cursor-handoff-modal" aria-hidden="true">
+    <div class="modal modal--cursor-handoff" role="dialog" aria-labelledby="cursor-handoff-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="cursor-handoff-title">【Cursor用の指示をコピーしました】</h3>
+        <button type="button" class="modal__close" id="cursor-handoff-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <p class="cursor-handoff__lead">
+          次にCursorで<br>
+          「CorporateSite」プロジェクトを開き、<br>
+          入力欄へ貼り付けて送信してください。
+        </p>
+        <p class="form-hint" id="cursor-handoff-photo-note"></p>
+        <p class="form-hint cursor-handoff__notice">
+          写真ファイルはCursorへ自動転送されません。<br>
+          この操作は指示書のコピーまでです。CorporateSiteはまだ変更されていません。
+        </p>
+
+        <div class="cursor-handoff__preview" id="cursor-handoff-preview"></div>
+        <pre class="prompt-result__text cursor-handoff__full" id="cursor-handoff-full" hidden></pre>
+
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--primary btn--touch" id="btn-cursor-open">Cursorを開く</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-cursor-copy-again">もう一度コピー</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-cursor-show-instruction">指示内容を見る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-cursor-handoff-close">閉じる</button>
         </div>
       </div>
     </div>
