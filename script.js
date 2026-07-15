@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.5.0",
-    build: 35,
+    version: "1.6.0",
+    build: 36,
     updatedAt: "2026-07-15"
   };
 
   var DEV_ROADMAP = {
-    progress: 92,
+    progress: 94,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -44,7 +44,9 @@
       "AI会議ログ",
       "Cursor完了報告 → AI会議ログ取り込み",
       "LINE双方向司令塔 MVP",
-      "LINE判断 → 会議ログ自動保存"
+      "LINE判断 → 会議ログ自動保存",
+      "LINE自然会話AI秘書",
+      "司令塔コマンド＋自由会話"
     ],
     upcoming: [
       { label: "GitHub自動Push", status: "準備中" },
@@ -358,7 +360,8 @@
     history: "/.netlify/functions/api-command-history",
     projects: "/.netlify/functions/api-project-status",
     meetingLogs: "/.netlify/functions/api-meeting-logs",
-    sendTest: "/.netlify/functions/line-send-test"
+    sendTest: "/.netlify/functions/line-send-test",
+    resetChat: "/.netlify/functions/api-chat-memory-reset"
   };
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
@@ -2003,6 +2006,7 @@
       { id: "line-command-modal", label: "LINE司令塔モーダル" },
       { id: "line-status-panel", label: "LINE接続状況パネル" },
       { id: "btn-line-send-test", label: "LINEテスト送信ボタン" },
+      { id: "btn-line-reset-chat", label: "LINE会話リセットボタン" },
       { id: "btn-cursor-report-import", label: "Cursor報告取り込みボタン" },
       { id: "meeting-import-view", label: "取り込みモーダル（貼り付け）" },
       { id: "cursor-report-input", label: "Cursor報告貼り付け欄" },
@@ -2672,7 +2676,7 @@
   }
 
   function checkLineApiEndpoints() {
-    var required = ["status", "history", "projects", "meetingLogs", "sendTest"];
+    var required = ["status", "history", "projects", "meetingLogs", "sendTest", "resetChat"];
     var missing = required.filter(function (k) {
       return !LINE_API[k] || String(LINE_API[k]).indexOf("/.netlify/functions/") !== 0;
     });
@@ -2774,6 +2778,73 @@
     return makeCheckResult("line-schedule", "Scheduled Function設定", "ok",
       "スケジュール定義を確認しました",
       lineStatusCache.schedule || "0 23 * * * (UTC) = 日本時間 08:00");
+  }
+
+  function checkOpenAiKeyStatus() {
+    if (!lineStatusCache) {
+      return makeCheckResult("openai-key", "OPENAI_API_KEY設定状況", "unknown",
+        "未確認（API未接続）",
+        "LINE司令塔API接続後に確認できます。未設定でも本体公開は禁止しません。");
+    }
+    var secrets = lineStatusCache.secrets || {};
+    if (secrets.OPENAI_API_KEY === "設定済み" || (lineStatusCache.aiSecretary && lineStatusCache.aiSecretary.enabled)) {
+      return makeCheckResult("openai-key", "OPENAI_API_KEY設定状況", "ok",
+        "OpenAI APIキーは設定済みです", "値そのものは表示しません");
+    }
+    return makeCheckResult("openai-key", "OPENAI_API_KEY設定状況", "warn",
+      "OPENAI_API_KEY が未設定です（司令塔コマンドは利用可）",
+      "Netlify環境変数へ OPENAI_API_KEY を追加してください");
+  }
+
+  function checkAiChatFunctionDef() {
+    var hasReset = !!(LINE_API && LINE_API.resetChat);
+    var hasStatus = !!(LINE_API && LINE_API.status);
+    if (!hasReset || !hasStatus) {
+      return makeCheckResult("ai-chat-def", "AI会話Function定義", "fail",
+        "AI会話関連のAPI定義が不足しています", "");
+    }
+    return makeCheckResult("ai-chat-def", "AI会話Function定義", "ok",
+      "AI会話用APIパスを確認しました",
+      "status / resetChat / shared ai-secretary");
+  }
+
+  function checkChatMemoryStorage() {
+    if (!lineApiConnected || !lineStatusCache) {
+      return makeCheckResult("chat-memory", "会話履歴ストレージ", "unknown",
+        "未確認（API未接続）", "kv-store / Blobs 経由で chatMemory を保存します");
+    }
+    var count = lineStatusCache.aiSecretary ? lineStatusCache.aiSecretary.chatMemoryCount : null;
+    return makeCheckResult("chat-memory", "会話履歴ストレージ", "ok",
+      "会話履歴ストレージへアクセスできました",
+      "件数: " + (count == null ? "—" : count));
+  }
+
+  function checkCommandAndChatCoexist() {
+    var hasLineApi = !!(LINE_API && LINE_API.status && LINE_API.sendTest);
+    var hasAi = !!(LINE_API && LINE_API.resetChat);
+    if (!hasLineApi || !hasAi) {
+      return makeCheckResult("cmd-chat-coexist", "司令塔コマンドとの共存", "fail",
+        "司令塔またはAI会話の定義が不足しています", "");
+    }
+    return makeCheckResult("cmd-chat-coexist", "司令塔コマンドとの共存", "ok",
+      "コマンドと自由会話の入口が両立しています",
+      "優先: 数字選択 → 明示コマンド → 自由会話");
+  }
+
+  function checkOpenAiSafeFallback() {
+    if (!lineStatusCache) {
+      return makeCheckResult("openai-fallback", "API未設定時の安全動作", "unknown",
+        "未確認",
+        "未設定時は安全な案内文を返し、既存コマンドは継続する設計です");
+    }
+    if (lineStatusCache.aiSecretary && lineStatusCache.aiSecretary.enabled) {
+      return makeCheckResult("openai-fallback", "API未設定時の安全動作", "ok",
+        "OpenAI設定済み（未設定時フォールバックも実装済み）",
+        "キー未設定時もメニュー/ヘルプは動作します");
+    }
+    return makeCheckResult("openai-fallback", "API未設定時の安全動作", "warn",
+      "OpenAI未設定のため自然会話は案内文になります（公開禁止にはしません）",
+      "司令塔コマンドは継続利用できます");
   }
 
   function calculateOverallHealth(results) {
@@ -2995,7 +3066,12 @@
       ["line-webhook", "最終Webhook受信", checkLineWebhookMeta],
       ["line-send", "最終メッセージ送信", checkLineLastSend],
       ["line-admin", "管理者ID設定", checkLineAdminId],
-      ["line-schedule", "Scheduled Function設定", checkLineScheduleConfig]
+      ["line-schedule", "Scheduled Function設定", checkLineScheduleConfig],
+      ["openai-key", "OPENAI_API_KEY設定状況", checkOpenAiKeyStatus],
+      ["ai-chat-def", "AI会話Function定義", checkAiChatFunctionDef],
+      ["chat-memory", "会話履歴ストレージ", checkChatMemoryStorage],
+      ["cmd-chat-coexist", "司令塔コマンドとの共存", checkCommandAndChatCoexist],
+      ["openai-fallback", "API未設定時の安全動作", checkOpenAiSafeFallback]
     ];
 
     latestSystemCheckResults = checks.map(function (item) {
@@ -4804,9 +4880,14 @@
       ["接続", status.ok ? "正常" : "注意", status.ok ? "is-ok" : "is-warn"],
       ["設定完了", status.configured ? "設定済み" : "未設定", status.configured ? "is-ok" : "is-warn"],
       ["管理者取得モード", status.bootstrapMode ? "ON（User ID収集中）" : "OFF", status.bootstrapMode ? "is-warn" : "is-ok"],
+      ["自然会話AI", (status.aiSecretary && status.aiSecretary.enabled) ? "設定済み" : "未設定", (status.aiSecretary && status.aiSecretary.enabled) ? "is-ok" : "is-warn"],
+      ["OpenAI API", (status.aiSecretary && status.aiSecretary.openai) || "未設定", lineValueClass((status.aiSecretary && status.aiSecretary.openai) || "未設定")],
+      ["会話履歴件数", String((status.aiSecretary && status.aiSecretary.chatMemoryCount) != null ? status.aiSecretary.chatMemoryCount : "—"), ""],
+      ["最終AI応答", formatLineDate(status.aiSecretary && status.aiSecretary.lastAiReplyAt), ""],
       ["LINE_CHANNEL_SECRET", secrets.LINE_CHANNEL_SECRET || "未設定", lineValueClass(secrets.LINE_CHANNEL_SECRET)],
       ["LINE_CHANNEL_ACCESS_TOKEN", secrets.LINE_CHANNEL_ACCESS_TOKEN || "未設定", lineValueClass(secrets.LINE_CHANNEL_ACCESS_TOKEN)],
       ["LINE_ADMIN_USER_ID", secrets.LINE_ADMIN_USER_ID || "未設定", lineValueClass(secrets.LINE_ADMIN_USER_ID)],
+      ["OPENAI_API_KEY", secrets.OPENAI_API_KEY || "未設定", lineValueClass(secrets.OPENAI_API_KEY)],
       ["APP_BASE_URL", secrets.APP_BASE_URL || "未設定", lineValueClass(secrets.APP_BASE_URL)],
       ["最終Webhook", formatLineDate(status.lastWebhookAt), ""],
       ["最終朝送信", formatLineDate(status.lastMorningPushAt), ""],
@@ -4854,6 +4935,27 @@
       showToast("User ID をコピーしました。Netlify に貼り付けてください");
     }).catch(function () {
       showToast("コピーに失敗しました");
+    });
+  }
+
+  function handleLineResetChat() {
+    if (!window.confirm("自由会話の履歴だけをリセットしますか？\n（プロジェクトや会議ログは消えません）")) return;
+    var btn = document.getElementById("btn-line-reset-chat");
+    if (btn) btn.disabled = true;
+    fetchLineJson(LINE_API.resetChat, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}"
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast("会話履歴をリセットしました");
+        return refreshLineCommandData();
+      }
+      showToast("リセットできませんでした");
+    }).catch(function () {
+      showToast("リセットできませんでした");
+    }).finally(function () {
+      if (btn) btn.disabled = false;
     });
   }
 
@@ -6081,6 +6183,7 @@
   });
   onClick("btn-line-send-test", handleLineSendTest);
   onClick("btn-line-copy-userid", handleLineCopyUserId);
+  onClick("btn-line-reset-chat", handleLineResetChat);
   if (lineCommandModal) {
     lineCommandModal.addEventListener("click", function (e) {
       if (e.target === lineCommandModal) closeLineCommand();

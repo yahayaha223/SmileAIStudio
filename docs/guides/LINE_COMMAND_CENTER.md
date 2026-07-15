@@ -44,6 +44,8 @@ Smile AI Studio v1.5.0 の LINE Messaging API 連携（MVP）です。
 | `LINE_CHANNEL_ACCESS_TOKEN` | 長期 Channel Access Token |
 | `LINE_ADMIN_USER_ID` | 司令塔を操作できる管理者の User ID |
 | `APP_BASE_URL` | 公開サイトのベースURL（任意） |
+| `OPENAI_API_KEY` | 自然会話AI秘書（Responses API）用。ブラウザには渡しません |
+| `OPENAI_MODEL` | 任意。未設定時は `gpt-4.1-mini` |
 
 値そのものは GitHub に保存しません。`.env` は `.gitignore` 済みです。
 
@@ -166,9 +168,11 @@ npx netlify dev
 | 今日 | 今日の最優先 |
 | 履歴 | 直近5件の履歴 |
 | 取消 | 会話取消 |
-| ヘルプ | コマンド一覧 |
+| リセット / 会話リセット | 自由会話履歴のみ削除 |
+| （自由文） | AI秘書チャッピーが自然返信 |
 
-会話状態は約24時間で期限切れです。
+会話状態（司令塔の数字選択）は約24時間で期限切れです。
+自由会話履歴は直近約16件を保持します。
 
 ---
 

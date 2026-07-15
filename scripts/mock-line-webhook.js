@@ -140,6 +140,35 @@ async function handleLikeWebhook(payload, config) {
     ok: pickReplies[0] && pickReplies[0].text.indexOf("豊川稲荷") !== -1
   });
 
+  // 6) freechat with mocked OpenAI
+  var openaiClient = require(path.join(shared, "openai-client"));
+  openaiClient.createResponse = async function () {
+    return {
+      ok: true,
+      text: "こんにちは、YAHA😊\n今日もお疲れさまです。",
+      latencyMs: 8,
+      error: "",
+      usage: null
+    };
+  };
+  process.env.OPENAI_API_KEY = "sk-mock";
+  var chatBody = JSON.stringify({ events: [buildEvent("こんにちは", config.adminUserId, "evt-chat-hi")] });
+  var chatSig = signature.createLineSignature(chatBody, config.channelSecret);
+  var chatParsed = verifyAndParse(chatBody, chatSig, config.channelSecret);
+  var chatReplies = await handleLikeWebhook(chatParsed.payload, config);
+  results.push({
+    name: "自由会話 こんにちは → AI自然返信",
+    ok: chatReplies[0] && chatReplies[0].text && chatReplies[0].text.indexOf("YAHA") !== -1
+  });
+
+  // 7) freechat without key still leaves commands ok (already covered); here no-key message
+  delete process.env.OPENAI_API_KEY;
+  var noKey = await router.routeIncomingText(config.adminUserId, "今日は暑いね");
+  results.push({
+    name: "OPENAI未設定時の安全案内",
+    ok: noKey.text.indexOf("AI会話機能はまだ設定されていません") !== -1
+  });
+
   var fail = 0;
   results.forEach(function (r) {
     console.log((r.ok ? "OK" : "NG") + "  " + r.name);

@@ -5,6 +5,8 @@ var conversationStore = require("./conversation-store");
 var historyStore = require("./command-history-store");
 var meetingLogStore = require("./meeting-log-store");
 var messages = require("./message-builder");
+var memoryStore = require("./conversation-memory-store");
+var aiSecretary = require("./ai-secretary");
 
 function normalizeCommand(text) {
   return String(text || "")
@@ -22,8 +24,38 @@ function mapCommand(normalized) {
   if (/^(履歴|history)$/.test(normalized)) return { type: "history" };
   if (/^(取消|取り消し|キャンセル|cancel)$/.test(normalized)) return { type: "cancel" };
   if (/^(ヘルプ|help|使い方)$/.test(normalized)) return { type: "help" };
+  if (/^(会話リセット|リセット|reset)$/.test(normalized)) return { type: "chat-reset" };
   if (/^\d{1,2}$/.test(normalized)) return { type: "number", value: Number(normalized) };
-  return { type: "unknown", raw: normalized };
+  return { type: "freechat", raw: normalized };
+}
+
+/**
+ * Classify with priority:
+ * 1) number during active command stage
+ * 2) explicit commands
+ * 3) free chat
+ * 4) future company-op candidate (handled inside AI path)
+ */
+function classifyIncoming(text, conversation) {
+  var cmd = mapCommand(normalizeCommand(text));
+  var activeStage = conversation && !conversation.expired &&
+    (conversation.stage === "awaiting-project" ||
+      conversation.stage === "awaiting-action" ||
+      conversation.stage === "awaiting-confirmation");
+
+  if (cmd.type === "number" && activeStage) {
+    return { route: "command-number", cmd: cmd };
+  }
+  if (cmd.type === "number" && !activeStage) {
+    return { route: "command-number", cmd: cmd };
+  }
+  if (cmd.type !== "freechat" && cmd.type !== "empty") {
+    return { route: "command", cmd: cmd };
+  }
+  if (cmd.type === "empty") {
+    return { route: "empty", cmd: cmd };
+  }
+  return { route: "freechat", cmd: cmd };
 }
 
 async function replyMenu(userId) {
@@ -120,7 +152,6 @@ async function handleActionSelection(userId, project, choiceIndex) {
     };
   }
 
-  // Non-destructive action: prepare only
   await historyStore.addCommandHistory({
     type: "prepare-action",
     summary: project.name + " / " + action + "（実行準備）",
@@ -165,87 +196,103 @@ async function handleActionSelection(userId, project, choiceIndex) {
   };
 }
 
-async function routeIncomingText(userId, text) {
-  var cmd = mapCommand(normalizeCommand(text));
-  var conversation = await conversationStore.getConversation(userId);
-
-  if (cmd.type === "help") return { text: messages.buildHelpMessage(), ok: true };
-  if (cmd.type === "menu") return { text: await replyMenu(userId), ok: true };
-  if (cmd.type === "cancel") {
-    await conversationStore.clearConversation(userId);
-    return { text: "現在の会話を取り消しました。『メニュー』で再開できます。", ok: true };
-  }
-  if (cmd.type === "today") {
-    var priority = await projectStore.getTodayPriority();
+async function handleCommandNumber(userId, cmd, conversation) {
+  if (!conversation || conversation.expired) {
     return {
-      text: "【今日の最優先】\n" + (priority.projectName || "未設定") +
-        (priority.note ? "\n課題：" + priority.note : ""),
-      ok: true
-    };
-  }
-  if (cmd.type === "status") {
-    var projects = await projectStore.listEnabledProjects();
-    var today = await projectStore.getTodayPriority();
-    return { text: messages.buildStatusMessage(projects, today), ok: true };
-  }
-  if (cmd.type === "history") {
-    var history = await historyStore.listCommandHistory(5);
-    if (!history.length) return { text: "まだ操作履歴がありません。", ok: true };
-    return {
-      text: "【直近の履歴】\n" + history.map(function (h, i) {
-        return (i + 1) + ". " + h.summary;
-      }).join("\n"),
-      ok: true
-    };
-  }
-
-  if (cmd.type === "number") {
-    if (!conversation || conversation.expired) {
-      return {
-        text: "選択内容の期限が切れています。\n『メニュー』と送信して、もう一度始めてください",
-        ok: false
-      };
-    }
-    if (conversation.stage === "awaiting-project") {
-      var project = await projectStore.getProjectByChoiceNumber(cmd.value);
-      if (!project) {
-        return { text: "選択肢の番号が範囲外です。一覧の数字で選んでください。", ok: false };
-      }
-      var actionMsg = messages.buildProjectActionMessage(project);
-      await conversationStore.saveConversation(userId, {
-        stage: "awaiting-action",
-        selectedProjectId: project.id,
-        choices: actionMsg.choices
-      });
-      return { text: actionMsg.text, ok: true };
-    }
-    if (conversation.stage === "awaiting-action") {
-      var selected = await projectStore.getProjectById(conversation.selectedProjectId);
-      if (!selected) {
-        await conversationStore.clearConversation(userId);
-        return { text: "プロジェクト情報が見つかりません。『メニュー』からやり直してください。", ok: false };
-      }
-      return handleActionSelection(userId, selected, cmd.value - 1);
-    }
-    return {
-      text: "いま選べる数字の質問がありません。『メニュー』と送ってください。",
+      text: "選択内容の期限が切れています。\n『メニュー』と送信して、もう一度始めてください",
       ok: false
     };
   }
+  if (conversation.stage === "awaiting-project") {
+    var project = await projectStore.getProjectByChoiceNumber(cmd.value);
+    if (!project) {
+      return { text: "選択肢の番号が範囲外です。一覧の数字で選んでください。", ok: false };
+    }
+    var actionMsg = messages.buildProjectActionMessage(project);
+    await conversationStore.saveConversation(userId, {
+      stage: "awaiting-action",
+      selectedProjectId: project.id,
+      choices: actionMsg.choices
+    });
+    return { text: actionMsg.text, ok: true };
+  }
+  if (conversation.stage === "awaiting-action") {
+    var selected = await projectStore.getProjectById(conversation.selectedProjectId);
+    if (!selected) {
+      await conversationStore.clearConversation(userId);
+      return { text: "プロジェクト情報が見つかりません。『メニュー』からやり直してください。", ok: false };
+    }
+    return handleActionSelection(userId, selected, cmd.value - 1);
+  }
+  return {
+    text: "いま選べる数字の質問がありません。『メニュー』と送ってください。",
+    ok: false
+  };
+}
 
-  if (cmd.type === "empty") {
+async function routeIncomingText(userId, text) {
+  var conversation = await conversationStore.getConversation(userId);
+  var classified = classifyIncoming(text, conversation);
+  var cmd = classified.cmd;
+
+  if (classified.route === "empty") {
     return { text: "メッセージが空です。『ヘルプ』で使い方を確認できます。", ok: false };
   }
 
-  return {
-    text: "わかりませんでした。『メニュー』または『ヘルプ』と送ってください。",
-    ok: false
-  };
+  if (classified.route === "command-number") {
+    return handleCommandNumber(userId, cmd, conversation);
+  }
+
+  if (classified.route === "command") {
+    if (cmd.type === "help") return { text: messages.buildHelpMessage(), ok: true, source: "command" };
+    if (cmd.type === "menu") return { text: await replyMenu(userId), ok: true, source: "command" };
+    if (cmd.type === "cancel") {
+      await conversationStore.clearConversation(userId);
+      return { text: "現在の会話を取り消しました。『メニュー』で再開できます。", ok: true, source: "command" };
+    }
+    if (cmd.type === "today") {
+      var priority = await projectStore.getTodayPriority();
+      return {
+        text: "【今日の最優先】\n" + (priority.projectName || "未設定") +
+          (priority.note ? "\n課題：" + priority.note : ""),
+        ok: true,
+        source: "command"
+      };
+    }
+    if (cmd.type === "status") {
+      var projects = await projectStore.listEnabledProjects();
+      var today = await projectStore.getTodayPriority();
+      return { text: messages.buildStatusMessage(projects, today), ok: true, source: "command" };
+    }
+    if (cmd.type === "history") {
+      var history = await historyStore.listCommandHistory(5);
+      if (!history.length) return { text: "まだ操作履歴がありません。", ok: true, source: "command" };
+      return {
+        text: "【直近の履歴】\n" + history.map(function (h, i) {
+          return (i + 1) + ". " + h.summary;
+        }).join("\n"),
+        ok: true,
+        source: "command"
+      };
+    }
+    if (cmd.type === "chat-reset") {
+      await memoryStore.clearChatMemory(userId);
+      return {
+        text: "自由会話の履歴をリセットしました。\nプロジェクトや会議ログなどの会社データは消していません。",
+        ok: true,
+        source: "command"
+      };
+    }
+  }
+
+  // Free chat → AI secretary (OpenAI Responses API)
+  return aiSecretary.replyAsSecretary(userId, text);
 }
 
 module.exports = {
   normalizeCommand: normalizeCommand,
   mapCommand: mapCommand,
+  classifyIncoming: classifyIncoming,
   routeIncomingText: routeIncomingText,
   replyMenu: replyMenu
 };

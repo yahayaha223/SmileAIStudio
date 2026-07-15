@@ -69,12 +69,14 @@ test("env: maskSecret never echoes value", function () {
 
 test("commands: normalize / map メニュー", function () {
   assert.strictEqual(router.mapCommand(router.normalizeCommand(" メニュー ")).type, "menu");
-  assert.strictEqual(router.mapCommand(router.normalizeCommand("メニュウ")).type, "unknown");
+  assert.strictEqual(router.mapCommand(router.normalizeCommand("メニュウ")).type, "freechat");
   assert.strictEqual(router.mapCommand(router.normalizeCommand("状況")).type, "status");
   assert.strictEqual(router.mapCommand(router.normalizeCommand("きょう")).type, "today");
   assert.strictEqual(router.mapCommand(router.normalizeCommand("履歴")).type, "history");
   assert.strictEqual(router.mapCommand(router.normalizeCommand("取消")).type, "cancel");
   assert.strictEqual(router.mapCommand(router.normalizeCommand("ヘルプ")).type, "help");
+  assert.strictEqual(router.mapCommand(router.normalizeCommand("リセット")).type, "chat-reset");
+  assert.strictEqual(router.mapCommand(router.normalizeCommand("こんにちは")).type, "freechat");
   assert.deepStrictEqual(router.mapCommand(router.normalizeCommand("4")), { type: "number", value: 4 });
 });
 
@@ -173,6 +175,103 @@ test("defaults: five standard projects", function () {
     assert.ok(done.text.indexOf("自動保存") !== -1);
     assert.strictEqual(done.ok, true);
   });
+
+  var openaiClient = require(path.join(shared, "openai-client"));
+  var memoryStore = require(path.join(shared, "conversation-memory-store"));
+  var aiSecretary = require(path.join(shared, "ai-secretary"));
+  var originalCreate = openaiClient.createResponse;
+
+  await testAsync("freechat: OPENAI_API_KEY missing → safe message", async function () {
+    var prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    var result = await router.routeIncomingText("U-nokey", "こんにちは");
+    assert.ok(result.text.indexOf("AI会話機能はまだ設定されていません") !== -1);
+    assert.ok(result.text.indexOf("メニュー") !== -1);
+    if (prev == null) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev;
+  });
+
+  await testAsync("commands still work when OpenAI missing", async function () {
+    var prev = process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    var help = await router.routeIncomingText("U-nokey2", "ヘルプ");
+    assert.ok(help.text.indexOf("メニュー") !== -1);
+    assert.ok(help.source === "command" || help.ok === true);
+    var menu = await router.routeIncomingText("U-nokey2", "メニュー");
+    assert.ok(menu.text.indexOf("Smile AI Studio") !== -1 || menu.text.indexOf("プロジェクト") !== -1);
+    if (prev == null) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = prev;
+  });
+
+  await testAsync("freechat: mocked OpenAI natural reply + memory", async function () {
+    process.env.OPENAI_API_KEY = "sk-test-mock-key";
+    var calls = [];
+    openaiClient.createResponse = async function (apiKey, options) {
+      calls.push({ apiKeyLen: String(apiKey || "").length, inputLen: (options.input || []).length });
+      return {
+        ok: true,
+        text: "こんにちは、YAHA😊\n今日もお疲れさまです。今から何を一緒に進めましょうか？",
+        latencyMs: 12,
+        error: "",
+        usage: { input_tokens: 10, output_tokens: 20 }
+      };
+    };
+    var userId = "U-chat-" + Date.now();
+    await memoryStore.clearChatMemory(userId);
+    var hello = await router.routeIncomingText(userId, "こんにちは");
+    assert.ok(hello.text.indexOf("YAHA") !== -1);
+    assert.strictEqual(hello.ok, true);
+    assert.ok(calls.length >= 1);
+    assert.ok(String(calls[0].apiKeyLen) !== "0");
+
+    openaiClient.createResponse = async function (apiKey, options) {
+      var lastUser = (options.input || []).filter(function (m) { return m.role === "user"; }).pop();
+      assert.ok((options.input || []).length >= 2, "should include prior memory");
+      return {
+        ok: true,
+        text: "暑い日は無理しない方がいいですね😅\n短時間で進めやすい作業から提案できます。",
+        latencyMs: 10,
+        error: "",
+        usage: null
+      };
+    };
+    var hot = await router.routeIncomingText(userId, "今日は暑くて頭が回らない");
+    assert.ok(hot.text.indexOf("暑い") !== -1 || hot.text.indexOf("無理") !== -1);
+    var count = await memoryStore.getChatMemoryCount(userId);
+    assert.ok(count >= 2);
+
+    var reset = await router.routeIncomingText(userId, "リセット");
+    assert.ok(reset.text.indexOf("リセット") !== -1);
+    assert.strictEqual(await memoryStore.getChatMemoryCount(userId), 0);
+  });
+
+  await testAsync("freechat: OpenAI failure keeps commands usable", async function () {
+    process.env.OPENAI_API_KEY = "sk-test-mock-key";
+    openaiClient.createResponse = async function () {
+      return { ok: false, text: "", error: "openai_http_error", latencyMs: 5, usage: null };
+    };
+    var fail = await router.routeIncomingText("U-fail", "こんにちは");
+    assert.ok(fail.text.indexOf("接続できません") !== -1);
+    var help = await router.routeIncomingText("U-fail", "ヘルプ");
+    assert.ok(help.text.indexOf("メニュー") !== -1);
+  });
+
+  await testAsync("company op candidate does not auto-update", async function () {
+    var cand = aiSecretary.detectCompanyOpCandidate("人形焼きは一旦保留かな");
+    assert.ok(cand);
+    assert.ok(cand.hint.indexOf("変更しますか") !== -1);
+  });
+
+  await testAsync("openai extractOutputText", async function () {
+    var text = openaiClient.extractOutputText({
+      output: [{
+        type: "message",
+        content: [{ type: "output_text", text: "抽出OK" }]
+      }]
+    });
+    assert.strictEqual(text, "抽出OK");
+  });
+
+  openaiClient.createResponse = originalCreate;
+  delete process.env.OPENAI_API_KEY;
 
   console.log("");
   console.log("passed=" + passed + " failed=" + failed);

@@ -13,7 +13,8 @@ function getLineConfig() {
     channelSecret: getEnv("LINE_CHANNEL_SECRET"),
     accessToken: getEnv("LINE_CHANNEL_ACCESS_TOKEN"),
     adminUserId: getEnv("LINE_ADMIN_USER_ID"),
-    appBaseUrl: getEnv("APP_BASE_URL")
+    appBaseUrl: getEnv("APP_BASE_URL"),
+    openaiApiKey: getEnv("OPENAI_API_KEY")
   };
 }
 
@@ -42,11 +43,16 @@ function isAdminBootstrapMode(config) {
   return assertWebhookReady(config).length === 0 && !config.adminUserId;
 }
 
+function hasOpenAiKey(config) {
+  return !!(config && config.openaiApiKey);
+}
+
 module.exports = {
   getEnv: getEnv,
   getLineConfig: getLineConfig,
   maskSecret: maskSecret,
   assertLineConfigured: assertLineConfigured,
   assertWebhookReady: assertWebhookReady,
-  isAdminBootstrapMode: isAdminBootstrapMode
+  isAdminBootstrapMode: isAdminBootstrapMode,
+  hasOpenAiKey: hasOpenAiKey
 };
