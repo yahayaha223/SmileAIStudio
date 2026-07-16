@@ -91,11 +91,10 @@ function getBlobStore() {
     return null;
   }
   try {
-    // strong: LINE save → Company Brain read must see the same overlay immediately
-    BLOB_STORE_CACHE = blobs.getStore({
-      name: "smile-line-command",
-      consistency: "strong"
-    });
+    // Use string form (same as historical project/chat stores).
+    // Do NOT set store-level consistency:"strong" — on Functions v1 that can throw
+    // BlobsConsistencyError when uncachedEdgeURL is missing, breaking ALL writes.
+    BLOB_STORE_CACHE = blobs.getStore("smile-line-command");
     return BLOB_STORE_CACHE;
   } catch (e) {
     LAST_BLOB_ERROR = e && e.message ? e.message : "getStore_failed";
@@ -106,8 +105,6 @@ function getBlobStore() {
       message: LAST_BLOB_ERROR,
       connected: BLOBS_CONNECTED
     }));
-    // Do not permanently poison the cache on MissingBlobsEnvironmentError —
-    // a later connectFromLambdaEvent may fix it.
     BLOB_STORE_CACHE = undefined;
     return null;
   }
@@ -120,7 +117,13 @@ async function kvGet(key) {
   var store = getBlobStore();
   if (store) {
     try {
-      var value = await store.get(key, { type: "json", consistency: "strong" });
+      // Prefer strong read when supported; fall back to eventual.
+      var value = null;
+      try {
+        value = await store.get(key, { type: "json", consistency: "strong" });
+      } catch (strongErr) {
+        value = await store.get(key, { type: "json" });
+      }
       if (value != null) {
         MEMORY[key] = value;
         return value;
@@ -217,7 +220,7 @@ function describeStorage() {
     blobsConnected: BLOBS_CONNECTED,
     blobStore: store ? "smile-line-command" : "",
     fileStore: DATA_FILE,
-    consistency: "strong",
+    consistency: "eventual(default)+strong-read-fallback",
     lastBlobError: LAST_BLOB_ERROR || ""
   };
 }

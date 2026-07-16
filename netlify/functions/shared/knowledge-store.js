@@ -6,7 +6,7 @@ var kv = require("./kv-store");
 var loader = require("./knowledge-loader");
 
 var OVERLAY_KEY = "knowledgeOverlays"; // legacy single-object key
-var OVERLAY_PREFIX = "knowledgeOverlay:"; // per-file keys (preferred)
+var OVERLAY_PREFIX = "knowledgeOverlay__"; // per-file keys (preferred; avoid ':' in blob keys)
 var CANDIDATES_KEY = "knowledgeCandidates";
 
 var FILE_META = {
@@ -171,7 +171,19 @@ async function saveKnowledgeDocument(fileName, content) {
       ok: false,
       error: onNetlify && !overlayOk ? "overlay_persist_failed" : "save_failed",
       diskWriteOk: !!disk.ok,
-      overlayOk: !!overlayOk
+      overlayOk: !!overlayOk,
+      storage: storage,
+      destinations: {
+        disk: { ok: !!disk.ok, path: disk.path || "", ephemeral: onNetlify },
+        overlay: {
+          ok: !!overlayOk,
+          key: overlayKeyFor(file),
+          blobsAvailable: !!storage.blobsAvailable,
+          blobsConnected: !!storage.blobsConnected,
+          blobStore: storage.blobStore || "",
+          lastBlobError: storage.lastBlobError || ""
+        }
+      }
     };
   }
 
