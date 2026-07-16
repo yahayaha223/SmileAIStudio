@@ -157,6 +157,9 @@
         </div>
 
         <div class="more-menu">
+          <button type="button" class="more-menu__btn" id="btn-company-brain">
+            <span aria-hidden="true">🧠</span> 会社の脳
+          </button>
           <button type="button" class="more-menu__btn" id="btn-new-request">
             <span aria-hidden="true">🤖</span> AIへ依頼（ルーター）
           </button>
@@ -167,7 +170,7 @@
             <span aria-hidden="true">🌐</span> Web管理センター
           </button>
           <button type="button" class="more-menu__btn" id="btn-meeting-logs">
-            <span aria-hidden="true">🧠</span> AI会議ログ
+            <span aria-hidden="true">📒</span> AI会議ログ
           </button>
           <button type="button" class="more-menu__btn" id="btn-line-command">
             <span aria-hidden="true">💬</span> LINE司令塔
@@ -950,6 +953,46 @@
           <button type="button" class="btn btn--secondary btn--touch" id="btn-line-reset-chat">会話履歴をリセット</button>
           <button type="button" class="btn btn--line btn--touch" id="btn-line-send-test">テストメッセージを送る</button>
           <button type="button" class="btn btn--ghost btn--touch" id="btn-line-command-close">閉じる</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 会社の脳 Company Brain -->
+  <div class="modal-overlay" id="company-brain-modal" aria-hidden="true">
+    <div class="modal modal--brain" role="dialog" aria-labelledby="company-brain-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="company-brain-title">🧠 会社の脳</h3>
+        <button type="button" class="modal__close" id="company-brain-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <div id="brain-list-view">
+          <p class="form-hint">会社の知識（knowledge）をスマホで管理します。</p>
+          <label class="brain-search-label" for="brain-search">検索</label>
+          <input type="search" id="brain-search" class="brain-search" placeholder="全知識から検索…" autocomplete="off">
+          <div id="brain-search-results" class="brain-search-results" hidden></div>
+          <p class="brain-section-title">知識カテゴリ</p>
+          <div id="brain-file-list" class="brain-file-list">
+            <p class="empty-message">読み込み中…</p>
+          </div>
+          <p class="brain-section-title">AI保存候補</p>
+          <div id="brain-candidates" class="brain-candidates">
+            <p class="empty-message">候補はありません</p>
+          </div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-brain-refresh">再読み込み</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-brain-close-list">閉じる</button>
+          </div>
+        </div>
+        <div id="brain-edit-view" hidden>
+          <p class="brain-edit-meta" id="brain-edit-meta"></p>
+          <label class="brain-search-label" for="brain-editor">内容（Markdown）</label>
+          <textarea id="brain-editor" class="brain-editor" rows="14"></textarea>
+          <p class="form-error" id="brain-edit-error" hidden></p>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-brain-save">保存する</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-brain-back">一覧に戻る</button>
+          </div>
         </div>
       </div>
     </div>

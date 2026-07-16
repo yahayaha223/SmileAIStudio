@@ -1,6 +1,6 @@
 {
   "name": "smile-ai-studio",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "description": "Smile AI Studio — LINE command center backend",
   "engines": {

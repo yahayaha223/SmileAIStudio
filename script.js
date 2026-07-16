@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.7.0",
-    build: 37,
+    version: "1.8.0",
+    build: 38,
     updatedAt: "2026-07-16"
   };
 
   var DEV_ROADMAP = {
-    progress: 95,
+    progress: 96,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -47,11 +47,11 @@
       "LINE判断 → 会議ログ自動保存",
       "LINE自然会話AI秘書",
       "司令塔コマンド＋自由会話",
-      "会社knowledge読込（LINE回答）"
+      "会社knowledge読込（LINE回答）",
+      "Company Brain 管理画面"
     ],
     upcoming: [
-      { label: "会社の知識 編集画面", status: "準備中" },
-      { label: "knowledge保存確認フロー", status: "準備中" },
+      { label: "knowledge保存確認フロー高度化", status: "準備中" },
       { label: "GitHub自動Push", status: "準備中" },
       { label: "Netlify公開", status: "準備中" },
       { label: "Cursor自動実行（要確認）", status: "準備中" },
@@ -354,6 +354,10 @@
   var meetingImportPreviewView = document.getElementById("meeting-import-preview-view");
   var currentCursorImportDraft = null;
   var lineCommandModal = document.getElementById("line-command-modal");
+  var companyBrainModal = document.getElementById("company-brain-modal");
+  var brainDocsCache = [];
+  var brainCurrentFile = "";
+  var brainSaving = false;
   var lineStatusCache = null;
   var lineHistoryCache = null;
   var lineApiConnected = false;
@@ -364,7 +368,8 @@
     projects: "/.netlify/functions/api-project-status",
     meetingLogs: "/.netlify/functions/api-meeting-logs",
     sendTest: "/.netlify/functions/line-send-test",
-    resetChat: "/.netlify/functions/api-chat-memory-reset"
+    resetChat: "/.netlify/functions/api-chat-memory-reset",
+    knowledge: "/.netlify/functions/api-knowledge"
   };
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
@@ -450,6 +455,7 @@
       (webCenterModal && webCenterModal.classList.contains("is-open")) ||
       (meetingLogsModal && meetingLogsModal.classList.contains("is-open")) ||
       (lineCommandModal && lineCommandModal.classList.contains("is-open")) ||
+      (companyBrainModal && companyBrainModal.classList.contains("is-open")) ||
       (secretaryModal && secretaryModal.classList.contains("is-open")) ||
       (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
@@ -2010,6 +2016,11 @@
       { id: "line-status-panel", label: "LINE接続状況パネル" },
       { id: "btn-line-send-test", label: "LINEテスト送信ボタン" },
       { id: "btn-line-reset-chat", label: "LINE会話リセットボタン" },
+      { id: "btn-company-brain", label: "会社の脳入口" },
+      { id: "company-brain-modal", label: "会社の脳モーダル" },
+      { id: "brain-file-list", label: "会社の脳一覧" },
+      { id: "brain-search", label: "会社の脳検索" },
+      { id: "brain-editor", label: "会社の脳編集欄" },
       { id: "btn-cursor-report-import", label: "Cursor報告取り込みボタン" },
       { id: "meeting-import-view", label: "取り込みモーダル（貼り付け）" },
       { id: "cursor-report-input", label: "Cursor報告貼り付け欄" },
@@ -2439,6 +2450,19 @@
     });
 
     checkOne({
+      id: "company-brain-modal",
+      label: "会社の脳モーダル",
+      closeIds: ["company-brain-close", "btn-brain-close-list", "btn-brain-back"],
+      openAction: "openCompanyBrain",
+      openCheck: function () {
+        return typeof openCompanyBrain === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openCompanyBrain;
+      },
+      closeCheck: function () { return typeof closeCompanyBrain === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
       id: "secretary-modal",
       label: "AI秘書モーダル",
       closeIds: ["secretary-close", "btn-secretary-close-result"],
@@ -2679,7 +2703,7 @@
   }
 
   function checkLineApiEndpoints() {
-    var required = ["status", "history", "projects", "meetingLogs", "sendTest", "resetChat"];
+    var required = ["status", "history", "projects", "meetingLogs", "sendTest", "resetChat", "knowledge"];
     var missing = required.filter(function (k) {
       return !LINE_API[k] || String(LINE_API[k]).indexOf("/.netlify/functions/") !== 0;
     });
@@ -2848,6 +2872,57 @@
     return makeCheckResult("openai-fallback", "API未設定時の安全動作", "warn",
       "OpenAI未設定のため自然会話は案内文になります（公開禁止にはしません）",
       "司令塔コマンドは継続利用できます");
+  }
+
+  function checkCompanyBrainDom() {
+    var ids = [
+      "btn-company-brain",
+      "company-brain-modal",
+      "brain-file-list",
+      "brain-search",
+      "brain-editor",
+      "btn-brain-save",
+      "brain-candidates"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("brain-dom", "knowledge編集画面", "fail",
+        "会社の脳の必須要素が不足しています", missing.join(", "));
+    }
+    return makeCheckResult("brain-dom", "knowledge編集画面", "ok",
+      "Company Brain 管理画面DOMは揃っています", "確認: " + ids.length + "件");
+  }
+
+  function checkCompanyBrainSearch() {
+    if (typeof handleBrainSearchInput !== "function") {
+      return makeCheckResult("brain-search", "knowledge検索", "fail", "検索処理がありません", "");
+    }
+    if (!document.getElementById("brain-search")) {
+      return makeCheckResult("brain-search", "knowledge検索", "fail", "検索バーがありません", "");
+    }
+    return makeCheckResult("brain-search", "knowledge検索", "ok",
+      "検索バーと検索処理を確認しました", "API: action=search / ローカルフォールバックあり");
+  }
+
+  function checkCompanyBrainSave() {
+    if (typeof handleBrainSave !== "function" || !LINE_API.knowledge) {
+      return makeCheckResult("brain-save", "knowledge保存", "fail", "保存処理が不足しています", "");
+    }
+    return makeCheckResult("brain-save", "knowledge保存", "ok",
+      "保存API呼び出し処理を確認しました",
+      "POST api-knowledge action=save（disk+overlay）");
+  }
+
+  function checkCompanyBrainLoad() {
+    if (!LINE_API.knowledge) {
+      return makeCheckResult("brain-load", "knowledge読み込み", "fail", "API定義がありません", "");
+    }
+    if (typeof refreshCompanyBrain !== "function") {
+      return makeCheckResult("brain-load", "knowledge読み込み", "fail", "再読込処理がありません", "");
+    }
+    return makeCheckResult("brain-load", "knowledge読み込み", "ok",
+      "読み込み処理を確認しました（API不通時は画面内で注意表示）",
+      "GET api-knowledge?full=1");
   }
 
   function calculateOverallHealth(results) {
@@ -3074,7 +3149,11 @@
       ["ai-chat-def", "AI会話Function定義", checkAiChatFunctionDef],
       ["chat-memory", "会話履歴ストレージ", checkChatMemoryStorage],
       ["cmd-chat-coexist", "司令塔コマンドとの共存", checkCommandAndChatCoexist],
-      ["openai-fallback", "API未設定時の安全動作", checkOpenAiSafeFallback]
+      ["openai-fallback", "API未設定時の安全動作", checkOpenAiSafeFallback],
+      ["brain-dom", "knowledge編集画面", checkCompanyBrainDom],
+      ["brain-search", "knowledge検索", checkCompanyBrainSearch],
+      ["brain-save", "knowledge保存", checkCompanyBrainSave],
+      ["brain-load", "knowledge読み込み", checkCompanyBrainLoad]
     ];
 
     latestSystemCheckResults = checks.map(function (item) {
@@ -5026,6 +5105,232 @@
     syncBodyScroll();
   }
 
+  /* ========== Company Brain ========== */
+
+  function showBrainView(name) {
+    var list = document.getElementById("brain-list-view");
+    var edit = document.getElementById("brain-edit-view");
+    if (list) list.hidden = name !== "list";
+    if (edit) edit.hidden = name !== "edit";
+  }
+
+  function renderBrainFileList(files) {
+    var el = document.getElementById("brain-file-list");
+    if (!el) return;
+    if (!files || !files.length) {
+      el.innerHTML = '<p class="empty-message">知識ファイルがありません</p>';
+      return;
+    }
+    el.innerHTML = files.map(function (f) {
+      return (
+        '<button type="button" class="brain-card" data-brain-file="' + escapeHtml(f.file) + '">' +
+          '<p class="brain-card__title"><span aria-hidden="true">' + escapeHtml(f.icon || "📄") + "</span> " +
+            escapeHtml(f.label || f.file) + "</p>" +
+          '<p class="brain-card__meta">' + escapeHtml(f.file) + " ・ " +
+            escapeHtml(String(f.chars || 0)) + "文字" +
+            (f.source ? " ・ " + escapeHtml(f.source) : "") +
+          "</p>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function renderBrainCandidates(candidates) {
+    var el = document.getElementById("brain-candidates");
+    if (!el) return;
+    if (!candidates || !candidates.length) {
+      el.innerHTML = '<p class="empty-message">候補はありません</p>';
+      return;
+    }
+    el.innerHTML = candidates.map(function (c) {
+      return (
+        '<div class="brain-candidate" data-candidate-id="' + escapeHtml(c.id) + '">' +
+          '<p class="brain-candidate__title">' + escapeHtml(c.file) + " / " + escapeHtml(c.title) + "</p>" +
+          '<p class="brain-candidate__body">' + escapeHtml(c.content) + "</p>" +
+          '<p class="brain-card__meta">保存しますか？</p>' +
+          '<div class="brain-candidate__actions">' +
+            '<button type="button" class="btn btn--primary btn-brain-cand-save" data-candidate-id="' +
+              escapeHtml(c.id) + '">①保存</button>' +
+            '<button type="button" class="btn btn--ghost btn-brain-cand-reject" data-candidate-id="' +
+              escapeHtml(c.id) + '">②却下</button>' +
+          "</div>" +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function renderBrainSearchResults(hits) {
+    var el = document.getElementById("brain-search-results");
+    if (!el) return;
+    if (!hits) {
+      el.hidden = true;
+      el.innerHTML = "";
+      return;
+    }
+    el.hidden = false;
+    if (!hits.length) {
+      el.innerHTML = '<p class="empty-message">一致する知識がありません</p>';
+      return;
+    }
+    el.innerHTML = hits.map(function (h) {
+      return (
+        '<button type="button" class="brain-card" data-brain-file="' + escapeHtml(h.file) + '">' +
+          '<p class="brain-card__title"><span aria-hidden="true">' + escapeHtml(h.icon || "📄") + "</span> " +
+            escapeHtml(h.label || h.file) + "</p>" +
+          '<p class="brain-card__snippet">' + escapeHtml(h.snippet || "") + "</p>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function refreshCompanyBrain() {
+    var listEl = document.getElementById("brain-file-list");
+    if (listEl) listEl.innerHTML = '<p class="empty-message">読み込み中…</p>';
+    return Promise.all([
+      fetchLineJson(LINE_API.knowledge + "?full=1").catch(function () { return null; }),
+      fetchLineJson(LINE_API.knowledge + "?action=candidates").catch(function () { return null; })
+    ]).then(function (pair) {
+      var docsRes = pair[0];
+      var candRes = pair[1];
+      if (!docsRes || !docsRes.ok) {
+        brainDocsCache = [];
+        if (listEl) {
+          listEl.innerHTML = '<p class="empty-message">会社の脳へ接続できません。Netlify Functions 起動後に再読み込みしてください。</p>';
+        }
+      } else {
+        brainDocsCache = Array.isArray(docsRes.files) ? docsRes.files : [];
+        renderBrainFileList(brainDocsCache);
+      }
+      renderBrainCandidates((candRes && candRes.ok && candRes.candidates) || []);
+    });
+  }
+
+  function openCompanyBrain() {
+    if (!companyBrainModal) return;
+    showBrainView("list");
+    renderBrainSearchResults(null);
+    var search = document.getElementById("brain-search");
+    if (search) search.value = "";
+    companyBrainModal.classList.add("is-open");
+    companyBrainModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    refreshCompanyBrain();
+  }
+
+  function closeCompanyBrain() {
+    if (!companyBrainModal) return;
+    companyBrainModal.classList.remove("is-open");
+    companyBrainModal.setAttribute("aria-hidden", "true");
+    brainCurrentFile = "";
+    showBrainView("list");
+    syncBodyScroll();
+  }
+
+  function openBrainEditor(fileName) {
+    var doc = brainDocsCache.find(function (d) { return d.file === fileName; });
+    if (!doc) {
+      showToast("ファイルを開けませんでした");
+      return;
+    }
+    brainCurrentFile = doc.file;
+    var meta = document.getElementById("brain-edit-meta");
+    var editor = document.getElementById("brain-editor");
+    var err = document.getElementById("brain-edit-error");
+    if (meta) {
+      meta.textContent = (doc.icon || "") + " " + (doc.label || doc.file) + "（" + doc.file + "）";
+    }
+    if (editor) editor.value = doc.content || "";
+    if (err) {
+      err.hidden = true;
+      err.textContent = "";
+    }
+    showBrainView("edit");
+  }
+
+  function handleBrainSave() {
+    if (brainSaving || !brainCurrentFile) return;
+    var editor = document.getElementById("brain-editor");
+    var err = document.getElementById("brain-edit-error");
+    var content = editor ? editor.value : "";
+    brainSaving = true;
+    var btn = document.getElementById("btn-brain-save");
+    if (btn) btn.disabled = true;
+    fetchLineJson(LINE_API.knowledge, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save", file: brainCurrentFile, content: content })
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast("保存しました");
+        return refreshCompanyBrain().then(function () {
+          showBrainView("list");
+        });
+      }
+      if (err) {
+        err.hidden = false;
+        err.textContent = "保存できませんでした。接続を確認してください。";
+      }
+      showToast("保存できませんでした");
+    }).catch(function () {
+      showToast("保存できませんでした");
+    }).finally(function () {
+      brainSaving = false;
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function handleBrainSearchInput() {
+    var search = document.getElementById("brain-search");
+    var q = search ? String(search.value || "").trim() : "";
+    if (!q) {
+      renderBrainSearchResults(null);
+      return;
+    }
+    fetchLineJson(LINE_API.knowledge + "?action=search&q=" + encodeURIComponent(q))
+      .then(function (data) {
+        if (!data || !data.ok) {
+          // local fallback search
+          var hits = [];
+          var lower = q.toLowerCase();
+          brainDocsCache.forEach(function (d) {
+            var hay = ((d.label || "") + "\n" + d.file + "\n" + (d.content || "")).toLowerCase();
+            if (hay.indexOf(lower) === -1) return;
+            hits.push({
+              file: d.file,
+              label: d.label,
+              icon: d.icon,
+              snippet: String(d.content || "").slice(0, 100)
+            });
+          });
+          renderBrainSearchResults(hits);
+          return;
+        }
+        renderBrainSearchResults(data.hits || []);
+      })
+      .catch(function () {
+        renderBrainSearchResults([]);
+      });
+  }
+
+  function handleBrainCandidateAction(id, action) {
+    fetchLineJson(LINE_API.knowledge, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: action === "save" ? "candidate-save" : "candidate-reject",
+        id: id
+      })
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast(action === "save" ? "知識へ保存しました" : "候補を却下しました");
+        return refreshCompanyBrain();
+      }
+      showToast("処理できませんでした");
+    }).catch(function () {
+      showToast("処理できませんでした");
+    });
+  }
+
   function handleLineSendTest() {
     if (lineTestSending) return;
     if (!window.confirm("管理者へテストメッセージを送信しますか？")) return;
@@ -6181,6 +6486,43 @@
   }, "openLineCommand");
   onClick("line-command-close", closeLineCommand, "closeLineCommand");
   onClick("btn-line-command-close", closeLineCommand);
+  onClick("btn-company-brain", function () {
+    openCompanyBrain();
+  }, "openCompanyBrain");
+  onClick("company-brain-close", closeCompanyBrain, "closeCompanyBrain");
+  onClick("btn-brain-close-list", closeCompanyBrain);
+  onClick("btn-brain-back", function () {
+    showBrainView("list");
+  });
+  onClick("btn-brain-refresh", function () {
+    refreshCompanyBrain();
+  });
+  onClick("btn-brain-save", handleBrainSave);
+  var brainSearch = document.getElementById("brain-search");
+  if (brainSearch) {
+    brainSearch.addEventListener("input", function () {
+      handleBrainSearchInput();
+    });
+  }
+  if (companyBrainModal) {
+    companyBrainModal.addEventListener("click", function (e) {
+      if (e.target === companyBrainModal) closeCompanyBrain();
+      var fileBtn = e.target.closest ? e.target.closest("[data-brain-file]") : null;
+      if (fileBtn && fileBtn.getAttribute("data-brain-file")) {
+        openBrainEditor(fileBtn.getAttribute("data-brain-file"));
+        return;
+      }
+      var saveBtn = e.target.closest ? e.target.closest(".btn-brain-cand-save") : null;
+      if (saveBtn) {
+        handleBrainCandidateAction(saveBtn.getAttribute("data-candidate-id"), "save");
+        return;
+      }
+      var rejectBtn = e.target.closest ? e.target.closest(".btn-brain-cand-reject") : null;
+      if (rejectBtn) {
+        handleBrainCandidateAction(rejectBtn.getAttribute("data-candidate-id"), "reject");
+      }
+    });
+  }
   onClick("btn-line-refresh", function () {
     refreshLineCommandData();
   });

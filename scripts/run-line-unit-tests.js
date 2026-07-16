@@ -16,6 +16,7 @@ var env = require(path.join(shared, "env"));
 var dedupe = require(path.join(shared, "event-dedupe"));
 var defaults = require(path.join(shared, "defaults"));
 var knowledgeLoader = require(path.join(shared, "knowledge-loader"));
+var knowledgeStore = require(path.join(shared, "knowledge-store"));
 var promptBuilder = require(path.join(shared, "secretary-system-prompt"));
 
 var passed = 0;
@@ -146,6 +147,36 @@ test("knowledge: load all md files", function () {
 });
 
 (async function main() {
+  await testAsync("knowledge-store: list/search/save/candidate", async function () {
+    var docs = await knowledgeStore.listKnowledgeDocuments();
+    assert.ok(docs.length >= 9);
+    var company = docs.find(function (d) { return d.file === "company.md"; });
+    assert.ok(company && company.content.indexOf("えがおのきろく") !== -1);
+
+    var hits = knowledgeStore.searchKnowledgeDocuments(docs, "Vision");
+    assert.ok(hits.length >= 1);
+
+    var marker = "\n\n<!-- brain-test-" + Date.now() + " -->\n";
+    var todoDoc = docs.find(function (d) { return d.file === "todo.md"; });
+    var saved = await knowledgeStore.saveKnowledgeDocument(
+      "todo.md",
+      String((todoDoc && todoDoc.content) || "") + marker
+    );
+    assert.strictEqual(saved.ok, true);
+
+    var reloaded = await knowledgeStore.getKnowledgeDocument("todo.md");
+    assert.ok(reloaded.content.indexOf("brain-test-") !== -1);
+
+    var cand = knowledgeStore.detectKnowledgeSaveCandidate("人形焼きの販売開始を11月へ変更する");
+    assert.ok(cand && cand.file === "products.md");
+    var added = await knowledgeStore.addCandidate(cand);
+    assert.ok(added && added.id);
+    var pending = await knowledgeStore.listCandidates();
+    assert.ok(pending.some(function (c) { return c.id === added.id; }));
+    var rejected = await knowledgeStore.resolveCandidate(added.id, "reject");
+    assert.strictEqual(rejected.ok, true);
+  });
+
   await testAsync("router: menu sets awaiting-project", async function () {
     var text = await router.replyMenu("U-test-admin");
     assert.ok(text.indexOf("メニュー") !== -1 || text.indexOf("プロジェクト") !== -1);

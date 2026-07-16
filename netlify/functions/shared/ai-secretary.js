@@ -6,6 +6,7 @@ var memoryStore = require("./conversation-memory-store");
 var promptBuilder = require("./secretary-system-prompt");
 var projectStore = require("./project-store");
 var knowledgeLoader = require("./knowledge-loader");
+var knowledgeStore = require("./knowledge-store");
 
 var MSG_NO_KEY =
   "AI会話機能はまだ設定されていません。\n『メニュー』または『ヘルプ』は利用できます。";
@@ -60,10 +61,14 @@ async function replyAsSecretary(userId, text) {
   var companyContext = await buildContextSafe();
   var knowledge;
   try {
-    knowledge = knowledgeLoader.loadAllKnowledge();
+    knowledge = await knowledgeStore.loadEffectiveKnowledge();
   } catch (e) {
     console.log("[ai-secretary] knowledge load failed", e && e.message ? e.message : e);
-    knowledge = { ok: false, combined: "", loadedFiles: 0 };
+    try {
+      knowledge = knowledgeLoader.loadAllKnowledge();
+    } catch (e2) {
+      knowledge = { ok: false, combined: "", loadedFiles: 0 };
+    }
   }
   var knowledgeSection = knowledgeLoader.buildKnowledgePromptSection(knowledge);
   var instructions = promptBuilder.buildSecretarySystemPrompt(companyContext, knowledgeSection);
@@ -114,6 +119,21 @@ async function replyAsSecretary(userId, text) {
   var candidate = detectCompanyOpCandidate(text);
   if (candidate && candidate.hint && reply.indexOf("変更しますか") === -1) {
     reply = reply + candidate.hint;
+  }
+
+  // Company Brain: queue durable-fact candidates for YAHA approval in the app UI
+  try {
+    var saveCand = knowledgeStore.detectKnowledgeSaveCandidate(text);
+    if (saveCand) {
+      var queued = await knowledgeStore.addCandidate(saveCand);
+      if (queued && reply.indexOf("保存候補") === -1) {
+        reply +=
+          "\n\n（Company Brain）この内容を会社の知識へ保存する候補に入れました。\n" +
+          "Smile AI Studio → その他 → 会社の脳 で確認できます。";
+      }
+    }
+  } catch (candErr) {
+    console.log("[ai-secretary] knowledge candidate queue failed");
   }
 
   // Do not let memory persistence block LINE reply after a successful OpenAI answer.
