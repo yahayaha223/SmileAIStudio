@@ -7,6 +7,8 @@ var MEMORY = Object.create(null);
 var DATA_DIR = path.join(process.cwd(), ".data");
 var DATA_FILE = path.join(DATA_DIR, "line-store.json");
 var BLOB_STORE_CACHE = undefined; // undefined=uninitialized, null=unavailable, object=store
+var LAST_BLOB_ERROR = "";
+var BLOBS_CONNECTED = false;
 
 function isNetlifyRuntime() {
   return !!(
@@ -41,28 +43,74 @@ function writeFileStore(obj) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(obj, null, 2), "utf8");
 }
 
+function loadBlobsModule() {
+  try {
+    return require("@netlify/blobs");
+  } catch (e) {
+    LAST_BLOB_ERROR = e && e.message ? e.message : "blobs_require_failed";
+    return null;
+  }
+}
+
+/**
+ * Required for Netlify Functions v1 (exports.handler / Lambda compatibility).
+ * Call at the start of every handler before kvGet/kvSet.
+ */
+function connectFromLambdaEvent(event) {
+  BLOB_STORE_CACHE = undefined;
+  LAST_BLOB_ERROR = "";
+  BLOBS_CONNECTED = false;
+  var blobs = loadBlobsModule();
+  if (!blobs) return false;
+  try {
+    if (typeof blobs.connectLambda === "function" && event) {
+      blobs.connectLambda(event);
+      BLOBS_CONNECTED = true;
+    } else {
+      // Functions v2 / local: connectLambda may be unnecessary
+      BLOBS_CONNECTED = true;
+    }
+    return true;
+  } catch (e) {
+    LAST_BLOB_ERROR = e && e.message ? e.message : "connectLambda_failed";
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      stage: "kv-blobs-connect",
+      ok: false,
+      message: LAST_BLOB_ERROR
+    }));
+    return false;
+  }
+}
+
 function getBlobStore() {
   if (BLOB_STORE_CACHE !== undefined) return BLOB_STORE_CACHE;
+  var blobs = loadBlobsModule();
+  if (!blobs || typeof blobs.getStore !== "function") {
+    BLOB_STORE_CACHE = null;
+    return null;
+  }
   try {
-    var blobs = require("@netlify/blobs");
-    if (blobs && typeof blobs.getStore === "function") {
-      // strong: LINE save → Company Brain read must see the same overlay immediately
-      BLOB_STORE_CACHE = blobs.getStore({
-        name: "smile-line-command",
-        consistency: "strong"
-      });
-      return BLOB_STORE_CACHE;
-    }
+    // strong: LINE save → Company Brain read must see the same overlay immediately
+    BLOB_STORE_CACHE = blobs.getStore({
+      name: "smile-line-command",
+      consistency: "strong"
+    });
+    return BLOB_STORE_CACHE;
   } catch (e) {
+    LAST_BLOB_ERROR = e && e.message ? e.message : "getStore_failed";
     console.log(JSON.stringify({
       at: new Date().toISOString(),
       stage: "kv-blobs-init",
       ok: false,
-      message: e && e.message ? e.message : "blobs_init_failed"
+      message: LAST_BLOB_ERROR,
+      connected: BLOBS_CONNECTED
     }));
+    // Do not permanently poison the cache on MissingBlobsEnvironmentError —
+    // a later connectFromLambdaEvent may fix it.
+    BLOB_STORE_CACHE = undefined;
+    return null;
   }
-  BLOB_STORE_CACHE = null;
-  return null;
 }
 
 /**
@@ -77,7 +125,6 @@ async function kvGet(key) {
         MEMORY[key] = value;
         return value;
       }
-      // Blobs miss: fall through to MEMORY/file (local dual-write / migration)
     } catch (e) {
       console.log(JSON.stringify({
         at: new Date().toISOString(),
@@ -112,6 +159,7 @@ async function kvSet(key, value) {
       backends.push("netlify-blobs");
     } catch (e) {
       blobError = e && e.message ? e.message : "blobs_set_failed";
+      LAST_BLOB_ERROR = blobError;
       console.log(JSON.stringify({
         at: new Date().toISOString(),
         stage: "kv-blobs-set",
@@ -120,6 +168,8 @@ async function kvSet(key, value) {
         message: blobError
       }));
     }
+  } else if (isNetlifyRuntime()) {
+    blobError = LAST_BLOB_ERROR || "blobs_unavailable";
   }
 
   MEMORY[key] = value;
@@ -146,6 +196,7 @@ async function kvSet(key, value) {
     blobOk: blobOk,
     fileOk: fileOk,
     netlify: isNetlifyRuntime(),
+    connected: BLOBS_CONNECTED,
     blobError: blobError || undefined,
     fileError: fileError || undefined
   }));
@@ -154,13 +205,20 @@ async function kvSet(key, value) {
 }
 
 function describeStorage() {
-  var hasBlobs = !!getBlobStore();
+  var store = null;
+  try {
+    store = getBlobStore();
+  } catch (e) {
+    store = null;
+  }
   return {
     netlify: isNetlifyRuntime(),
-    blobsAvailable: hasBlobs,
-    blobStore: hasBlobs ? "smile-line-command" : "",
+    blobsAvailable: !!store,
+    blobsConnected: BLOBS_CONNECTED,
+    blobStore: store ? "smile-line-command" : "",
     fileStore: DATA_FILE,
-    consistency: "strong"
+    consistency: "strong",
+    lastBlobError: LAST_BLOB_ERROR || ""
   };
 }
 
@@ -168,5 +226,6 @@ module.exports = {
   kvGet: kvGet,
   kvSet: kvSet,
   isNetlifyRuntime: isNetlifyRuntime,
-  describeStorage: describeStorage
+  describeStorage: describeStorage,
+  connectFromLambdaEvent: connectFromLambdaEvent
 };

@@ -1,6 +1,7 @@
 "use strict";
 
 var http = require("./shared/http");
+var kv = require("./shared/kv-store");
 var env = require("./shared/env");
 var memoryStore = require("./shared/conversation-memory-store");
 
@@ -9,6 +10,7 @@ var memoryStore = require("./shared/conversation-memory-store");
  * Does not delete projects / meeting logs / command history.
  */
 exports.handler = async function (event) {
+  kv.connectFromLambdaEvent(event);
   if (event.httpMethod === "OPTIONS") return http.options();
   if (event.httpMethod !== "POST") {
     return http.json(405, { ok: false, error: "method_not_allowed" });

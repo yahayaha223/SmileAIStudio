@@ -1,6 +1,7 @@
 "use strict";
 
 var http = require("./shared/http");
+var kv = require("./shared/kv-store");
 var knowledgeStore = require("./shared/knowledge-store");
 
 function parseBody(event) {
@@ -12,6 +13,7 @@ function parseBody(event) {
 }
 
 exports.handler = async function (event) {
+  kv.connectFromLambdaEvent(event);
   if (event.httpMethod === "OPTIONS") return http.options();
 
   var qs = event.queryStringParameters || {};

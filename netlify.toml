@@ -1,9 +1,11 @@
 [build]
+  command = "npm install"
   publish = "."
   functions = "netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
   included_files = ["netlify/functions/shared/**", "knowledge/**"]
 
 # Japan 08:00 = UTC 23:00 previous day

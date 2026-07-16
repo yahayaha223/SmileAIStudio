@@ -2,6 +2,7 @@
 
 var env = require("./shared/env");
 var http = require("./shared/http");
+var kv = require("./shared/kv-store");
 var lineClient = require("./shared/line-client");
 var messages = require("./shared/message-builder");
 var projectStore = require("./shared/project-store");
@@ -9,6 +10,7 @@ var projectStore = require("./shared/project-store");
 var lastSentAt = 0;
 
 exports.handler = async function (event) {
+  kv.connectFromLambdaEvent(event);
   if (event.httpMethod === "OPTIONS") return http.options();
   if (event.httpMethod !== "POST") {
     return http.json(405, { ok: false, error: "method_not_allowed" });

@@ -2,6 +2,7 @@
 
 var env = require("./shared/env");
 var http = require("./shared/http");
+var kv = require("./shared/kv-store");
 var signature = require("./shared/line-signature");
 var lineClient = require("./shared/line-client");
 var router = require("./shared/command-router");
@@ -31,6 +32,7 @@ async function rememberSeenUser(userId, sourceType) {
 }
 
 exports.handler = async function (event) {
+  kv.connectFromLambdaEvent(event);
   if (event.httpMethod === "OPTIONS") return http.options();
   if (event.httpMethod !== "POST") {
     return http.json(405, { ok: false, error: "method_not_allowed" });
