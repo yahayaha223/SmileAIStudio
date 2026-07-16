@@ -84,6 +84,18 @@
           </div>
         </section>
 
+        <!-- AI制作センター入口 -->
+        <section class="home-dash-card home-dash-card--creative" aria-labelledby="home-creative-heading">
+          <button type="button" class="home-creative-card" id="btn-creative-studio">
+            <span class="home-creative-card__icon" aria-hidden="true">🎨</span>
+            <span class="home-creative-card__body">
+              <span class="home-creative-card__title" id="home-creative-heading">AI制作センター</span>
+              <span class="home-creative-card__hint">LP・記事・SNS・アプリをスマホから依頼</span>
+            </span>
+            <span class="home-creative-card__chev" aria-hidden="true">›</span>
+          </button>
+        </section>
+
         <!-- ⑥ 今日の予定 -->
         <section class="home-dash-card" aria-labelledby="home-schedule-heading">
           <h2 class="home-dash-card__title" id="home-schedule-heading">
@@ -159,6 +171,12 @@
         <div class="more-menu">
           <button type="button" class="more-menu__btn" id="btn-company-brain">
             <span aria-hidden="true">🧠</span> 会社の脳
+          </button>
+          <button type="button" class="more-menu__btn" id="btn-task-manager">
+            <span aria-hidden="true">✅</span> タスク管理
+          </button>
+          <button type="button" class="more-menu__btn" id="btn-creative-studio-more">
+            <span aria-hidden="true">🎨</span> AI制作センター
           </button>
           <button type="button" class="more-menu__btn" id="btn-new-request">
             <span aria-hidden="true">🤖</span> AIへ依頼（ルーター）
@@ -998,6 +1016,317 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="task-manager-modal" aria-hidden="true">
+    <div class="modal modal--brain" role="dialog" aria-labelledby="task-manager-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="task-manager-title">✅ タスク管理</h3>
+        <button type="button" class="modal__close" id="task-manager-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <div id="task-list-view">
+          <div class="task-tabs" id="task-tabs" role="tablist">
+            <button type="button" class="task-tab is-active" data-task-bucket="today">今日</button>
+            <button type="button" class="task-tab" data-task-bucket="tomorrow">明日</button>
+            <button type="button" class="task-tab" data-task-bucket="overdue">超過</button>
+            <button type="button" class="task-tab" data-task-bucket="week">今週</button>
+            <button type="button" class="task-tab" data-task-bucket="open">すべて</button>
+            <button type="button" class="task-tab" data-task-bucket="completed">完了</button>
+          </div>
+          <label class="brain-search-label" for="task-search">検索</label>
+          <input type="search" id="task-search" class="brain-search" placeholder="タスクを検索…" autocomplete="off">
+          <div id="task-list" class="task-list">
+            <p class="empty-message">読み込み中…</p>
+          </div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-task-add">＋ 追加</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-task-import-md">todo.mdから取り込む</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-task-refresh">再読み込み</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-task-close-list">閉じる</button>
+          </div>
+        </div>
+        <div id="task-form-view" hidden>
+          <p class="brain-edit-meta" id="task-form-meta">タスクを追加</p>
+          <label class="brain-search-label" for="task-title">やること</label>
+          <input type="text" id="task-title" class="brain-search" maxlength="120" autocomplete="off">
+          <label class="brain-search-label" for="task-due">期限</label>
+          <input type="date" id="task-due" class="brain-search">
+          <label class="brain-search-label" for="task-priority">優先度</label>
+          <select id="task-priority" class="brain-search">
+            <option value="normal">通常</option>
+            <option value="high">高</option>
+            <option value="low">低</option>
+          </select>
+          <details class="task-details-fold">
+            <summary>詳細設定</summary>
+            <label class="brain-search-label" for="task-time">時刻</label>
+            <input type="time" id="task-time" class="brain-search">
+            <label class="brain-search-label" for="task-project">プロジェクトID</label>
+            <input type="text" id="task-project" class="brain-search" placeholder="任意" autocomplete="off">
+            <label class="brain-search-label" for="task-desc">説明</label>
+            <textarea id="task-desc" class="brain-editor" rows="3"></textarea>
+            <label class="brain-search-label" for="task-tags">タグ（カンマ区切り）</label>
+            <input type="text" id="task-tags" class="brain-search" autocomplete="off">
+          </details>
+          <p class="form-error" id="task-form-error" hidden></p>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-task-save">保存</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-task-cancel-form">キャンセル</button>
+          </div>
+        </div>
+        <div id="task-import-view" hidden>
+          <p class="brain-edit-meta">todo.md 取り込みプレビュー</p>
+          <div id="task-import-preview" class="task-list"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-task-import-run">取り込む</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-task-import-cancel">キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI制作センター -->
+  <div class="modal-overlay" id="creative-studio-modal" aria-hidden="true">
+    <div class="modal modal--brain" role="dialog" aria-labelledby="creative-studio-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="creative-studio-title">🎨 AI制作センター</h3>
+        <button type="button" class="modal__close" id="creative-studio-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <!-- メニュー -->
+        <div id="creative-menu-view">
+          <p class="form-hint">作りたいものを選んでください。AIが1問ずつ聞いて整理することもできます。</p>
+          <div class="creative-type-grid" id="creative-type-grid"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-interview-list">📂 ヒアリング一覧</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-creative-history">制作履歴</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-close-menu">閉じる</button>
+          </div>
+        </div>
+
+        <!-- ヒアリング一覧 -->
+        <div id="creative-interview-list-view" hidden>
+          <p class="form-hint">下書き・完了・制作済みのヒアリングです。カードを押すと続きから再開します。</p>
+          <div id="interview-list" class="creative-history-list"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-interview-list-back">メニューに戻る</button>
+          </div>
+        </div>
+
+        <!-- 下書きタイトル入力 -->
+        <div id="creative-draft-title-view" hidden>
+          <p class="brain-section-title">タイトルを入力してください</p>
+          <p class="form-hint">あとで一覧から探しやすい名前を付けます。</p>
+          <p class="form-hint">例：イベント相談LP / 豊川稲荷人形焼きLP / 夏休み縁日LP / 会社ホームページ</p>
+          <label class="brain-search-label" for="interview-draft-title-input">タイトル</label>
+          <input type="text" id="interview-draft-title-input" class="interview-answer-input" maxlength="80" placeholder="例：イベント相談LP" autocomplete="off">
+          <p class="form-error" id="interview-draft-title-error" role="alert" hidden></p>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-draft-title-save">保存</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-draft-title-cancel">キャンセル</button>
+          </div>
+        </div>
+
+        <!-- 入力方式選択 -->
+        <div id="creative-mode-view" hidden>
+          <p class="brain-edit-meta" id="creative-mode-heading">制作の進め方</p>
+          <p class="form-hint">おすすめは AI ヒアリングです。質問に答えるだけで制作要件ができます。</p>
+          <div class="creative-mode-stack">
+            <button type="button" class="creative-mode-card creative-mode-card--primary" id="btn-creative-mode-ai">
+              <span class="creative-mode-card__icon" aria-hidden="true">✨</span>
+              <span class="creative-mode-card__title">AIにヒアリングしてもらう</span>
+              <span class="creative-mode-card__hint">1問ずつ質問。考える負担が少ない</span>
+            </button>
+            <button type="button" class="creative-mode-card" id="btn-creative-mode-manual">
+              <span class="creative-mode-card__icon" aria-hidden="true">✏️</span>
+              <span class="creative-mode-card__title">自分で入力する</span>
+              <span class="creative-mode-card__hint">従来どおりフォームに記入</span>
+            </button>
+          </div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-mode-back">種類選択に戻る</button>
+          </div>
+        </div>
+
+        <!-- AIヒアリング（1問ずつ） -->
+        <div id="creative-interview-view" hidden>
+          <p class="interview-progress" id="interview-progress">ヒアリング 1 / 1</p>
+          <div class="interview-chat" id="interview-chat" aria-live="polite">
+            <div class="interview-bubble interview-bubble--ai" id="interview-question-bubble">
+              <p class="interview-bubble__who">AI</p>
+              <p class="interview-bubble__text" id="interview-question-text"></p>
+              <ul class="interview-examples" id="interview-examples" hidden></ul>
+            </div>
+          </div>
+          <div class="interview-choices" id="interview-choices" hidden></div>
+          <label class="brain-search-label" for="interview-answer-input">あなたの回答</label>
+          <textarea id="interview-answer-input" class="interview-answer-input" rows="3" maxlength="800" placeholder="ここに入力…"></textarea>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch interview-send-btn" id="btn-interview-send">送信</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-interview-draft-save">💾 下書き保存</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-interview-back">戻る</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-interview-abort">ヒアリングを中断</button>
+          </div>
+        </div>
+
+        <!-- 制作要件（ヒアリング完了） -->
+        <div id="creative-brief-view" hidden>
+          <p class="brain-section-title">制作要件</p>
+          <p class="form-hint">内容を確認・修正してから制作依頼にできます。</p>
+          <div class="creative-brief-fields" id="creative-brief-fields"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-brief-to-job">この内容で制作依頼を作る</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-brief-edit-answers">回答を修正する</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-brief-save-exit">ヒアリングを保存して終了</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-brief-restart">最初からやり直す</button>
+          </div>
+        </div>
+
+        <!-- 入力フォーム（種類ごとにフィールド表示） -->
+        <div id="creative-form-view" hidden>
+          <p class="brain-edit-meta" id="creative-form-heading">制作依頼</p>
+          <p class="form-error" id="creative-form-error" role="alert" hidden></p>
+          <input type="hidden" id="creative-form-type" value="">
+
+          <div class="form-group creative-field" data-types="lp,blog,sns,banner,html,app,home,notice">
+            <label for="creative-title">タイトル / 名称 <span class="required-mark">必須</span></label>
+            <input type="text" id="creative-title" maxlength="120" autocomplete="off">
+          </div>
+
+          <div class="form-group creative-field" data-types="lp,home,app">
+            <label for="creative-purpose">目的 <span class="required-mark">必須</span></label>
+            <textarea id="creative-purpose" rows="2" placeholder="例：問い合わせを増やす"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="lp,home">
+            <label for="creative-target">ターゲット / 対象 <span class="required-mark">必須</span></label>
+            <input type="text" id="creative-target" maxlength="120" placeholder="例：子育て世代">
+          </div>
+
+          <div class="form-group creative-field" data-types="lp">
+            <label for="creative-cta">CTA <span class="required-mark">必須</span></label>
+            <input type="text" id="creative-cta" maxlength="80" placeholder="例：無料相談 / 予約する">
+          </div>
+
+          <div class="form-group creative-field" data-types="home">
+            <label for="creative-pages">ページ数</label>
+            <input type="text" id="creative-pages" maxlength="40" placeholder="例：5ページ">
+          </div>
+
+          <div class="form-group creative-field" data-types="home">
+            <label for="creative-design">希望デザイン</label>
+            <textarea id="creative-design" rows="2" placeholder="雰囲気・色・参考イメージ"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="blog,notice">
+            <label for="creative-category">カテゴリ</label>
+            <input type="text" id="creative-category" maxlength="60" placeholder="例：イベント / お知らせ">
+          </div>
+
+          <div class="form-group creative-field" data-types="lp,blog">
+            <label for="creative-keywords">キーワード</label>
+            <input type="text" id="creative-keywords" maxlength="200" placeholder="カンマ区切り可">
+          </div>
+
+          <div class="form-group creative-field" data-types="blog">
+            <label for="creative-length">文字数</label>
+            <input type="text" id="creative-length" maxlength="40" placeholder="例：2000字">
+          </div>
+
+          <div class="form-group creative-field" data-types="blog,notice">
+            <label for="creative-publish-date">公開日</label>
+            <input type="date" id="creative-publish-date">
+          </div>
+
+          <div class="form-group creative-field" data-types="sns">
+            <label for="creative-media">媒体 <span class="required-mark">必須</span></label>
+            <select id="creative-media">
+              <option value="">選択してください</option>
+              <option value="Instagram">Instagram</option>
+              <option value="TikTok">TikTok</option>
+              <option value="Facebook">Facebook</option>
+              <option value="YouTube">YouTube</option>
+              <option value="X">X</option>
+            </select>
+          </div>
+
+          <div class="form-group creative-field" data-types="sns">
+            <label for="creative-post-body">投稿内容 <span class="required-mark">必須</span></label>
+            <textarea id="creative-post-body" rows="4" placeholder="投稿したい内容"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="app">
+            <label for="creative-features">必要機能 <span class="required-mark">必須</span></label>
+            <textarea id="creative-features" rows="3" placeholder="例：ログイン、一覧、通知"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="app">
+            <label for="creative-users">対象ユーザー <span class="required-mark">必須</span></label>
+            <input type="text" id="creative-users" maxlength="120" placeholder="例：社内スタッフ">
+          </div>
+
+          <div class="form-group creative-field" data-types="html,banner">
+            <label for="creative-html-purpose">目的・用途 <span class="required-mark">必須</span></label>
+            <textarea id="creative-html-purpose" rows="2"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="lp,sns,banner">
+            <label for="creative-photo">写真メモ（任意）</label>
+            <textarea id="creative-photo" rows="2" placeholder="使う写真のメモ（ファイル名など）"></textarea>
+          </div>
+
+          <div class="form-group creative-field" data-types="lp">
+            <label for="creative-ref">参考サイト（任意）</label>
+            <input type="url" id="creative-ref" placeholder="https://">
+          </div>
+
+          <div class="form-group creative-field" data-types="lp,home,blog,notice,sns,banner,html,app">
+            <label for="creative-memo">備考（任意）</label>
+            <textarea id="creative-memo" rows="2"></textarea>
+          </div>
+
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-creative-to-confirm">作成内容を確認</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-back-menu">メニューに戻る</button>
+          </div>
+        </div>
+
+        <!-- 確認 -->
+        <div id="creative-confirm-view" hidden>
+          <p class="brain-section-title">制作内容</p>
+          <div id="creative-confirm-body" class="creative-confirm"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-creative-start">① 制作開始</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-creative-edit">② 修正</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-cancel">③ キャンセル</button>
+          </div>
+        </div>
+
+        <!-- 履歴 -->
+        <div id="creative-history-view" hidden>
+          <p class="form-hint">保存済みの制作依頼一覧です。</p>
+          <div id="creative-history-list" class="creative-history-list"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-history-back">メニューに戻る</button>
+          </div>
+        </div>
+
+        <!-- 詳細 -->
+        <div id="creative-detail-view" hidden>
+          <p class="brain-edit-meta" id="creative-detail-meta"></p>
+          <div id="creative-detail-body" class="creative-confirm"></div>
+          <label class="brain-search-label" for="creative-detail-status">ステータス</label>
+          <select id="creative-detail-status" class="brain-search"></select>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-creative-status-save">ステータスを保存</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-detail-back">履歴に戻る</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/creative-interview-engine.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

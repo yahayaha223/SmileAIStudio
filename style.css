@@ -3594,3 +3594,453 @@ body:has(.app--secretary-first)::before {
   font-size: 0.875rem;
   color: var(--color-text-muted);
 }
+
+/* Task manager */
+.task-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.task-tab {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border, #ddd);
+  background: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.task-tab.is-active {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 16px;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+}
+
+.task-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.task-card__title {
+  margin: 0 0 6px;
+  font-weight: 700;
+  font-size: 0.9375rem;
+}
+
+.task-card__meta {
+  margin: 0 0 10px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.45;
+}
+
+.task-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-card__actions .btn {
+  flex: 1;
+  min-width: 72px;
+  min-height: 44px;
+}
+
+.task-details-fold {
+  margin: 12px 0;
+}
+
+.task-details-fold summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 430px) {
+  .task-tab {
+    flex: 1 1 calc(33.33% - 6px);
+    text-align: center;
+  }
+}
+
+/* AI Creative Studio */
+.home-dash-card--creative {
+  padding: 0;
+  overflow: hidden;
+}
+
+.home-creative-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 18px;
+  border: 0;
+  background: linear-gradient(135deg, #ecfeff 0%, #f0f9ff 55%, #fff7ed 100%);
+  text-align: left;
+  min-height: 72px;
+  cursor: pointer;
+}
+
+.home-creative-card:active {
+  filter: brightness(0.97);
+}
+
+.home-creative-card__icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.home-creative-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-creative-card__title {
+  font-weight: 800;
+  font-size: 1.0625rem;
+  color: var(--color-text, #0f172a);
+}
+
+.home-creative-card__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #64748b);
+}
+
+.home-creative-card__chev {
+  font-size: 1.5rem;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.creative-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.creative-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 88px;
+  padding: 14px 12px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.creative-type-card:active {
+  background: #f8fafc;
+}
+
+.creative-type-card__icon {
+  font-size: 1.35rem;
+}
+
+.creative-confirm {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin-bottom: 14px;
+}
+
+.creative-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+  margin: 12px 0 16px;
+}
+
+.creative-history-card {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.creative-history-card__title {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.creative-history-card__meta {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.45;
+}
+
+@media (max-width: 390px) {
+  .creative-type-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* AIヒアリング */
+.creative-mode-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.creative-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 18px 16px;
+  border-radius: 18px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  text-align: left;
+  min-height: 88px;
+  cursor: pointer;
+}
+
+.creative-mode-card--primary {
+  border-color: #99f6e4;
+  background: linear-gradient(135deg, #ecfeff 0%, #f0fdfa 60%, #fff 100%);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.08);
+}
+
+.creative-mode-card:active {
+  filter: brightness(0.98);
+}
+
+.creative-mode-card__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.creative-mode-card__title {
+  font-weight: 800;
+  font-size: 1.0625rem;
+  color: var(--color-text, #0f172a);
+}
+
+.creative-mode-card__hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.4;
+}
+
+.interview-progress {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.interview-chat {
+  margin-bottom: 14px;
+}
+
+.interview-bubble {
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.interview-bubble--ai {
+  background: linear-gradient(180deg, #f0fdfa 0%, #f8fafc 100%);
+}
+
+.interview-bubble__who {
+  margin: 0 0 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #0f766e;
+  letter-spacing: 0.04em;
+}
+
+.interview-bubble__text {
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 800;
+  line-height: 1.45;
+  color: var(--color-text, #0f172a);
+}
+
+.interview-examples {
+  margin: 12px 0 0;
+  padding: 0 0 0 1.1em;
+  color: var(--color-text-muted, #64748b);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.interview-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.interview-choice-btn {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.interview-choice-btn.is-selected,
+.interview-choice-btn:active {
+  border-color: #0f766e;
+  background: #ecfeff;
+}
+
+.interview-answer-input {
+  width: 100%;
+  min-height: 96px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.interview-send-btn {
+  min-height: 56px !important;
+  font-size: 1.0625rem !important;
+}
+
+.creative-brief-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0 16px;
+  max-height: min(52vh, 440px);
+  overflow: auto;
+}
+
+.creative-brief-fields .form-group {
+  margin: 0;
+}
+
+.creative-brief-fields input,
+.creative-brief-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.9375rem;
+}
+
+.creative-history-card--interview {
+  background: #f0fdfa;
+  border-color: #99f6e4;
+}
+
+.creative-history-badge {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.interview-list-main {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.interview-list-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.interview-list-action {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.interview-list-action--danger {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.interview-list-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted, #64748b);
+  line-height: 1.45;
+}
+
+@media (min-width: 430px) {
+  .interview-bubble__text {
+    font-size: 1.25rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .creative-mode-stack {
+    max-width: 420px;
+  }
+}
+

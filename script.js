@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.9.0",
+    version: "2.2.1",
     build: 43,
     updatedAt: "2026-07-16"
   };
 
   var DEV_ROADMAP = {
-    progress: 96,
+    progress: 98,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -49,9 +49,20 @@
       "司令塔コマンド＋自由会話",
       "会社knowledge読込（LINE回答）",
       "Company Brain 管理画面",
-      "AI保存候補（LINE ①②③）"
+      "AI保存候補（LINE ①②③）",
+      "実用TODO管理",
+      "LINEタスク秘書",
+      "期限・優先度・完了管理",
+      "朝ダッシュボード連携",
+      "AI制作センター（依頼画面）",
+      "AIヒアリング制作",
+      "ヒアリング → 制作要件",
+      "制作要件 → 制作依頼",
+      "ヒアリング下書き保存・再開"
     ],
     upcoming: [
+      { label: "AI制作 → Cursor自動連携", status: "準備中" },
+      { label: "OpenAIヒアリング高度化", status: "準備中" },
       { label: "knowledge保存確認フロー高度化", status: "準備中" },
       { label: "GitHub自動Push", status: "準備中" },
       { label: "Netlify公開", status: "準備中" },
@@ -370,7 +381,8 @@
     meetingLogs: "/.netlify/functions/api-meeting-logs",
     sendTest: "/.netlify/functions/line-send-test",
     resetChat: "/.netlify/functions/api-chat-memory-reset",
-    knowledge: "/.netlify/functions/api-knowledge"
+    knowledge: "/.netlify/functions/api-knowledge",
+    tasks: "/.netlify/functions/api-tasks"
   };
   var secretaryModal = document.getElementById("secretary-modal");
   var secretaryInputView = document.getElementById("secretary-input-view");
@@ -2019,6 +2031,10 @@
       { id: "btn-line-reset-chat", label: "LINE会話リセットボタン" },
       { id: "btn-company-brain", label: "会社の脳入口" },
       { id: "company-brain-modal", label: "会社の脳モーダル" },
+      { id: "btn-task-manager", label: "タスク管理入口" },
+      { id: "task-manager-modal", label: "タスク管理モーダル" },
+      { id: "btn-creative-studio", label: "AI制作センター入口" },
+      { id: "creative-studio-modal", label: "AI制作センターモーダル" },
       { id: "brain-file-list", label: "会社の脳一覧" },
       { id: "brain-search", label: "会社の脳検索" },
       { id: "brain-editor", label: "会社の脳編集欄" },
@@ -2460,6 +2476,32 @@
           !!(window.smileAIStudioStatus.registeredActions || {}).openCompanyBrain;
       },
       closeCheck: function () { return typeof closeCompanyBrain === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "task-manager-modal",
+      label: "タスク管理モーダル",
+      closeIds: ["task-manager-close", "btn-task-close-list", "btn-task-cancel-form"],
+      openAction: "openTaskManager",
+      openCheck: function () {
+        return typeof openTaskManager === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openTaskManager;
+      },
+      closeCheck: function () { return typeof closeTaskManager === "function"; },
+      allowOpenDuringCheck: false
+    });
+
+    checkOne({
+      id: "creative-studio-modal",
+      label: "AI制作センターモーダル",
+      closeIds: ["creative-studio-close", "btn-creative-close-menu", "btn-creative-cancel"],
+      openAction: "openCreativeStudio",
+      openCheck: function () {
+        return typeof openCreativeStudio === "function" ||
+          !!(window.smileAIStudioStatus.registeredActions || {}).openCreativeStudio;
+      },
+      closeCheck: function () { return typeof closeCreativeStudio === "function"; },
       allowOpenDuringCheck: false
     });
 
@@ -2926,6 +2968,206 @@
       "GET api-knowledge?full=1 / action=file（overlay優先）");
   }
 
+  function checkTaskManagerDom() {
+    var ids = [
+      "btn-task-manager", "task-manager-modal", "task-list", "task-tabs",
+      "task-title", "btn-task-save", "btn-task-import-md", "task-search"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("task-dom", "タスク管理DOM", "fail", "必須要素不足", missing.join(", "));
+    }
+    return makeCheckResult("task-dom", "タスク管理DOM", "ok", "タスク管理画面DOMは揃っています", "");
+  }
+
+  function checkTaskApiDef() {
+    if (!LINE_API.tasks) {
+      return makeCheckResult("task-api", "api-tasks定義", "fail", "API定義なし", "");
+    }
+    return makeCheckResult("task-api", "api-tasks定義", "ok",
+      "api-tasks エンドポイントを定義済み", LINE_API.tasks);
+  }
+
+  function checkTaskStorage() {
+    return makeCheckResult("task-storage", "タスクストレージ", "warn",
+      "Netlify Blobs（tasks:v1）へ保存する実装済み。本番接続はデプロイ後に確認",
+      "localStorage非依存");
+  }
+
+  function checkTaskTodoSync() {
+    return makeCheckResult("task-todo-sync", "todo.md同期", "ok",
+      "構造化タスク → todo.md 一方向同期を実装", "task-todo-sync.js");
+  }
+
+  function checkTaskMorning() {
+    return makeCheckResult("task-morning", "朝通知連携", "warn",
+      "line-send-morning に今日のタスク要約を追加済み。実送信はScheduled Function依存",
+      "外部接続はデプロイ後確認");
+  }
+
+  function checkTaskLineRouter() {
+    return makeCheckResult("task-line-router", "LINEタスクルーター", "ok",
+      "task-router / command-router 優先順位を実装",
+      "task確認 > knowledge候補 > 司令塔 > コマンド > 自由会話");
+  }
+
+  function checkTaskStages() {
+    return makeCheckResult("task-stages", "会話ステージ", "ok",
+      "awaiting-task-* / awaiting-morning-dashboard を追加", "");
+  }
+
+  function checkTaskImport() {
+    if (typeof openTaskImportPreview !== "function") {
+      return makeCheckResult("task-import", "旧todo取込機能", "fail", "取込処理なし", "");
+    }
+    return makeCheckResult("task-import", "旧todo取込機能", "ok",
+      "プレビュー確認後に取り込む導線あり", "自動実行しない");
+  }
+
+  function checkCreativeStudioDom() {
+    var ids = [
+      "btn-creative-studio", "creative-studio-modal", "creative-type-grid",
+      "creative-form-view", "creative-confirm-view", "creative-history-list",
+      "btn-creative-start", "btn-creative-to-confirm"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("creative-dom", "AI制作センターDOM", "fail", "必須要素不足", missing.join(", "));
+    }
+    return makeCheckResult("creative-dom", "AI制作センターDOM", "ok", "制作センターDOMは揃っています", "");
+  }
+
+  function checkCreativeHistory() {
+    if (typeof openCreativeHistory !== "function" || typeof loadCreativeJobs !== "function") {
+      return makeCheckResult("creative-history", "制作履歴", "fail", "履歴処理なし", "");
+    }
+    return makeCheckResult("creative-history", "制作履歴", "ok", "履歴一覧・詳細を実装済み", "");
+  }
+
+  function checkCreativeData() {
+    try {
+      var list = loadCreativeJobs();
+      return makeCheckResult("creative-data", "制作データ", "ok",
+        "localStorage キー " + CREATIVE_STORAGE_KEY + " / 件数 " + list.length,
+        "status・pipeline フィールド付きJSON");
+    } catch (e) {
+      return makeCheckResult("creative-data", "制作データ", "fail", "読み込み失敗", "");
+    }
+  }
+
+  function checkCreativeValidation() {
+    if (typeof validateCreativeDraft !== "function") {
+      return makeCheckResult("creative-validate", "入力チェック", "fail", "検証関数なし", "");
+    }
+    var bad = validateCreativeDraft({ type: "lp", title: "" });
+    var good = validateCreativeDraft({
+      type: "lp", title: "t", purpose: "p", target: "g", cta: "c"
+    });
+    if (!bad || good) {
+      return makeCheckResult("creative-validate", "入力チェック", "fail", "必須チェックが期待どおりではありません", "");
+    }
+    return makeCheckResult("creative-validate", "入力チェック", "ok", "LP必須項目チェックを確認", "");
+  }
+
+  function checkCreativeConfirm() {
+    if (typeof openCreativeConfirm !== "function" || !document.getElementById("creative-confirm-view")) {
+      return makeCheckResult("creative-confirm", "確認画面", "fail", "確認画面なし", "");
+    }
+    return makeCheckResult("creative-confirm", "確認画面", "ok",
+      "①制作開始 ②修正 ③キャンセル を実装", "");
+  }
+
+  function checkInterviewEntry() {
+    var ids = ["creative-mode-view", "btn-creative-mode-ai", "btn-creative-mode-manual"];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("interview-entry", "ヒアリング入口", "fail", "入口DOM不足", missing.join(", "));
+    }
+    return makeCheckResult("interview-entry", "ヒアリング入口", "ok",
+      "AIヒアリング / 自分で入力 の切替あり", "");
+  }
+
+  function checkInterviewScreen() {
+    var ids = [
+      "creative-interview-view", "interview-question-text", "interview-answer-input",
+      "btn-interview-send", "btn-interview-back", "btn-interview-abort", "btn-interview-draft-save"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("interview-screen", "ヒアリング画面", "fail", "画面DOM不足", missing.join(", "));
+    }
+    return makeCheckResult("interview-screen", "ヒアリング画面", "ok", "1問ずつ + 下書き保存", "");
+  }
+
+  function checkInterviewQuestions() {
+    var eng = window.SmileCreativeInterviewEngine;
+    if (!eng || !eng.getQuestionBank) {
+      return makeCheckResult("interview-questions", "質問データ", "fail", "エンジン未読込", "");
+    }
+    var lp = eng.getQuestionBank("lp");
+    if (!lp || lp.length < 10) {
+      return makeCheckResult("interview-questions", "質問データ", "fail", "LP質問が不足", "");
+    }
+    return makeCheckResult("interview-questions", "質問データ", "ok",
+      "LP質問 " + lp.length + " 問（ルールベース）", "将来OpenAI差し替え可");
+  }
+
+  function checkInterviewSave() {
+    var eng = window.SmileCreativeInterviewEngine;
+    if (!eng || typeof eng.saveInterviewAnswer !== "function" || typeof eng.upsertInterview !== "function") {
+      return makeCheckResult("interview-save", "回答保存", "fail", "保存関数なし", "");
+    }
+    return makeCheckResult("interview-save", "回答保存", "ok",
+      "キー " + eng.STORAGE_KEY, "");
+  }
+
+  function checkInterviewResume() {
+    if (typeof resumeInterview !== "function" || typeof openCreativeInterview !== "function") {
+      return makeCheckResult("interview-resume", "途中再開", "fail", "再開処理なし", "");
+    }
+    return makeCheckResult("interview-resume", "途中再開", "ok", "履歴から続き再開可", "");
+  }
+
+  function checkInterviewBrief() {
+    var eng = window.SmileCreativeInterviewEngine;
+    if (!eng || typeof eng.buildCreativeBrief !== "function" || !document.getElementById("creative-brief-view")) {
+      return makeCheckResult("interview-brief", "制作要件生成", "fail", "要件生成なし", "");
+    }
+    return makeCheckResult("interview-brief", "制作要件生成", "ok", "buildCreativeBrief + 編集画面", "");
+  }
+
+  function checkInterviewConvert() {
+    var eng = window.SmileCreativeInterviewEngine;
+    if (!eng || typeof eng.interviewToCreativeJob !== "function" || typeof convertBriefToCreativeJob !== "function") {
+      return makeCheckResult("interview-convert", "制作依頼変換", "fail", "変換処理なし", "");
+    }
+    return makeCheckResult("interview-convert", "制作依頼変換", "ok",
+      "sourceType=ai-interview / job=設計中 / ヒアリング=制作済み", "");
+  }
+
+  function checkInterviewDraftList() {
+    var ids = ["btn-interview-list", "creative-interview-list-view", "interview-list", "btn-interview-draft-save"];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("interview-draft-list", "ヒアリング一覧・下書き", "fail", "DOM不足", missing.join(", "));
+    }
+    var eng = window.SmileCreativeInterviewEngine;
+    if (!eng || typeof eng.renameInterview !== "function" || typeof eng.duplicateInterview !== "function" ||
+        typeof eng.deleteInterview !== "function") {
+      return makeCheckResult("interview-draft-list", "ヒアリング一覧・下書き", "fail", "一覧操作APIなし", "");
+    }
+    return makeCheckResult("interview-draft-list", "ヒアリング一覧・下書き", "ok",
+      "一覧・再開・名前変更・複製・削除", "");
+  }
+
+  function checkInterviewModeSwitch() {
+    if (typeof openCreativeModeSelect !== "function" || typeof openCreativeForm !== "function") {
+      return makeCheckResult("interview-mode", "入力方式切替", "fail", "切替処理なし", "");
+    }
+    return makeCheckResult("interview-mode", "入力方式切替", "ok",
+      "AIヒアリングと手動フォームを共存", "");
+  }
+
   function calculateOverallHealth(results) {
     var counts = { ok: 0, warn: 0, fail: 0, unknown: 0 };
     results.forEach(function (r) {
@@ -3154,7 +3396,29 @@
       ["brain-dom", "knowledge編集画面", checkCompanyBrainDom],
       ["brain-search", "knowledge検索", checkCompanyBrainSearch],
       ["brain-save", "knowledge保存", checkCompanyBrainSave],
-      ["brain-load", "knowledge読み込み", checkCompanyBrainLoad]
+      ["brain-load", "knowledge読み込み", checkCompanyBrainLoad],
+      ["task-dom", "タスク管理DOM", checkTaskManagerDom],
+      ["task-api", "api-tasks定義", checkTaskApiDef],
+      ["task-storage", "タスクストレージ", checkTaskStorage],
+      ["task-todo-sync", "todo.md同期", checkTaskTodoSync],
+      ["task-morning", "朝通知連携", checkTaskMorning],
+      ["task-line-router", "LINEタスクルーター", checkTaskLineRouter],
+      ["task-stages", "会話ステージ", checkTaskStages],
+      ["task-import", "旧todo取込機能", checkTaskImport],
+      ["creative-dom", "AI制作センターDOM", checkCreativeStudioDom],
+      ["creative-history", "制作履歴", checkCreativeHistory],
+      ["creative-data", "制作データ", checkCreativeData],
+      ["creative-validate", "入力チェック", checkCreativeValidation],
+      ["creative-confirm", "確認画面", checkCreativeConfirm],
+      ["interview-entry", "ヒアリング入口", checkInterviewEntry],
+      ["interview-screen", "ヒアリング画面", checkInterviewScreen],
+      ["interview-questions", "質問データ", checkInterviewQuestions],
+      ["interview-save", "回答保存", checkInterviewSave],
+      ["interview-resume", "途中再開", checkInterviewResume],
+      ["interview-brief", "制作要件生成", checkInterviewBrief],
+      ["interview-convert", "制作依頼変換", checkInterviewConvert],
+      ["interview-mode", "入力方式切替", checkInterviewModeSwitch],
+      ["interview-draft-list", "ヒアリング一覧・下書き", checkInterviewDraftList]
     ];
 
     latestSystemCheckResults = checks.map(function (item) {
@@ -5109,6 +5373,1003 @@
 
   /* ========== Company Brain ========== */
 
+  /* ========== Task Manager ========== */
+  var taskManagerModal = document.getElementById("task-manager-modal");
+  var taskBucket = "today";
+  var taskEditingId = "";
+  var taskCache = [];
+
+  function showTaskView(name) {
+    var list = document.getElementById("task-list-view");
+    var form = document.getElementById("task-form-view");
+    var imp = document.getElementById("task-import-view");
+    if (list) list.hidden = name !== "list";
+    if (form) form.hidden = name !== "form";
+    if (imp) imp.hidden = name !== "import";
+  }
+
+  function priorityMark(p) {
+    if (p === "high") return "🔴";
+    if (p === "low") return "🟢";
+    return "🟡";
+  }
+
+  function renderTaskList(tasks) {
+    var el = document.getElementById("task-list");
+    if (!el) return;
+    if (!tasks || !tasks.length) {
+      el.innerHTML = '<p class="empty-message">タスクはありません</p>';
+      return;
+    }
+    el.innerHTML = tasks.map(function (t) {
+      return (
+        '<div class="task-card" data-task-id="' + escapeHtml(t.id) + '">' +
+          '<p class="task-card__title">' + priorityMark(t.priority) + " " + escapeHtml(t.title) + "</p>" +
+          '<p class="task-card__meta">期限：' + escapeHtml(t.dueDate || "未設定") +
+            (t.dueTime ? " " + escapeHtml(t.dueTime) : "") +
+            (t.projectId ? "<br>プロジェクト：" + escapeHtml(t.projectId) : "") +
+            "<br>状態：" + escapeHtml(t.status) +
+          "</p>" +
+          '<div class="task-card__actions">' +
+            (t.status !== "completed"
+              ? '<button type="button" class="btn btn--primary btn-task-complete" data-task-id="' + escapeHtml(t.id) + '">完了</button>' +
+                '<button type="button" class="btn btn--secondary btn-task-postpone" data-task-id="' + escapeHtml(t.id) + '">延期</button>' +
+                '<button type="button" class="btn btn--ghost btn-task-edit" data-task-id="' + escapeHtml(t.id) + '">編集</button>' +
+                '<button type="button" class="btn btn--ghost btn-task-delete" data-task-id="' + escapeHtml(t.id) + '">削除</button>'
+              : '<button type="button" class="btn btn--ghost btn-task-edit" data-task-id="' + escapeHtml(t.id) + '">詳細</button>') +
+          "</div>" +
+        "</div>"
+      );
+    }).join("");
+  }
+
+  function refreshTaskManager() {
+    var el = document.getElementById("task-list");
+    if (el) el.innerHTML = '<p class="empty-message">読み込み中…</p>';
+    var q = "";
+    var search = document.getElementById("task-search");
+    if (search) q = String(search.value || "").trim();
+    var url = LINE_API.tasks + "?bucket=" + encodeURIComponent(taskBucket === "completed" ? "" : taskBucket) +
+      (taskBucket === "completed" ? "&status=completed" : "") +
+      (taskBucket === "open" ? "&status=open" : "") +
+      (q ? "&q=" + encodeURIComponent(q) : "") +
+      "&_t=" + Date.now();
+    if (taskBucket === "open") url = LINE_API.tasks + "?status=open" + (q ? "&q=" + encodeURIComponent(q) : "") + "&_t=" + Date.now();
+    if (taskBucket === "completed") url = LINE_API.tasks + "?status=completed" + (q ? "&q=" + encodeURIComponent(q) : "") + "&_t=" + Date.now();
+    return fetchLineJson(url).then(function (data) {
+      if (!data || !data.ok) {
+        taskCache = [];
+        if (el) el.innerHTML = '<p class="empty-message">タスクAPIへ接続できません。Netlify Functions 起動後に再読み込みしてください。</p>';
+        return;
+      }
+      taskCache = Array.isArray(data.tasks) ? data.tasks : [];
+      renderTaskList(taskCache);
+    }).catch(function () {
+      if (el) el.innerHTML = '<p class="empty-message">タスクAPIへ接続できません。</p>';
+    });
+  }
+
+  function openTaskManager() {
+    if (!taskManagerModal) return;
+    showTaskView("list");
+    taskManagerModal.classList.add("is-open");
+    taskManagerModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    refreshTaskManager();
+  }
+
+  function closeTaskManager() {
+    if (!taskManagerModal) return;
+    taskManagerModal.classList.remove("is-open");
+    taskManagerModal.setAttribute("aria-hidden", "true");
+    taskEditingId = "";
+    showTaskView("list");
+    syncBodyScroll();
+  }
+
+  function resetTaskForm() {
+    taskEditingId = "";
+    var meta = document.getElementById("task-form-meta");
+    if (meta) meta.textContent = "タスクを追加";
+    ["task-title", "task-due", "task-time", "task-project", "task-desc", "task-tags"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    var pr = document.getElementById("task-priority");
+    if (pr) pr.value = "normal";
+    var err = document.getElementById("task-form-error");
+    if (err) { err.hidden = true; err.textContent = ""; }
+  }
+
+  function openTaskForm(task) {
+    resetTaskForm();
+    showTaskView("form");
+    if (!task) return;
+    taskEditingId = task.id;
+    var meta = document.getElementById("task-form-meta");
+    if (meta) meta.textContent = "タスクを編集";
+    var map = {
+      "task-title": task.title,
+      "task-due": task.dueDate || "",
+      "task-time": task.dueTime || "",
+      "task-project": task.projectId || "",
+      "task-desc": task.description || "",
+      "task-tags": (task.tags || []).join(", "),
+      "task-priority": task.priority || "normal"
+    };
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = map[id];
+    });
+  }
+
+  function handleTaskSave() {
+    var titleEl = document.getElementById("task-title");
+    var title = titleEl ? String(titleEl.value || "").trim() : "";
+    var err = document.getElementById("task-form-error");
+    if (!title) {
+      if (err) { err.hidden = false; err.textContent = "やることを入力してください"; }
+      return;
+    }
+    var tagsRaw = document.getElementById("task-tags");
+    var tags = tagsRaw && tagsRaw.value
+      ? String(tagsRaw.value).split(/[,、]/).map(function (s) { return s.trim(); }).filter(Boolean)
+      : [];
+    var payload = {
+      title: title,
+      dueDate: (document.getElementById("task-due") || {}).value || "",
+      dueTime: (document.getElementById("task-time") || {}).value || "",
+      priority: (document.getElementById("task-priority") || {}).value || "normal",
+      projectId: (document.getElementById("task-project") || {}).value || "",
+      description: (document.getElementById("task-desc") || {}).value || "",
+      tags: tags,
+      sourceType: "company-brain"
+    };
+    var body = taskEditingId
+      ? { action: "update", id: taskEditingId, patch: payload }
+      : { action: "create", task: payload };
+    fetchLineJson(LINE_API.tasks, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast("保存しました");
+        showTaskView("list");
+        return refreshTaskManager();
+      }
+      if (err) { err.hidden = false; err.textContent = "保存できませんでした"; }
+      showToast("保存できませんでした");
+    }).catch(function () {
+      showToast("保存できませんでした");
+    });
+  }
+
+  function openTaskImportPreview() {
+    showTaskView("import");
+    var el = document.getElementById("task-import-preview");
+    if (el) el.innerHTML = '<p class="empty-message">読み込み中…</p>';
+    fetchLineJson(LINE_API.tasks + "?action=import-preview&_t=" + Date.now()).then(function (data) {
+      if (!el) return;
+      var items = (data && data.items) || [];
+      if (!items.length) {
+        el.innerHTML = '<p class="empty-message">取り込める項目がありません</p>';
+        return;
+      }
+      el.innerHTML = items.map(function (it) {
+        return '<div class="task-card"><p class="task-card__title">' +
+          escapeHtml(it.title) + '</p><p class="task-card__meta">状態：' +
+          escapeHtml(it.status) + "</p></div>";
+      }).join("");
+    }).catch(function () {
+      if (el) el.innerHTML = '<p class="empty-message">プレビューできませんでした</p>';
+    });
+  }
+
+  function runTaskImport() {
+    if (!window.confirm("todo.md の項目をタスクへ取り込みますか？（重複タイトルは除外）")) return;
+    fetchLineJson(LINE_API.tasks, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "import-todo-md" })
+    }).then(function (data) {
+      if (data && data.ok) {
+        showToast("取り込みました（新規 " + (data.created || []).length + " / スキップ " + (data.skipped || 0) + "）");
+        showTaskView("list");
+        return refreshTaskManager();
+      }
+      showToast("取り込みできませんでした");
+    }).catch(function () {
+      showToast("取り込みできませんでした");
+    });
+  }
+
+  /* ========== AI制作センター ========== */
+  var CREATIVE_STORAGE_KEY = "smileAIStudio_creativeJobs";
+  var CREATIVE_STATUSES = [
+    "依頼中", "設計中", "制作中", "テスト中", "レビュー待ち", "公開待ち", "公開済み"
+  ];
+  var CREATIVE_TYPES = [
+    { id: "lp", icon: "🌐", label: "ランディングページ（LP）" },
+    { id: "home", icon: "🏢", label: "ホームページ" },
+    { id: "blog", icon: "📰", label: "ブログ記事" },
+    { id: "notice", icon: "📢", label: "お知らせ" },
+    { id: "banner", icon: "🎨", label: "バナー画像" },
+    { id: "sns", icon: "📱", label: "SNS投稿" },
+    { id: "html", icon: "⚙", label: "HTMLページ" },
+    { id: "app", icon: "🤖", label: "AIアプリ" }
+  ];
+
+  var creativeStudioModal = document.getElementById("creative-studio-modal");
+  var creativeDraft = null;
+  var creativeDetailId = "";
+  var creativeSelectedType = "";
+  var interviewSession = null;
+  var interviewPendingQuestion = null;
+  var draftTitleReturnView = "interview";
+  var draftTitleMode = "save"; // save | rename
+  var draftTitleTargetId = "";
+  var InterviewEngine = window.SmileCreativeInterviewEngine || null;
+
+  function loadCreativeJobs() {
+    try {
+      var raw = localStorage.getItem(CREATIVE_STORAGE_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveCreativeJobs(list) {
+    localStorage.setItem(CREATIVE_STORAGE_KEY, JSON.stringify(list || []));
+  }
+
+  function creativeTypeMeta(typeId) {
+    return CREATIVE_TYPES.find(function (t) { return t.id === typeId; }) || {
+      id: typeId, icon: "📄", label: typeId
+    };
+  }
+
+  function showCreativeView(name) {
+    ["menu", "mode", "interview", "brief", "form", "confirm", "history", "detail",
+      "interview-list", "draft-title"].forEach(function (v) {
+      var el = document.getElementById("creative-" + v + "-view");
+      if (el) el.hidden = name !== v;
+    });
+  }
+
+  function renderCreativeTypeGrid() {
+    var grid = document.getElementById("creative-type-grid");
+    if (!grid) return;
+    grid.innerHTML = CREATIVE_TYPES.map(function (t) {
+      return (
+        '<button type="button" class="creative-type-card" data-creative-type="' + escapeHtml(t.id) + '">' +
+          '<span class="creative-type-card__icon" aria-hidden="true">' + escapeHtml(t.icon) + "</span>" +
+          '<span>' + escapeHtml(t.label) + "</span>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
+  function applyCreativeFormFields(typeId) {
+    var fields = document.querySelectorAll(".creative-field");
+    Array.prototype.forEach.call(fields, function (field) {
+      var types = String(field.getAttribute("data-types") || "").split(",");
+      field.hidden = types.indexOf(typeId) === -1;
+    });
+    var heading = document.getElementById("creative-form-heading");
+    var meta = creativeTypeMeta(typeId);
+    if (heading) heading.textContent = meta.icon + " " + meta.label;
+    var typeEl = document.getElementById("creative-form-type");
+    if (typeEl) typeEl.value = typeId;
+  }
+
+  function clearCreativeForm() {
+    [
+      "creative-title", "creative-purpose", "creative-target", "creative-cta",
+      "creative-pages", "creative-design", "creative-category", "creative-keywords",
+      "creative-length", "creative-publish-date", "creative-media", "creative-post-body",
+      "creative-features", "creative-users", "creative-html-purpose", "creative-photo",
+      "creative-ref", "creative-memo"
+    ].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = "";
+    });
+    var err = document.getElementById("creative-form-error");
+    if (err) { err.hidden = true; err.textContent = ""; }
+  }
+
+  function openCreativeModeSelect(typeId) {
+    creativeSelectedType = typeId || "";
+    var meta = creativeTypeMeta(creativeSelectedType);
+    var heading = document.getElementById("creative-mode-heading");
+    if (heading) heading.textContent = meta.icon + " " + meta.label + " — 進め方";
+    showCreativeView("mode");
+  }
+
+  function openCreativeForm(typeId) {
+    clearCreativeForm();
+    applyCreativeFormFields(typeId || creativeSelectedType);
+    showCreativeView("form");
+  }
+
+  function persistInterviewSession() {
+    if (!InterviewEngine || !interviewSession) return;
+    interviewSession.updatedAt = new Date().toISOString();
+    InterviewEngine.upsertInterview(interviewSession);
+  }
+
+  function formatInterviewListDate(iso) {
+    try {
+      var d = new Date(iso);
+      return (d.getMonth() + 1) + "/" + d.getDate();
+    } catch (e) {
+      return "—";
+    }
+  }
+
+  function openDraftTitlePrompt(opts) {
+    opts = opts || {};
+    draftTitleMode = opts.mode || "save";
+    draftTitleReturnView = opts.returnView || "interview";
+    draftTitleTargetId = opts.targetId || (interviewSession && interviewSession.id) || "";
+    var input = document.getElementById("interview-draft-title-input");
+    var err = document.getElementById("interview-draft-title-error");
+    var suggested = "";
+    if (draftTitleMode === "rename" && draftTitleTargetId && InterviewEngine) {
+      var found = InterviewEngine.loadInterviews().find(function (it) { return it.id === draftTitleTargetId; });
+      suggested = found ? InterviewEngine.getInterviewDisplayTitle(found) : "";
+    } else if (interviewSession) {
+      suggested = interviewSession.draftTitle ||
+        (interviewSession.answers && interviewSession.answers.title) || "";
+    }
+    if (input) {
+      input.value = String(suggested || "").trim();
+      setTimeout(function () { input.focus(); }, 50);
+    }
+    if (err) { err.hidden = true; err.textContent = ""; }
+    showCreativeView("draft-title");
+  }
+
+  function confirmDraftTitle() {
+    var input = document.getElementById("interview-draft-title-input");
+    var err = document.getElementById("interview-draft-title-error");
+    var title = input ? String(input.value || "").trim() : "";
+    if (!title) {
+      if (err) { err.hidden = false; err.textContent = "タイトルを入力してください"; }
+      showToast("タイトルを入力してください");
+      return;
+    }
+    if (!InterviewEngine) return;
+
+    if (draftTitleMode === "rename") {
+      var renamed = InterviewEngine.renameInterview(draftTitleTargetId, title);
+      if (!renamed) {
+        showToast("名前変更できませんでした");
+        return;
+      }
+      if (interviewSession && interviewSession.id === draftTitleTargetId) {
+        interviewSession.draftTitle = title;
+      }
+      showToast("名前を変更しました");
+      openInterviewList();
+      return;
+    }
+
+    if (!interviewSession) {
+      showToast("ヒアリングがありません");
+      return;
+    }
+    InterviewEngine.setDraftTitle(interviewSession, title);
+    persistInterviewSession();
+    showToast("下書きを保存しました");
+    showCreativeView(draftTitleReturnView === "interview-list" ? "interview-list" : "interview");
+    if (draftTitleReturnView === "interview-list") openInterviewList();
+  }
+
+  function cancelDraftTitle() {
+    showCreativeView(draftTitleReturnView === "interview-list" ? "interview-list" : draftTitleReturnView);
+    if (draftTitleReturnView === "interview-list") openInterviewList();
+  }
+
+  function saveInterviewDraftExplicit() {
+    if (!InterviewEngine || !interviewSession) {
+      showToast("保存するヒアリングがありません");
+      return;
+    }
+    if (InterviewEngine.needsDraftTitle(interviewSession)) {
+      openDraftTitlePrompt({ mode: "save", returnView: "interview" });
+      return;
+    }
+    persistInterviewSession();
+    showToast("下書きを保存しました（" + InterviewEngine.getInterviewDisplayTitle(interviewSession) + "）");
+  }
+
+  function openInterviewList() {
+    if (!InterviewEngine) {
+      showToast("ヒアリングエンジンを読み込めませんでした");
+      return;
+    }
+    var el = document.getElementById("interview-list");
+    var list = InterviewEngine.loadInterviews();
+    if (!el) return;
+    if (!list.length) {
+      el.innerHTML = '<p class="empty-message">ヒアリングの下書きはまだありません</p>';
+    } else {
+      el.innerHTML = list.map(function (it) {
+        var meta = creativeTypeMeta(it.creativeType);
+        var prog = InterviewEngine.getInterviewProgress(it);
+        var status = InterviewEngine.normalizeInterviewStatus(it.status);
+        var title = InterviewEngine.getInterviewDisplayTitle(it);
+        return (
+          '<div class="creative-history-card creative-history-card--interview" data-interview-card="' +
+            escapeHtml(it.id) + '">' +
+            '<button type="button" class="interview-list-main" data-interview-id="' + escapeHtml(it.id) + '">' +
+              '<span class="creative-history-badge">' + escapeHtml(status) + "</span>" +
+              '<p class="creative-history-card__title">' + escapeHtml(title) + "</p>" +
+              '<p class="interview-list-meta-row">' +
+                "<span>" + escapeHtml(meta.label || it.creativeType) + "</span>" +
+                "<span>進捗 " + escapeHtml(prog.label) + "</span>" +
+                "<span>" + escapeHtml(formatInterviewListDate(it.updatedAt || it.startedAt)) + "</span>" +
+              "</p>" +
+            "</button>" +
+            '<div class="interview-list-card__actions">' +
+              '<button type="button" class="interview-list-action" data-interview-rename="' + escapeHtml(it.id) + '">名前変更</button>' +
+              '<button type="button" class="interview-list-action" data-interview-dup="' + escapeHtml(it.id) + '">複製</button>' +
+              '<button type="button" class="interview-list-action interview-list-action--danger" data-interview-del="' +
+                escapeHtml(it.id) + '">削除</button>' +
+            "</div>" +
+          "</div>"
+        );
+      }).join("");
+    }
+    showCreativeView("interview-list");
+  }
+
+  function renderInterviewQuestion() {
+    if (!InterviewEngine || !interviewSession) return;
+    var next = InterviewEngine.getNextInterviewQuestion(interviewSession);
+    interviewPendingQuestion = next;
+    var progress = document.getElementById("interview-progress");
+    var qText = document.getElementById("interview-question-text");
+    var examples = document.getElementById("interview-examples");
+    var choicesEl = document.getElementById("interview-choices");
+    var input = document.getElementById("interview-answer-input");
+
+    if (!next || !next.question) {
+      openCreativeBrief();
+      return;
+    }
+
+    if (progress) {
+      var prog = InterviewEngine.getInterviewProgress(interviewSession);
+      progress.textContent = "ヒアリング " + next.progressCurrent + " / " + next.progressTotal +
+        (interviewSession.draftTitle ? " · " + interviewSession.draftTitle : "");
+    }
+    if (qText) qText.textContent = next.question.question;
+    if (examples) {
+      var ex = next.question.examples || [];
+      if (ex.length) {
+        examples.hidden = false;
+        examples.innerHTML = ex.map(function (e) {
+          return "<li>例：「" + escapeHtml(e) + "」</li>";
+        }).join("");
+      } else {
+        examples.hidden = true;
+        examples.innerHTML = "";
+      }
+    }
+    if (choicesEl) {
+      var choices = next.question.choices || [];
+      if (choices.length) {
+        choicesEl.hidden = false;
+        choicesEl.innerHTML = choices.map(function (c) {
+          return '<button type="button" class="interview-choice-btn" data-interview-choice="' +
+            escapeHtml(c) + '">' + escapeHtml(c) + "</button>";
+        }).join("");
+      } else {
+        choicesEl.hidden = true;
+        choicesEl.innerHTML = "";
+      }
+    }
+    if (input) {
+      input.value = "";
+      input.focus();
+    }
+  }
+
+  function openCreativeInterview(typeId, existing) {
+    if (!InterviewEngine) {
+      showToast("ヒアリングエンジンを読み込めませんでした");
+      openCreativeForm(typeId);
+      return;
+    }
+    if (existing) {
+      interviewSession = existing;
+    } else {
+      interviewSession = InterviewEngine.createInterview(typeId || creativeSelectedType, { creator: "YAHA" });
+      persistInterviewSession();
+    }
+    showCreativeView("interview");
+    renderInterviewQuestion();
+  }
+
+  function resumeInterview(id) {
+    if (!InterviewEngine) return;
+    var list = InterviewEngine.loadInterviews();
+    var found = list.find(function (it) { return it.id === id; });
+    if (!found) {
+      showToast("ヒアリングが見つかりません");
+      return;
+    }
+    creativeSelectedType = found.creativeType;
+    found.status = InterviewEngine.normalizeInterviewStatus(found.status);
+    if (found.status === InterviewEngine.STATUSES.COMPLETED ||
+        InterviewEngine.isConvertedStatus(found.status)) {
+      interviewSession = found;
+      openCreativeBrief();
+      return;
+    }
+    openCreativeInterview(found.creativeType, found);
+  }
+
+  function submitInterviewAnswer(rawValue) {
+    if (!InterviewEngine || !interviewSession || !interviewPendingQuestion) return;
+    var q = interviewPendingQuestion.question;
+    var value = String(rawValue || "").trim();
+    if (!value) {
+      showToast("回答を入力してください");
+      return;
+    }
+    InterviewEngine.recordHistory(interviewSession, q.key, value, q.question);
+    InterviewEngine.saveInterviewAnswer(interviewSession, q.key, value);
+    // 自動保存（回答のたびに）
+    persistInterviewSession();
+    if (interviewSession.status === InterviewEngine.STATUSES.COMPLETED) {
+      openCreativeBrief();
+      return;
+    }
+    renderInterviewQuestion();
+  }
+
+  function interviewBackOne() {
+    if (!InterviewEngine || !interviewSession) return;
+    InterviewEngine.goBackOneAnswer(interviewSession);
+    persistInterviewSession();
+    renderInterviewQuestion();
+    showToast("ひとつ前に戻しました");
+  }
+
+  function abortInterview() {
+    persistInterviewSession();
+    interviewSession = null;
+    interviewPendingQuestion = null;
+    showToast("ヒアリングを中断しました（一覧から再開できます）");
+    showCreativeView("menu");
+  }
+
+  function renameInterviewFromList(id) {
+    openDraftTitlePrompt({ mode: "rename", returnView: "interview-list", targetId: id });
+  }
+
+  function duplicateInterviewFromList(id) {
+    if (!InterviewEngine) return;
+    var copy = InterviewEngine.duplicateInterview(id);
+    if (!copy) {
+      showToast("複製できませんでした");
+      return;
+    }
+    showToast("複製しました");
+    openInterviewList();
+  }
+
+  function deleteInterviewFromList(id) {
+    if (!InterviewEngine) return;
+    var title = "";
+    var found = InterviewEngine.loadInterviews().find(function (it) { return it.id === id; });
+    title = found ? InterviewEngine.getInterviewDisplayTitle(found) : "";
+    if (!window.confirm("「" + title + "」を削除しますか？")) return;
+    InterviewEngine.deleteInterview(id);
+    if (interviewSession && interviewSession.id === id) {
+      interviewSession = null;
+      interviewPendingQuestion = null;
+    }
+    showToast("削除しました");
+    openInterviewList();
+  }
+
+  var BRIEF_EDIT_FIELDS = [
+    { key: "title", label: "タイトル" },
+    { key: "purpose", label: "目的" },
+    { key: "target", label: "ターゲット" },
+    { key: "customerProblem", label: "悩み" },
+    { key: "service", label: "提供サービス" },
+    { key: "strengths", label: "強み" },
+    { key: "achievements", label: "実績" },
+    { key: "pricing", label: "料金の見せ方" },
+    { key: "cta", label: "CTA" },
+    { key: "images", label: "写真・素材" },
+    { key: "design", label: "希望デザイン" },
+    { key: "referenceSites", label: "参考サイト" },
+    { key: "prohibitedContent", label: "掲載禁止" },
+    { key: "deadline", label: "公開希望" },
+    { key: "pages", label: "ページ数" },
+    { key: "category", label: "カテゴリ" },
+    { key: "keywords", label: "キーワード" },
+    { key: "length", label: "文字数" },
+    { key: "media", label: "媒体" },
+    { key: "postBody", label: "投稿内容" },
+    { key: "features", label: "必要機能" },
+    { key: "notes", label: "その他" }
+  ];
+
+  function openCreativeBrief() {
+    if (!InterviewEngine || !interviewSession) return;
+    var brief = InterviewEngine.buildCreativeBrief(interviewSession);
+    var wrap = document.getElementById("creative-brief-fields");
+    if (wrap) {
+      wrap.innerHTML = BRIEF_EDIT_FIELDS.map(function (f) {
+        var val = brief[f.key] || "";
+        if (!val && f.key === "design") val = brief.design || "";
+        if (!val) return "";
+        var isLong = /notes|postBody|service|customerProblem|strengths|brief/.test(f.key) ||
+          String(val).length > 40;
+        if (isLong) {
+          return (
+            '<div class="form-group">' +
+              "<label for=\"brief-field-" + escapeHtml(f.key) + "\">" + escapeHtml(f.label) + "</label>" +
+              '<textarea id="brief-field-' + escapeHtml(f.key) + '" data-brief-key="' +
+                escapeHtml(f.key) + '" rows="2">' + escapeHtml(val) + "</textarea>" +
+            "</div>"
+          );
+        }
+        return (
+          '<div class="form-group">' +
+            "<label for=\"brief-field-" + escapeHtml(f.key) + "\">" + escapeHtml(f.label) + "</label>" +
+            '<input type="text" id="brief-field-' + escapeHtml(f.key) + '" data-brief-key="' +
+              escapeHtml(f.key) + '" value="' + escapeHtml(val) + '">' +
+          "</div>"
+        );
+      }).filter(Boolean).join("");
+
+      // Always show core fields even if empty (for editing)
+      var core = ["title", "purpose", "target", "cta", "notes"];
+      core.forEach(function (key) {
+        if (wrap.querySelector('[data-brief-key="' + key + '"]')) return;
+        var meta = BRIEF_EDIT_FIELDS.find(function (f) { return f.key === key; });
+        if (!meta) return;
+        var div = document.createElement("div");
+        div.className = "form-group";
+        div.innerHTML =
+          "<label for=\"brief-field-" + key + "\">" + escapeHtml(meta.label) + "</label>" +
+          '<input type="text" id="brief-field-' + key + '" data-brief-key="' + key + '" value="">';
+        wrap.appendChild(div);
+      });
+    }
+    showCreativeView("brief");
+  }
+
+  function collectBriefEdits() {
+    if (!InterviewEngine || !interviewSession) return null;
+    interviewSession.answers = interviewSession.answers || InterviewEngine.createEmptyAnswers();
+    BRIEF_EDIT_FIELDS.forEach(function (f) {
+      var el = document.querySelector('[data-brief-key="' + f.key + '"]');
+      if (!el) return;
+      var v = String(el.value || "").trim();
+      if (f.key === "design") interviewSession.answers.designTone = v;
+      else if (Object.prototype.hasOwnProperty.call(interviewSession.answers, f.key)) {
+        interviewSession.answers[f.key] = v;
+      }
+    });
+    interviewSession.updatedAt = new Date().toISOString();
+    persistInterviewSession();
+    return InterviewEngine.buildCreativeBrief(interviewSession);
+  }
+
+  function convertBriefToCreativeJob() {
+    if (!InterviewEngine || !interviewSession) {
+      showToast("ヒアリングデータがありません");
+      return;
+    }
+    var brief = collectBriefEdits();
+    var meta = creativeTypeMeta(interviewSession.creativeType);
+    var job = InterviewEngine.interviewToCreativeJob(interviewSession, brief, meta);
+    var list = loadCreativeJobs();
+    list.unshift(job);
+    saveCreativeJobs(list.slice(0, 100));
+    InterviewEngine.markInterviewProduced(interviewSession);
+    persistInterviewSession();
+    interviewSession = null;
+    interviewPendingQuestion = null;
+    showToast("制作依頼を作成しました（設計中）。ヒアリングは制作済みで残ります");
+    openInterviewList();
+  }
+
+  function saveBriefAndExit() {
+    if (!interviewSession) return;
+    collectBriefEdits();
+    if (InterviewEngine && interviewSession.status !== InterviewEngine.STATUSES.CONVERTED) {
+      interviewSession.status = InterviewEngine.STATUSES.COMPLETED;
+      interviewSession.completedAt = interviewSession.completedAt || new Date().toISOString();
+    }
+    persistInterviewSession();
+    interviewSession = null;
+    showToast("ヒアリングを保存しました");
+    showCreativeView("menu");
+  }
+
+  function restartInterview() {
+    if (!InterviewEngine || !creativeSelectedType) {
+      showCreativeView("menu");
+      return;
+    }
+    if (!window.confirm("ヒアリングを最初からやり直しますか？")) return;
+    interviewSession = InterviewEngine.createInterview(creativeSelectedType, { creator: "YAHA" });
+    persistInterviewSession();
+    openCreativeInterview(creativeSelectedType, interviewSession);
+  }
+
+  function val(id) {
+    var el = document.getElementById(id);
+    return el ? String(el.value || "").trim() : "";
+  }
+
+  function collectCreativeDraft() {
+    var type = val("creative-form-type");
+    var meta = creativeTypeMeta(type);
+    return {
+      type: type,
+      typeLabel: meta.label,
+      title: val("creative-title"),
+      purpose: val("creative-purpose") || val("creative-html-purpose"),
+      target: val("creative-target") || val("creative-users"),
+      cta: val("creative-cta"),
+      pages: val("creative-pages"),
+      design: val("creative-design"),
+      category: val("creative-category"),
+      keywords: val("creative-keywords"),
+      length: val("creative-length"),
+      publishDate: val("creative-publish-date"),
+      media: val("creative-media"),
+      postBody: val("creative-post-body"),
+      features: val("creative-features"),
+      images: val("creative-photo"),
+      referenceUrl: val("creative-ref"),
+      memo: val("creative-memo"),
+      creator: "YAHA",
+      sourceType: "manual"
+    };
+  }
+
+  function validateCreativeDraft(draft) {
+    if (!draft.type) return "制作種類が不明です";
+    if (!draft.title) return "タイトル / 名称を入力してください";
+    if (draft.type === "lp") {
+      if (!draft.purpose) return "目的を入力してください";
+      if (!draft.target) return "ターゲットを入力してください";
+      if (!draft.cta) return "CTAを入力してください";
+    }
+    if (draft.type === "home") {
+      if (!draft.purpose) return "目的を入力してください";
+      if (!draft.target) return "対象を入力してください";
+    }
+    if (draft.type === "sns") {
+      if (!draft.media) return "媒体を選択してください";
+      if (!draft.postBody) return "投稿内容を入力してください";
+    }
+    if (draft.type === "app") {
+      if (!draft.purpose) return "目的を入力してください";
+      if (!draft.features) return "必要機能を入力してください";
+      if (!draft.target) return "対象ユーザーを入力してください";
+    }
+    if ((draft.type === "html" || draft.type === "banner") && !draft.purpose) {
+      return "目的・用途を入力してください";
+    }
+    return "";
+  }
+
+  function buildCreativeConfirmText(draft) {
+    var lines = [
+      "種類",
+      draft.typeLabel || draft.type,
+      "タイトル",
+      draft.title || "—"
+    ];
+    function add(label, value) {
+      if (!value) return;
+      lines.push(label);
+      lines.push(value);
+    }
+    add("目的", draft.purpose);
+    add("ターゲット", draft.target);
+    add("CTA", draft.cta);
+    add("ページ数", draft.pages);
+    add("希望デザイン", draft.design);
+    add("カテゴリ", draft.category);
+    add("キーワード", draft.keywords);
+    add("文字数", draft.length);
+    add("公開日", draft.publishDate);
+    add("媒体", draft.media);
+    add("投稿内容", draft.postBody);
+    add("必要機能", draft.features);
+    add("写真", draft.images);
+    add("参考サイト", draft.referenceUrl || draft.referenceSites);
+    add("備考", draft.memo);
+    add("sourceType", draft.sourceType);
+    return lines.join("\n");
+  }
+
+  function openCreativeConfirm() {
+    var draft = collectCreativeDraft();
+    var errMsg = validateCreativeDraft(draft);
+    var err = document.getElementById("creative-form-error");
+    if (errMsg) {
+      if (err) { err.hidden = false; err.textContent = errMsg; }
+      showToast(errMsg);
+      return;
+    }
+    if (err) { err.hidden = true; err.textContent = ""; }
+    creativeDraft = draft;
+    var body = document.getElementById("creative-confirm-body");
+    if (body) body.textContent = buildCreativeConfirmText(draft);
+    showCreativeView("confirm");
+  }
+
+  function startCreativeJob() {
+    if (!creativeDraft) {
+      showToast("確認データがありません");
+      return;
+    }
+    var now = new Date().toISOString();
+    var job = {
+      id: "creative-" + Date.now(),
+      type: creativeDraft.type,
+      typeLabel: creativeDraft.typeLabel,
+      title: creativeDraft.title,
+      purpose: creativeDraft.purpose || "",
+      target: creativeDraft.target || "",
+      cta: creativeDraft.cta || "",
+      keywords: creativeDraft.keywords || "",
+      images: creativeDraft.images || "",
+      memo: creativeDraft.memo || "",
+      pages: creativeDraft.pages || "",
+      design: creativeDraft.design || "",
+      category: creativeDraft.category || "",
+      length: creativeDraft.length || "",
+      publishDate: creativeDraft.publishDate || "",
+      media: creativeDraft.media || "",
+      postBody: creativeDraft.postBody || "",
+      features: creativeDraft.features || "",
+      referenceUrl: creativeDraft.referenceUrl || "",
+      createdAt: now,
+      updatedAt: now,
+      status: "依頼中",
+      creator: creativeDraft.creator || "YAHA",
+      sourceType: creativeDraft.sourceType || "manual",
+      pipeline: {
+        writer: "pending",
+        designer: "pending",
+        programmer: "pending",
+        tester: "pending"
+      }
+    };
+    var list = loadCreativeJobs();
+    list.unshift(job);
+    saveCreativeJobs(list.slice(0, 100));
+    creativeDraft = null;
+    showToast("制作依頼を保存しました（依頼中）");
+    openCreativeHistory();
+  }
+
+  function formatCreativeDate(iso) {
+    try {
+      return new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+    } catch (e) {
+      return String(iso || "");
+    }
+  }
+
+  function openCreativeHistory() {
+    var el = document.getElementById("creative-history-list");
+    if (!el) return;
+    var jobs = loadCreativeJobs();
+    if (!jobs.length) {
+      el.innerHTML = '<p class="empty-message">制作依頼はまだありません</p>' +
+        '<p class="form-hint">ヒアリング下書きは「ヒアリング一覧」から確認できます。</p>';
+    } else {
+      el.innerHTML = jobs.map(function (j) {
+        return (
+          '<button type="button" class="creative-history-card" data-creative-id="' + escapeHtml(j.id) + '">' +
+            '<p class="creative-history-card__title">' + escapeHtml((j.typeLabel || j.type) + " / " + j.title) + "</p>" +
+            '<p class="creative-history-card__meta">作成日：' + escapeHtml(formatCreativeDate(j.createdAt)) +
+              "<br>ステータス：" + escapeHtml(j.status || "依頼中") +
+              (j.sourceType ? "<br>source：" + escapeHtml(j.sourceType) : "") + "</p>" +
+          "</button>"
+        );
+      }).join("");
+    }
+    showCreativeView("history");
+  }
+
+  function openCreativeDetail(id) {
+    var job = loadCreativeJobs().find(function (j) { return j.id === id; });
+    if (!job) {
+      showToast("履歴が見つかりません");
+      return;
+    }
+    creativeDetailId = id;
+    var meta = document.getElementById("creative-detail-meta");
+    if (meta) meta.textContent = (job.typeLabel || job.type) + " — " + job.title;
+    var body = document.getElementById("creative-detail-body");
+    if (body) body.textContent = buildCreativeConfirmText(job) +
+      "\nステータス\n" + (job.status || "依頼中") +
+      "\n作成者\n" + (job.creator || "—") +
+      "\n作成日\n" + formatCreativeDate(job.createdAt) +
+      (job.brief ? "\n\n制作要件\n" + job.brief : "");
+    var sel = document.getElementById("creative-detail-status");
+    if (sel) {
+      sel.innerHTML = CREATIVE_STATUSES.map(function (s) {
+        return '<option value="' + escapeHtml(s) + '"' +
+          (s === job.status ? " selected" : "") + ">" + escapeHtml(s) + "</option>";
+      }).join("");
+    }
+    showCreativeView("detail");
+  }
+
+  function saveCreativeStatus() {
+    if (!creativeDetailId) return;
+    var sel = document.getElementById("creative-detail-status");
+    var status = sel ? String(sel.value || "") : "";
+    if (CREATIVE_STATUSES.indexOf(status) === -1) {
+      showToast("ステータスが不正です");
+      return;
+    }
+    var list = loadCreativeJobs();
+    var found = false;
+    list = list.map(function (j) {
+      if (j.id !== creativeDetailId) return j;
+      found = true;
+      return Object.assign({}, j, { status: status, updatedAt: new Date().toISOString() });
+    });
+    if (!found) {
+      showToast("保存できませんでした");
+      return;
+    }
+    saveCreativeJobs(list);
+    showToast("ステータスを更新しました");
+    openCreativeDetail(creativeDetailId);
+  }
+
+  function openCreativeStudio() {
+    if (!creativeStudioModal) return;
+    renderCreativeTypeGrid();
+    creativeDraft = null;
+    creativeDetailId = "";
+    creativeSelectedType = "";
+    interviewSession = null;
+    interviewPendingQuestion = null;
+    showCreativeView("menu");
+    creativeStudioModal.classList.add("is-open");
+    creativeStudioModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+  }
+
+  function closeCreativeStudio() {
+    if (!creativeStudioModal) return;
+    persistInterviewSession();
+    creativeStudioModal.classList.remove("is-open");
+    creativeStudioModal.setAttribute("aria-hidden", "true");
+    creativeDraft = null;
+    creativeDetailId = "";
+    interviewSession = null;
+    interviewPendingQuestion = null;
+    showCreativeView("menu");
+    syncBodyScroll();
+  }
+
+  /* ========== Company Brain ========== */
+
   function showBrainView(name) {
     var list = document.getElementById("brain-list-view");
     var edit = document.getElementById("brain-edit-view");
@@ -6516,6 +7777,210 @@
   onClick("btn-company-brain", function () {
     openCompanyBrain();
   }, "openCompanyBrain");
+  onClick("btn-task-manager", function () {
+    openTaskManager();
+  }, "openTaskManager");
+  onClick("btn-creative-studio", function () {
+    openCreativeStudio();
+  }, "openCreativeStudio");
+  onClick("btn-creative-studio-more", function () {
+    openCreativeStudio();
+  });
+  onClick("creative-studio-close", closeCreativeStudio, "closeCreativeStudio");
+  onClick("btn-creative-close-menu", closeCreativeStudio);
+  onClick("btn-creative-history", openCreativeHistory);
+  onClick("btn-creative-history-back", function () { showCreativeView("menu"); });
+  onClick("btn-interview-list", openInterviewList);
+  onClick("btn-interview-list-back", function () { showCreativeView("menu"); });
+  onClick("btn-creative-back-menu", function () { showCreativeView("menu"); });
+  onClick("btn-creative-mode-back", function () { showCreativeView("menu"); });
+  onClick("btn-creative-mode-ai", function () {
+    openCreativeInterview(creativeSelectedType);
+  });
+  onClick("btn-creative-mode-manual", function () {
+    openCreativeForm(creativeSelectedType);
+  });
+  onClick("btn-interview-send", function () {
+    var input = document.getElementById("interview-answer-input");
+    submitInterviewAnswer(input ? input.value : "");
+  });
+  onClick("btn-interview-draft-save", saveInterviewDraftExplicit);
+  onClick("btn-draft-title-save", confirmDraftTitle);
+  onClick("btn-draft-title-cancel", cancelDraftTitle);
+  onClick("btn-interview-back", interviewBackOne);
+  onClick("btn-interview-abort", abortInterview);
+  onClick("btn-brief-to-job", convertBriefToCreativeJob);
+  onClick("btn-brief-edit-answers", function () {
+    if (!InterviewEngine || !interviewSession) return;
+    collectBriefEdits();
+    interviewSession.status = InterviewEngine.STATUSES.IN_PROGRESS;
+    interviewSession.completedAt = "";
+    InterviewEngine.goBackOneAnswer(interviewSession);
+    persistInterviewSession();
+    openCreativeInterview(interviewSession.creativeType, interviewSession);
+  });
+  onClick("btn-brief-save-exit", saveBriefAndExit);
+  onClick("btn-brief-restart", restartInterview);
+  onClick("btn-creative-to-confirm", openCreativeConfirm);
+  onClick("btn-creative-start", startCreativeJob);
+  onClick("btn-creative-edit", function () { showCreativeView("form"); });
+  onClick("btn-creative-cancel", function () {
+    creativeDraft = null;
+    showCreativeView("menu");
+  });
+  onClick("btn-creative-detail-back", openCreativeHistory);
+  onClick("btn-creative-status-save", saveCreativeStatus);
+  var creativeTypeGrid = document.getElementById("creative-type-grid");
+  if (creativeTypeGrid) {
+    creativeTypeGrid.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-creative-type]") : null;
+      if (!btn) return;
+      openCreativeModeSelect(btn.getAttribute("data-creative-type"));
+    });
+  }
+  var interviewChoices = document.getElementById("interview-choices");
+  if (interviewChoices) {
+    interviewChoices.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-interview-choice]") : null;
+      if (!btn) return;
+      var choice = btn.getAttribute("data-interview-choice") || "";
+      Array.prototype.forEach.call(interviewChoices.querySelectorAll(".interview-choice-btn"), function (b) {
+        b.classList.toggle("is-selected", b === btn);
+      });
+      var input = document.getElementById("interview-answer-input");
+      if (choice === "その他") {
+        if (input) { input.value = ""; input.focus(); }
+        return;
+      }
+      if (input) input.value = choice;
+      submitInterviewAnswer(choice);
+    });
+  }
+  var interviewAnswerInput = document.getElementById("interview-answer-input");
+  if (interviewAnswerInput) {
+    interviewAnswerInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        submitInterviewAnswer(interviewAnswerInput.value);
+      }
+    });
+  }
+  var creativeHistoryList = document.getElementById("creative-history-list");
+  if (creativeHistoryList) {
+    creativeHistoryList.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-creative-id]") : null;
+      if (!btn) return;
+      openCreativeDetail(btn.getAttribute("data-creative-id"));
+    });
+  }
+  var interviewListEl = document.getElementById("interview-list");
+  if (interviewListEl) {
+    interviewListEl.addEventListener("click", function (e) {
+      var del = e.target.closest ? e.target.closest("[data-interview-del]") : null;
+      if (del) {
+        e.preventDefault();
+        deleteInterviewFromList(del.getAttribute("data-interview-del"));
+        return;
+      }
+      var ren = e.target.closest ? e.target.closest("[data-interview-rename]") : null;
+      if (ren) {
+        e.preventDefault();
+        renameInterviewFromList(ren.getAttribute("data-interview-rename"));
+        return;
+      }
+      var dup = e.target.closest ? e.target.closest("[data-interview-dup]") : null;
+      if (dup) {
+        e.preventDefault();
+        duplicateInterviewFromList(dup.getAttribute("data-interview-dup"));
+        return;
+      }
+      var openBtn = e.target.closest ? e.target.closest("[data-interview-id]") : null;
+      if (openBtn) {
+        resumeInterview(openBtn.getAttribute("data-interview-id"));
+      }
+    });
+  }
+  onClick("task-manager-close", closeTaskManager, "closeTaskManager");
+  onClick("btn-task-close-list", closeTaskManager);
+  onClick("btn-task-refresh", refreshTaskManager);
+  onClick("btn-task-add", function () { openTaskForm(null); });
+  onClick("btn-task-cancel-form", function () { showTaskView("list"); });
+  onClick("btn-task-save", handleTaskSave);
+  onClick("btn-task-import-md", openTaskImportPreview);
+  onClick("btn-task-import-run", runTaskImport);
+  onClick("btn-task-import-cancel", function () { showTaskView("list"); });
+  var taskTabs = document.getElementById("task-tabs");
+  if (taskTabs) {
+    taskTabs.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest(".task-tab") : null;
+      if (!btn) return;
+      taskBucket = btn.getAttribute("data-task-bucket") || "today";
+      Array.prototype.forEach.call(taskTabs.querySelectorAll(".task-tab"), function (b) {
+        b.classList.toggle("is-active", b === btn);
+      });
+      refreshTaskManager();
+    });
+  }
+  var taskSearch = document.getElementById("task-search");
+  if (taskSearch) {
+    taskSearch.addEventListener("input", function () {
+      refreshTaskManager();
+    });
+  }
+  var taskListEl = document.getElementById("task-list");
+  if (taskListEl) {
+    taskListEl.addEventListener("click", function (e) {
+      var completeBtn = e.target.closest ? e.target.closest(".btn-task-complete") : null;
+      var postponeBtn = e.target.closest ? e.target.closest(".btn-task-postpone") : null;
+      var editBtn = e.target.closest ? e.target.closest(".btn-task-edit") : null;
+      var deleteBtn = e.target.closest ? e.target.closest(".btn-task-delete") : null;
+      var id = (completeBtn || postponeBtn || editBtn || deleteBtn || {}).getAttribute
+        ? (completeBtn || postponeBtn || editBtn || deleteBtn).getAttribute("data-task-id")
+        : "";
+      if (!id) return;
+      if (editBtn) {
+        var task = taskCache.find(function (t) { return t.id === id; });
+        if (task) openTaskForm(task);
+        return;
+      }
+      if (completeBtn) {
+        if (!window.confirm("このタスクを完了にしますか？")) return;
+        fetchLineJson(LINE_API.tasks, {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "complete", id: id })
+        }).then(function (d) {
+          showToast(d && d.ok ? "完了にしました" : "完了できませんでした");
+          return refreshTaskManager();
+        });
+        return;
+      }
+      if (postponeBtn) {
+        var when = window.prompt("延期先を入力（例：明日 / 2026-07-20）", "明日");
+        if (!when) return;
+        fetchLineJson(LINE_API.tasks, {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "postpone", id: id, when: when })
+        }).then(function (d) {
+          showToast(d && d.ok ? "延期しました" : "延期できませんでした");
+          return refreshTaskManager();
+        });
+        return;
+      }
+      if (deleteBtn) {
+        if (!window.confirm("このタスクを削除しますか？")) return;
+        fetchLineJson(LINE_API.tasks, {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", id: id })
+        }).then(function (d) {
+          showToast(d && d.ok ? "削除しました" : "削除できませんでした");
+          return refreshTaskManager();
+        });
+      }
+    });
+  }
   onClick("company-brain-close", closeCompanyBrain, "closeCompanyBrain");
   onClick("btn-brain-close-list", closeCompanyBrain);
   onClick("btn-brain-back", function () {
