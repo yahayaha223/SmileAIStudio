@@ -15,6 +15,8 @@ var messages = require(path.join(shared, "message-builder"));
 var env = require(path.join(shared, "env"));
 var dedupe = require(path.join(shared, "event-dedupe"));
 var defaults = require(path.join(shared, "defaults"));
+var knowledgeLoader = require(path.join(shared, "knowledge-loader"));
+var promptBuilder = require(path.join(shared, "secretary-system-prompt"));
 
 var passed = 0;
 var failed = 0;
@@ -126,6 +128,21 @@ test("dedupe: same event id skipped", function () {
 test("defaults: five standard projects", function () {
   assert.strictEqual(defaults.DEFAULT_PROJECTS.length, 5);
   assert.ok(defaults.DEFAULT_PROJECTS.some(function (p) { return p.id === "toyokawa-ningyoyaki"; }));
+});
+
+test("knowledge: load all md files", function () {
+  var knowledge = knowledgeLoader.loadAllKnowledge();
+  assert.ok(knowledge.loadedFiles >= 9, "expected at least 9 knowledge files");
+  assert.ok(knowledge.combined.indexOf("えがおのきろく") !== -1);
+  assert.ok(knowledge.combined.indexOf("company.md") !== -1 || knowledge.files.some(function (f) {
+    return f.file === "company.md" && f.ok;
+  }));
+  var section = knowledgeLoader.buildKnowledgePromptSection(knowledge);
+  assert.ok(section.indexOf("会社の知識") !== -1);
+  var prompt = promptBuilder.buildSecretarySystemPrompt("live-context", section);
+  assert.ok(prompt.indexOf("まだ登録されていません") !== -1);
+  assert.ok(prompt.indexOf("live-context") !== -1);
+  assert.ok(prompt.indexOf("knowledge") !== -1);
 });
 
 (async function main() {

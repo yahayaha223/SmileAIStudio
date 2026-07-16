@@ -20,13 +20,13 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.6.0",
-    build: 36,
-    updatedAt: "2026-07-15"
+    version: "1.7.0",
+    build: 37,
+    updatedAt: "2026-07-16"
   };
 
   var DEV_ROADMAP = {
-    progress: 94,
+    progress: 95,
     completed: [
       "AIルーター",
       "指示書生成",
@@ -46,9 +46,12 @@
       "LINE双方向司令塔 MVP",
       "LINE判断 → 会議ログ自動保存",
       "LINE自然会話AI秘書",
-      "司令塔コマンド＋自由会話"
+      "司令塔コマンド＋自由会話",
+      "会社knowledge読込（LINE回答）"
     ],
     upcoming: [
+      { label: "会社の知識 編集画面", status: "準備中" },
+      { label: "knowledge保存確認フロー", status: "準備中" },
       { label: "GitHub自動Push", status: "準備中" },
       { label: "Netlify公開", status: "準備中" },
       { label: "Cursor自動実行（要確認）", status: "準備中" },

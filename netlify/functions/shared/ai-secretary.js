@@ -5,6 +5,7 @@ var openaiClient = require("./openai-client");
 var memoryStore = require("./conversation-memory-store");
 var promptBuilder = require("./secretary-system-prompt");
 var projectStore = require("./project-store");
+var knowledgeLoader = require("./knowledge-loader");
 
 var MSG_NO_KEY =
   "AI会話機能はまだ設定されていません。\n『メニュー』または『ヘルプ』は利用できます。";
@@ -57,7 +58,22 @@ async function replyAsSecretary(userId, text) {
   }
 
   var companyContext = await buildContextSafe();
-  var instructions = promptBuilder.buildSecretarySystemPrompt(companyContext);
+  var knowledge;
+  try {
+    knowledge = knowledgeLoader.loadAllKnowledge();
+  } catch (e) {
+    console.log("[ai-secretary] knowledge load failed", e && e.message ? e.message : e);
+    knowledge = { ok: false, combined: "", loadedFiles: 0 };
+  }
+  var knowledgeSection = knowledgeLoader.buildKnowledgePromptSection(knowledge);
+  var instructions = promptBuilder.buildSecretarySystemPrompt(companyContext, knowledgeSection);
+  console.log(JSON.stringify({
+    at: new Date().toISOString(),
+    stage: "ai-secretary-knowledge",
+    knowledgeOk: !!knowledge.ok,
+    loadedFiles: knowledge.loadedFiles || 0,
+    knowledgeChars: knowledge.combined ? knowledge.combined.length : 0
+  }));
   var memory = await memoryStore.getChatMemory(userId);
   var input = (memory.messages || []).map(function (m) {
     return { role: m.role, content: m.content };
