@@ -20,8 +20,8 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.8.1",
-    build: 39,
+    version: "1.8.2",
+    build: 40,
     updatedAt: "2026-07-16"
   };
 
@@ -2910,7 +2910,7 @@
     }
     return makeCheckResult("brain-save", "knowledge保存", "ok",
       "保存API呼び出し処理を確認しました",
-      "POST api-knowledge action=save（disk+overlay）");
+      "POST api-knowledge action=save（Netlify Blobs overlay・strong）");
   }
 
   function checkCompanyBrainLoad() {
@@ -2922,7 +2922,7 @@
     }
     return makeCheckResult("brain-load", "knowledge読み込み", "ok",
       "読み込み処理を確認しました（API不通時は画面内で注意表示）",
-      "GET api-knowledge?full=1");
+      "GET api-knowledge?full=1 / action=file（overlay優先）");
   }
 
   function calculateOverallHealth(results) {
@@ -4851,6 +4851,7 @@
       method: options.method || "GET",
       headers: options.headers || { Accept: "application/json" },
       body: options.body || undefined,
+      cache: "no-store",
       signal: ctrl ? ctrl.signal : undefined
     }).then(function (res) {
       return res.json().catch(function () {
@@ -5186,9 +5187,10 @@
   function refreshCompanyBrain() {
     var listEl = document.getElementById("brain-file-list");
     if (listEl) listEl.innerHTML = '<p class="empty-message">読み込み中…</p>';
+    var bust = "&_t=" + Date.now();
     return Promise.all([
-      fetchLineJson(LINE_API.knowledge + "?full=1").catch(function () { return null; }),
-      fetchLineJson(LINE_API.knowledge + "?action=candidates").catch(function () { return null; })
+      fetchLineJson(LINE_API.knowledge + "?full=1" + bust).catch(function () { return null; }),
+      fetchLineJson(LINE_API.knowledge + "?action=candidates" + bust).catch(function () { return null; })
     ]).then(function (pair) {
       var docsRes = pair[0];
       var candRes = pair[1];
@@ -5227,24 +5229,48 @@
   }
 
   function openBrainEditor(fileName) {
-    var doc = brainDocsCache.find(function (d) { return d.file === fileName; });
-    if (!doc) {
-      showToast("ファイルを開けませんでした");
-      return;
-    }
-    brainCurrentFile = doc.file;
     var meta = document.getElementById("brain-edit-meta");
     var editor = document.getElementById("brain-editor");
     var err = document.getElementById("brain-edit-error");
-    if (meta) {
-      meta.textContent = (doc.icon || "") + " " + (doc.label || doc.file) + "（" + doc.file + "）";
-    }
-    if (editor) editor.value = doc.content || "";
+    brainCurrentFile = fileName;
+    if (meta) meta.textContent = "読み込み中… " + fileName;
+    if (editor) editor.value = "";
     if (err) {
       err.hidden = true;
       err.textContent = "";
     }
     showBrainView("edit");
+
+    // Always re-fetch the file so LINE overlay saves appear immediately (no stale cache)
+    fetchLineJson(
+      LINE_API.knowledge + "?action=file&file=" + encodeURIComponent(fileName) + "&_t=" + Date.now()
+    ).then(function (data) {
+      var doc = data && data.ok && data.document ? data.document : null;
+      if (!doc) {
+        // fallback to list cache
+        doc = brainDocsCache.find(function (d) { return d.file === fileName; }) || null;
+      } else {
+        // keep list cache in sync
+        var idx = brainDocsCache.findIndex(function (d) { return d.file === fileName; });
+        if (idx >= 0) brainDocsCache[idx] = Object.assign({}, brainDocsCache[idx], doc);
+        else brainDocsCache.push(doc);
+      }
+      if (!doc) {
+        showToast("ファイルを開けませんでした");
+        showBrainView("list");
+        return;
+      }
+      brainCurrentFile = doc.file;
+      if (meta) {
+        meta.textContent =
+          (doc.icon || "") + " " + (doc.label || doc.file) + "（" + doc.file + "）" +
+          (doc.source ? " ・ " + doc.source : "");
+      }
+      if (editor) editor.value = doc.content || "";
+    }).catch(function () {
+      showToast("ファイルを開けませんでした");
+      showBrainView("list");
+    });
   }
 
   function handleBrainSave() {

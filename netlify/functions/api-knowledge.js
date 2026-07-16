@@ -39,6 +39,7 @@ exports.handler = async function (event) {
       return http.json(200, {
         ok: true,
         loadedFiles: list.filter(function (d) { return d.chars > 0; }).length,
+        storage: knowledgeStore.describeStorage(),
         files: list.map(function (d) {
           var row = {
             file: d.file,
@@ -48,7 +49,8 @@ exports.handler = async function (event) {
             ok: d.ok,
             chars: d.chars,
             updatedAt: d.updatedAt,
-            source: d.source
+            source: d.source,
+            storage: d.storage || null
           };
           if (includeContent) row.content = d.content;
           return row;

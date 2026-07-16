@@ -86,7 +86,11 @@ async function handleExplicitKnowledgeSave(userId, text) {
     ok: !!saved.ok,
     file: intent.file,
     title: title,
-    error: saved.error || ""
+    error: saved.error || "",
+    primarySource: saved.primarySource || "",
+    destinations: saved.destinations || null,
+    verified: !!saved.verified,
+    readSource: saved.readSource || ""
   }));
 
   if (!saved.ok) {

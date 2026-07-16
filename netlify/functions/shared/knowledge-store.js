@@ -5,7 +5,8 @@ var path = require("path");
 var kv = require("./kv-store");
 var loader = require("./knowledge-loader");
 
-var OVERLAY_KEY = "knowledgeOverlays";
+var OVERLAY_KEY = "knowledgeOverlays"; // legacy single-object key
+var OVERLAY_PREFIX = "knowledgeOverlay:"; // per-file keys (preferred)
 var CANDIDATES_KEY = "knowledgeCandidates";
 
 var FILE_META = {
@@ -31,48 +32,71 @@ function safeFileName(name) {
   return base;
 }
 
-async function getOverlays() {
-  var data = await kv.kvGet(OVERLAY_KEY);
-  return data && typeof data === "object" ? data : {};
+function overlayKeyFor(fileName) {
+  return OVERLAY_PREFIX + fileName;
 }
 
-async function setOverlays(overlays) {
-  return kv.kvSet(OVERLAY_KEY, overlays || {});
+async function getFileOverlay(fileName) {
+  var file = safeFileName(fileName);
+  if (!file) return null;
+
+  var perFile = await kv.kvGet(overlayKeyFor(file));
+  if (perFile && typeof perFile.content === "string") return perFile;
+
+  // Migrate from legacy knowledgeOverlays blob if present
+  var legacy = await kv.kvGet(OVERLAY_KEY);
+  if (legacy && typeof legacy === "object" && legacy[file] && typeof legacy[file].content === "string") {
+    try {
+      await kv.kvSet(overlayKeyFor(file), legacy[file]);
+    } catch (e) { /* ignore migrate write */ }
+    return legacy[file];
+  }
+  return null;
+}
+
+async function setFileOverlay(fileName, entry) {
+  var file = safeFileName(fileName);
+  if (!file) return false;
+  return kv.kvSet(overlayKeyFor(file), entry);
 }
 
 function readDiskContent(fileName) {
   var dir = loader.resolveKnowledgeDir();
   var full = path.join(dir, fileName);
   try {
-    if (!fs.existsSync(full)) return { ok: false, content: "", source: "missing" };
-    return { ok: true, content: fs.readFileSync(full, "utf8"), source: "disk" };
+    if (!fs.existsSync(full)) return { ok: false, content: "", source: "missing", path: full };
+    return { ok: true, content: fs.readFileSync(full, "utf8"), source: "disk", path: full };
   } catch (e) {
-    return { ok: false, content: "", source: "error" };
+    return { ok: false, content: "", source: "error", path: full };
   }
 }
 
 function writeDiskContent(fileName, content) {
   var dir = loader.resolveKnowledgeDir();
+  var full = path.join(dir, fileName);
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, fileName), String(content || ""), "utf8");
-    return { ok: true };
+    fs.writeFileSync(full, String(content || ""), "utf8");
+    return { ok: true, path: full };
   } catch (e) {
-    return { ok: false, error: e && e.message ? e.message : "write_failed" };
+    return { ok: false, error: e && e.message ? e.message : "write_failed", path: full };
   }
 }
 
 async function listKnowledgeDocuments() {
-  var overlays = await getOverlays();
-  return loader.KNOWLEDGE_FILES.map(function (file) {
+  var storage = kv.describeStorage ? kv.describeStorage() : {};
+  var docs = [];
+  for (var i = 0; i < loader.KNOWLEDGE_FILES.length; i++) {
+    var file = loader.KNOWLEDGE_FILES[i];
     var meta = FILE_META[file] || { id: file, label: file, icon: "📄" };
     var disk = readDiskContent(file);
-    var overlay = overlays[file];
-    var content = overlay && typeof overlay.content === "string"
-      ? overlay.content
-      : (disk.content || "");
-    var source = overlay && typeof overlay.content === "string" ? "overlay" : disk.source;
-    return {
+    var overlay = await getFileOverlay(file);
+    var hasOverlay = !!(overlay && typeof overlay.content === "string");
+    var content = hasOverlay ? overlay.content : (disk.content || "");
+    var source = hasOverlay
+      ? (storage.blobsAvailable ? "overlay:netlify-blobs" : "overlay:file")
+      : disk.source;
+    docs.push({
       file: file,
       id: meta.id,
       label: meta.label,
@@ -81,9 +105,18 @@ async function listKnowledgeDocuments() {
       chars: String(content || "").length,
       updatedAt: (overlay && overlay.updatedAt) || "",
       source: source,
-      content: content
-    };
-  });
+      content: content,
+      storage: {
+        diskPath: disk.path || "",
+        overlayKey: overlayKeyFor(file),
+        hasOverlay: hasOverlay,
+        blobsAvailable: !!storage.blobsAvailable,
+        blobStore: storage.blobStore || "",
+        consistency: storage.consistency || ""
+      }
+    });
+  }
+  return docs;
 }
 
 async function getKnowledgeDocument(fileName) {
@@ -103,17 +136,63 @@ async function saveKnowledgeDocument(fileName, content) {
     return { ok: false, error: "too_large" };
   }
 
+  var storage = kv.describeStorage ? kv.describeStorage() : {};
   var disk = writeDiskContent(file, text);
-  var overlays = await getOverlays();
-  overlays[file] = {
+  var overlayEntry = {
     content: text,
     updatedAt: nowIso(),
-    diskWriteOk: !!disk.ok
+    diskWriteOk: !!disk.ok,
+    diskPath: disk.path || ""
   };
-  var overlayOk = await setOverlays(overlays);
-  if (!overlayOk && !disk.ok) {
-    return { ok: false, error: "save_failed" };
+  var overlayOk = await setFileOverlay(file, overlayEntry);
+
+  // On Netlify, disk under /var/task is ephemeral — overlay (Blobs) is the source of truth.
+  var onNetlify = !!(kv.isNetlifyRuntime && kv.isNetlifyRuntime());
+  var ok = onNetlify ? !!overlayOk : (!!overlayOk || !!disk.ok);
+  if (!ok) {
+    console.log(JSON.stringify({
+      at: nowIso(),
+      stage: "knowledge-save",
+      ok: false,
+      file: file,
+      destinations: {
+        disk: { ok: !!disk.ok, path: disk.path || "", ephemeral: onNetlify },
+        overlay: {
+          ok: !!overlayOk,
+          key: overlayKeyFor(file),
+          blobsAvailable: !!storage.blobsAvailable,
+          blobStore: storage.blobStore || "",
+          fileStore: storage.fileStore || ""
+        }
+      },
+      error: onNetlify && !overlayOk ? "overlay_persist_failed" : "save_failed"
+    }));
+    return {
+      ok: false,
+      error: onNetlify && !overlayOk ? "overlay_persist_failed" : "save_failed",
+      diskWriteOk: !!disk.ok,
+      overlayOk: !!overlayOk
+    };
   }
+
+  var destinations = {
+    disk: {
+      ok: !!disk.ok,
+      path: disk.path || "",
+      ephemeral: onNetlify,
+      note: onNetlify
+        ? "Netlify function filesystem — not durable across deploys/instances"
+        : "local knowledge/*.md"
+    },
+    overlay: {
+      ok: !!overlayOk,
+      key: overlayKeyFor(file),
+      backend: storage.blobsAvailable ? "netlify-blobs" : "file",
+      blobStore: storage.blobStore || "",
+      fileStore: storage.fileStore || "",
+      consistency: storage.consistency || "strong"
+    }
+  };
 
   console.log(JSON.stringify({
     at: nowIso(),
@@ -122,7 +201,11 @@ async function saveKnowledgeDocument(fileName, content) {
     file: file,
     chars: text.length,
     diskWriteOk: !!disk.ok,
-    overlayOk: !!overlayOk
+    overlayOk: !!overlayOk,
+    primarySource: destinations.overlay.ok
+      ? (destinations.overlay.backend === "netlify-blobs" ? "Netlify Blobs overlay" : "file overlay")
+      : "disk",
+    destinations: destinations
   }));
 
   return {
@@ -130,7 +213,14 @@ async function saveKnowledgeDocument(fileName, content) {
     file: file,
     chars: text.length,
     diskWriteOk: !!disk.ok,
-    source: disk.ok ? "disk+overlay" : "overlay"
+    overlayOk: !!overlayOk,
+    source: destinations.overlay.ok
+      ? (disk.ok ? "disk+overlay" : "overlay")
+      : "disk",
+    primarySource: destinations.overlay.ok
+      ? (destinations.overlay.backend === "netlify-blobs" ? "Netlify Blobs overlay" : "file overlay")
+      : "disk",
+    destinations: destinations
   };
 }
 
@@ -156,13 +246,35 @@ async function appendKnowledgeEntry(fileName, title, body) {
 
   var saved = await saveKnowledgeDocument(file, base + append);
   if (!saved.ok) return saved;
+
+  // Read-back verification (same path Company Brain uses)
+  var verify = await getKnowledgeDocument(file);
+  var verified = !!(verify && String(verify.content || "").indexOf(safeTitle) !== -1);
+
+  console.log(JSON.stringify({
+    at: nowIso(),
+    stage: "knowledge-append",
+    ok: true,
+    file: file,
+    title: safeTitle,
+    verified: verified,
+    readSource: verify ? verify.source : "",
+    primarySource: saved.primarySource || saved.source,
+    destinations: saved.destinations || null
+  }));
+
   return {
     ok: true,
     file: file,
     title: safeTitle,
     chars: saved.chars,
     diskWriteOk: saved.diskWriteOk,
-    source: saved.source
+    overlayOk: saved.overlayOk,
+    source: saved.source,
+    primarySource: saved.primarySource,
+    destinations: saved.destinations,
+    verified: verified,
+    readSource: verify ? verify.source : ""
   };
 }
 
@@ -420,5 +532,8 @@ module.exports = {
   addCandidate: addCandidate,
   resolveCandidate: resolveCandidate,
   detectKnowledgeSaveCandidate: detectKnowledgeSaveCandidate,
-  detectExplicitSaveRequest: detectExplicitSaveRequest
+  detectExplicitSaveRequest: detectExplicitSaveRequest,
+  describeStorage: function () {
+    return kv.describeStorage ? kv.describeStorage() : {};
+  }
 };
