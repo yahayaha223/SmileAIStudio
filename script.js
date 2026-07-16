@@ -11,7 +11,8 @@
   var TODAY_TODOS_KEY = "smileAIStudio_todayTodos";
   var IPHONE_SETTINGS_KEY = "smileAIStudio_iphoneSettings";
   var CURRENT_FOCUS_KEY = "smileAIStudio_currentFocus";
-  var DIARY_ENTRIES_KEY = "smileAIStudio_diaryEntries";
+  var DIARY_ENTRIES_KEY = "smileAIStudio_blogDrafts";
+  var DIARY_ENTRIES_KEY_LEGACY = "smileAIStudio_diaryEntries";
   var CURSOR_HANDOFFS_KEY = "smileAIStudio_cursorHandoffs";
   var FAMILY_PHOTO_KEY = "smileAIStudio_familyPhoto";
   var TOP_PRIORITY_KEY = "smileAIStudio_topPriority";
@@ -358,6 +359,13 @@
   var webCenterDraftsView = document.getElementById("web-center-drafts-view");
   var webCenterPublishedView = document.getElementById("web-center-published-view");
   var webCenterInstructionView = document.getElementById("web-center-instruction-view");
+  var webCenterPreviewView = document.getElementById("web-center-preview-view");
+  var webCenterVaultView = document.getElementById("web-center-vault-view");
+  var webDiarySearchQuery = "";
+  var MediaDB = window.SmileMediaDB || null;
+  var MEDIA_NOTICE_KEY = "smileAIStudio_mediaNoticeAck";
+  var mediaDbAvailable = null;
+  var mediaSaveFailCount = 0;
   var meetingLogsModal = document.getElementById("meeting-logs-modal");
   var meetingListView = document.getElementById("meeting-list-view");
   var meetingFormView = document.getElementById("meeting-form-view");
@@ -412,6 +420,10 @@
   var editingProjectId = null;
   var editingDiaryId = null;
   var currentDiaryInstruction = "";
+  var diaryImageItems = [];
+  var diaryPreviewDebounceTimer = null;
+  var DIARY_IMAGE_MAX = 10;
+  var DIARY_IMAGE_WARN_BYTES = 10 * 1024 * 1024;
   var secretaryPhotoUrl = "";
   var secretaryPhotoName = "";
   var currentSecretaryResults = null;
@@ -2020,6 +2032,7 @@
       { id: "secretary-modal", label: "AI秘書モーダル" },
       { id: "cursor-handoff-modal", label: "Cursor連携モーダル" },
       { id: "btn-web-center", label: "Web管理センター入口" },
+      { id: "btn-web-center-home", label: "Web管理センター（ホーム）" },
       { id: "web-center-modal", label: "Web管理センターモーダル" },
       { id: "btn-meeting-logs", label: "AI会議ログ入口" },
       { id: "meeting-logs-modal", label: "AI会議ログモーダル" },
@@ -3363,6 +3376,118 @@
     }).join("");
   }
 
+  function checkMediaIndexedDbAvailability() {
+    if (typeof indexedDB === "undefined" || !indexedDB) {
+      return makeCheckResult("media-idb", "IndexedDB利用可否", "warn",
+        "IndexedDBを利用できません（画像一時保存不可・文章編集は継続可）");
+    }
+    if (!MediaDB || typeof MediaDB.checkMediaStorageAvailability !== "function") {
+      return makeCheckResult("media-idb", "IndexedDB利用可否", "fail",
+        "SmileMediaDBモジュールが読み込まれていません");
+    }
+    var avail = MediaDB.checkMediaStorageAvailability();
+    if (!avail.ok) {
+      return makeCheckResult("media-idb", "IndexedDB利用可否", "warn",
+        avail.reason || "IndexedDB利用不可（文章編集は継続可）");
+    }
+    return makeCheckResult("media-idb", "IndexedDB利用可否", "ok", "IndexedDBを利用できます");
+  }
+
+  function checkMediaDbOpen() {
+    if (!MediaDB) {
+      return Promise.resolve(makeCheckResult("media-db-open", "MediaDBを開けるか", "fail",
+        "SmileMediaDBがありません"));
+    }
+    var avail = MediaDB.checkMediaStorageAvailability();
+    if (!avail.ok) {
+      return Promise.resolve(makeCheckResult("media-db-open", "MediaDBを開けるか", "warn",
+        "IndexedDB利用不可のためMediaDBを開けません（文章編集は継続可）"));
+    }
+    return MediaDB.openMediaDatabase().then(function (db) {
+      var hasStore = !!(db && db.objectStoreNames && db.objectStoreNames.contains(MediaDB.STORE));
+      if (!hasStore) {
+        return makeCheckResult("media-db-open", "MediaDBを開けるか", "fail",
+          "diaryImagesストアがありません");
+      }
+      return makeCheckResult("media-db-open", "MediaDBを開けるか", "ok",
+        "SmileAIStudioMediaDB / diaryImages を確認しました");
+    }).catch(function (err) {
+      return makeCheckResult("media-db-open", "MediaDBを開けるか", "fail",
+        "MediaDBを開けません", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkMediaVaultIntegrity() {
+    if (!MediaDB) {
+      return Promise.resolve(makeCheckResult("media-vault", "画像一時保管庫", "fail",
+        "SmileMediaDBがありません"));
+    }
+    var avail = MediaDB.checkMediaStorageAvailability();
+    if (!avail.ok) {
+      return Promise.resolve(makeCheckResult("media-vault", "画像一時保管庫", "warn",
+        "画像一時保存は利用できません。文章編集は継続できます。"));
+    }
+    return Promise.all([
+      MediaDB.getMediaStorageUsage(),
+      MediaDB.estimateBrowserStorage()
+    ]).then(function (pair) {
+      var usage = pair[0];
+      var est = pair[1];
+      var metaIds = {};
+      var metaCount = 0;
+      loadDiaryEntries().forEach(function (d) {
+        (d.images || []).forEach(function (img) {
+          if (!img || !img.id) return;
+          metaIds[img.id] = true;
+          metaCount += 1;
+        });
+      });
+      var blobIds = {};
+      (usage.records || []).forEach(function (rec) {
+        if (rec && rec.imageId) blobIds[rec.imageId] = true;
+      });
+      var mismatch = 0;
+      Object.keys(metaIds).forEach(function (id) {
+        if (!blobIds[id]) mismatch += 1;
+      });
+      var orphans = 0;
+      Object.keys(blobIds).forEach(function (id) {
+        if (!metaIds[id]) orphans += 1;
+      });
+      var details = [
+        "保存済み画像数: " + usage.imageCount,
+        "画像メタデータ数: " + metaCount,
+        "メタデータとBlobの不一致: " + mismatch,
+        "孤立画像数: " + orphans,
+        "保存失敗数(セッション): " + mediaSaveFailCount,
+        "推定使用容量: " + formatBytesShort(usage.totalBytes)
+      ];
+      if (est.available) {
+        details.push("ブラウザ領域: " + formatBytesShort(est.usage) + " / " + formatBytesShort(est.quota));
+      } else {
+        details.push("端末の保存可能容量は取得できません");
+      }
+      var status = "ok";
+      var message = "IndexedDB利用可、DB正常、不一致なし";
+      if (mismatch > 0 && metaCount > 0 && mismatch / metaCount >= 0.5) {
+        status = "fail";
+        message = "保存済みメタデータの多くにBlobがありません（不一致 " + mismatch + "/" + metaCount + "）";
+      } else if (mediaSaveFailCount > 0) {
+        status = "fail";
+        message = "画像保存処理の失敗が検出されています（" + mediaSaveFailCount + "件）";
+      } else if (orphans > 0 || usage.totalBytes > 200 * 1024 * 1024 || usage.imageCount > 50 || mismatch > 0) {
+        status = "warn";
+        message = mismatch > 0
+          ? ("不一致 " + mismatch + "件・孤立 " + orphans + "件あり（整理推奨）")
+          : ("孤立画像または容量注意あり（孤立 " + orphans + "）");
+      }
+      return makeCheckResult("media-vault", "画像一時保管庫", status, message, details.join("\n"));
+    }).catch(function (err) {
+      return makeCheckResult("media-vault", "画像一時保管庫", "fail",
+        "画像保管庫チェックに失敗しました", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
   function runAllSystemChecks(options) {
     options = options || {};
     latestSystemCheckAt = new Date().toISOString();
@@ -3418,22 +3543,67 @@
       ["interview-brief", "制作要件生成", checkInterviewBrief],
       ["interview-convert", "制作依頼変換", checkInterviewConvert],
       ["interview-mode", "入力方式切替", checkInterviewModeSwitch],
-      ["interview-draft-list", "ヒアリング一覧・下書き", checkInterviewDraftList]
+      ["interview-draft-list", "ヒアリング一覧・下書き", checkInterviewDraftList],
+      ["media-idb", "IndexedDB利用可否", checkMediaIndexedDbAvailability],
+      ["media-db-open", "MediaDBを開けるか", checkMediaDbOpen],
+      ["media-vault", "画像一時保管庫", checkMediaVaultIntegrity]
     ];
 
-    latestSystemCheckResults = checks.map(function (item) {
-      return runCheckSafely(item[0], item[1], item[2]);
+    function finish(results) {
+      latestSystemCheckResults = results;
+      latestSystemCheckOverall = calculateOverallHealth(latestSystemCheckResults);
+      renderVersionMeta();
+      renderSystemCheckResults(latestSystemCheckResults, latestSystemCheckOverall);
+      renderRuntimeErrorPanel();
+      if (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) {
+        renderReleaseCenter();
+      }
+      if (!options.silentToast) {
+        showToast("システムチェックが完了しました");
+      }
+    }
+
+    var promises = checks.map(function (item) {
+      try {
+        var result = item[2]();
+        if (result && typeof result.then === "function") {
+          return result.then(function (r) {
+            if (!r || typeof r !== "object") {
+              return makeCheckResult(item[0], item[1], "fail", "チェック結果が不正です");
+            }
+            r.id = item[0];
+            r.title = item[1];
+            if (!r.status) r.status = "unknown";
+            if (!r.message) r.message = "";
+            if (!r.details) r.details = "";
+            return r;
+          }).catch(function (e) {
+            return makeCheckResult(
+              item[0],
+              item[1],
+              "fail",
+              "チェック実行中に例外が発生しました",
+              sanitizeErrorText(e && e.message ? e.message : e)
+            );
+          });
+        }
+        return Promise.resolve(runCheckSafely(item[0], item[1], function () { return result; }));
+      } catch (e) {
+        return Promise.resolve(makeCheckResult(
+          item[0],
+          item[1],
+          "fail",
+          "チェック実行中に例外が発生しました",
+          sanitizeErrorText(e && e.message ? e.message : e)
+        ));
+      }
     });
-    latestSystemCheckOverall = calculateOverallHealth(latestSystemCheckResults);
-    renderVersionMeta();
-    renderSystemCheckResults(latestSystemCheckResults, latestSystemCheckOverall);
-    renderRuntimeErrorPanel();
-    if (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) {
-      renderReleaseCenter();
-    }
-    if (!options.silentToast) {
-      showToast("システムチェックが完了しました");
-    }
+
+    var all = Promise.all(promises);
+    all.then(finish).catch(function () {
+      finish([makeCheckResult("system", "システムチェック", "fail", "チェック全体が失敗しました")]);
+    });
+    return all;
   }
 
   function copySystemCheckResults() {
@@ -3741,18 +3911,22 @@
   }
 
   function runPublishCheck() {
+    function afterCheck() {
+      latestPublishDecision = evaluatePublishDecision();
+      renderReleaseCenter();
+      if (latestPublishDecision.canPublish) {
+        showToast("公開チェック完了：公開可能な状態です");
+      } else if (latestPublishDecision.level === "unknown") {
+        showToast("先にシステムチェックを実行してください");
+      } else {
+        showToast("公開チェック完了：現時点では公開しないでください");
+      }
+    }
     if (!latestSystemCheckResults.length) {
-      runAllSystemChecks({ silentToast: true });
+      runAllSystemChecks({ silentToast: true }).then(afterCheck);
+      return;
     }
-    latestPublishDecision = evaluatePublishDecision();
-    renderReleaseCenter();
-    if (latestPublishDecision.canPublish) {
-      showToast("公開チェック完了：公開可能な状態です");
-    } else if (latestPublishDecision.level === "unknown") {
-      showToast("先にシステムチェックを実行してください");
-    } else {
-      showToast("公開チェック完了：現時点では公開しないでください");
-    }
+    afterCheck();
   }
 
   function addReleaseHistoryEntry() {
@@ -4448,7 +4622,18 @@
 
   /* ========== Web管理センター（活動日記） ========== */
 
+  function migrateDiaryStorageIfNeeded() {
+    try {
+      var current = localStorage.getItem(DIARY_ENTRIES_KEY);
+      if (current) return;
+      var legacy = localStorage.getItem(DIARY_ENTRIES_KEY_LEGACY);
+      if (!legacy) return;
+      localStorage.setItem(DIARY_ENTRIES_KEY, legacy);
+    } catch (e) { /* ignore */ }
+  }
+
   function loadDiaryEntries() {
+    migrateDiaryStorageIfNeeded();
     try {
       var raw = localStorage.getItem(DIARY_ENTRIES_KEY);
       if (!raw) return [];
@@ -4468,17 +4653,51 @@
     }
   }
 
+  function normalizeDiaryImageMeta(raw, index) {
+    if (!raw || typeof raw !== "object") return null;
+    var order = typeof raw.order === "number" ? raw.order : index;
+    var fileName = String(raw.fileName || raw.name || "").trim() || ("image-" + (order + 1));
+    var fileType = String(raw.fileType || raw.type || "").trim();
+    var fileSize = Number(raw.fileSize || raw.size || 0) || 0;
+    var storageStatus = String(raw.storageStatus || "").trim();
+    if (["temporary", "saving", "saved", "missing", "error"].indexOf(storageStatus) === -1) {
+      storageStatus = "missing";
+    }
+    return {
+      id: String(raw.id || ("img-meta-" + order + "-" + Date.now())),
+      fileName: fileName,
+      fileType: fileType,
+      fileSize: fileSize,
+      order: order,
+      altText: String(raw.altText || "").trim(),
+      caption: String(raw.caption || "").trim(),
+      isMain: order === 0 || !!raw.isMain,
+      storageStatus: storageStatus
+    };
+  }
+
   function normalizeDiaryEntry(raw) {
     if (!raw || typeof raw !== "object") return null;
     var id = String(raw.id || "").trim();
     if (!id) id = "diary-" + Date.now();
     var status = raw.status === "published" ? "published" : "draft";
+    var content = String(raw.content || raw.body || "").trim();
+    var images = Array.isArray(raw.images)
+      ? raw.images.map(normalizeDiaryImageMeta).filter(Boolean)
+      : [];
+    images.sort(function (a, b) { return a.order - b.order; });
+    images.forEach(function (img, i) {
+      img.order = i;
+      img.isMain = i === 0;
+    });
     return {
       id: id,
       title: String(raw.title || "").trim(),
-      body: String(raw.body || "").trim(),
-      publishDate: String(raw.publishDate || "").trim(),
+      content: content,
+      body: content,
       photoMemo: String(raw.photoMemo || "").trim(),
+      publishDate: String(raw.publishDate || "").trim(),
+      images: images,
       status: status,
       createdAt: raw.createdAt || new Date().toISOString(),
       updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString()
@@ -4496,6 +4715,15 @@
     return parts[0] + "." + parts[1] + "." + parts[2];
   }
 
+  function formatDiaryUpdatedShort(iso) {
+    try {
+      var d = new Date(iso);
+      return (d.getMonth() + 1) + "/" + d.getDate();
+    } catch (e) {
+      return "—";
+    }
+  }
+
   function todayInputDate() {
     var d = new Date();
     var m = String(d.getMonth() + 1).padStart(2, "0");
@@ -4509,14 +4737,95 @@
       form: webCenterFormView,
       drafts: webCenterDraftsView,
       published: webCenterPublishedView,
-      instruction: webCenterInstructionView
+      instruction: webCenterInstructionView,
+      preview: webCenterPreviewView,
+      vault: webCenterVaultView
     };
     Object.keys(views).forEach(function (key) {
       var el = views[key];
       if (!el) return;
-      if (key === name) el.hidden = false;
-      else el.hidden = true;
+      el.hidden = key !== name;
     });
+  }
+
+  function createTempDiaryId() {
+    return "draft-temp-" + Date.now() + "-" + Math.random().toString(16).slice(2, 8);
+  }
+
+  function ensureEditingDiaryId() {
+    if (!editingDiaryId) {
+      editingDiaryId = createTempDiaryId();
+      var idEl = document.getElementById("web-diary-edit-id");
+      if (idEl) idEl.value = editingDiaryId;
+    }
+    return editingDiaryId;
+  }
+
+  function formatBytesShort(bytes) {
+    var n = Number(bytes) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function storageStatusLabel(status) {
+    if (status === "saved") return "保存済み";
+    if (status === "saving") return "保存中";
+    if (status === "temporary") return "未保存";
+    if (status === "error") return "エラー";
+    if (status === "missing") return "見つからない";
+    return "未保存";
+  }
+
+  function updateDiaryMediaStatusLine(text) {
+    var el = document.getElementById("web-diary-media-status");
+    if (el) el.textContent = text || "";
+  }
+
+  function initMediaDbAvailability() {
+    if (!MediaDB) {
+      mediaDbAvailable = false;
+      updateDiaryMediaStatusLine("画像一時保存は利用できません。画像は再読み込み後に再選択が必要です。");
+      return Promise.resolve(false);
+    }
+    var avail = MediaDB.checkMediaStorageAvailability();
+    if (!avail.ok) {
+      mediaDbAvailable = false;
+      updateDiaryMediaStatusLine("画像一時保存は利用できません。画像は再読み込み後に再選択が必要です。");
+      return Promise.resolve(false);
+    }
+    return MediaDB.openMediaDatabase().then(function () {
+      mediaDbAvailable = true;
+      updateDiaryMediaStatusLine("画像一時保存：端末内 IndexedDB を利用できます");
+      return true;
+    }).catch(function () {
+      mediaDbAvailable = false;
+      updateDiaryMediaStatusLine("画像一時保存は利用できません。画像は再読み込み後に再選択が必要です。");
+      return false;
+    });
+  }
+
+  function refreshMediaNoticeUi() {
+    var banner = document.getElementById("web-media-notice-banner");
+    var compact = document.getElementById("web-media-notice-compact");
+    var ack = false;
+    try { ack = localStorage.getItem(MEDIA_NOTICE_KEY) === "1"; } catch (e) { /* ignore */ }
+    if (banner) banner.hidden = !!ack;
+    if (compact) compact.hidden = !ack;
+  }
+
+  function countImageRefsInDiaries(imageId) {
+    var count = 0;
+    loadDiaryEntries().forEach(function (d) {
+      (d.images || []).forEach(function (img) {
+        if (img.id === imageId) count += 1;
+      });
+    });
+    diaryImageItems.forEach(function (item) {
+      if (item.id === imageId) count += 1;
+    });
+    return count;
   }
 
   function clearWebDiaryFormError() {
@@ -4533,26 +4842,777 @@
     el.textContent = message;
   }
 
+  function releaseDiaryObjectUrls() {
+    diaryImageItems.forEach(function (item) {
+      if (item && item.objectUrl) {
+        try { URL.revokeObjectURL(item.objectUrl); } catch (e) { /* ignore */ }
+        item.objectUrl = "";
+      }
+    });
+  }
+
+  function reindexDiaryImages() {
+    diaryImageItems.forEach(function (item, i) {
+      item.order = i;
+      item.isMain = i === 0;
+    });
+  }
+
+  function serializeDiaryImageMetadata() {
+    reindexDiaryImages();
+    return diaryImageItems.map(function (item, i) {
+      return {
+        id: item.id,
+        fileName: item.fileName,
+        fileType: item.fileType || "",
+        fileSize: item.fileSize || 0,
+        order: i,
+        altText: item.altText || "",
+        caption: item.caption || "",
+        isMain: i === 0,
+        storageStatus: item.storageStatus || (item.missingBody ? "missing" : "temporary")
+      };
+    });
+  }
+
+  function formatDiaryFileSize(bytes) {
+    var n = Number(bytes) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function isLikelyHeic(fileName, fileType) {
+    var name = String(fileName || "").toLowerCase();
+    var type = String(fileType || "").toLowerCase();
+    return /\.heic$|\.heif$/.test(name) || type.indexOf("heic") !== -1 || type.indexOf("heif") !== -1;
+  }
+
+  /** 将来の圧縮処理差し替え用（今回は非破壊・未圧縮） */
+  function processDiaryImageFile(file) {
+    return file;
+  }
+
+  function validateDiaryImage(file) {
+    if (!file) return { ok: false, message: "ファイルがありません" };
+    var type = String(file.type || "").toLowerCase();
+    var name = String(file.name || "").toLowerCase();
+    var looksImage = type.indexOf("image/") === 0 ||
+      /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(name);
+    if (!looksImage) {
+      return { ok: false, message: "画像ファイルを選択してください（JPEG / PNG / WebP / HEIC など）" };
+    }
+    var warnings = [];
+    if (isLikelyHeic(file.name, file.type)) {
+      warnings.push("この写真はHEIC形式の可能性があります。ホームページ更新時にJPEGまたはWebPへの変換が必要になる場合があります。");
+    }
+    if ((file.size || 0) >= DIARY_IMAGE_WARN_BYTES) {
+      warnings.push("画像サイズが大きいため、ホームページ掲載前に圧縮をおすすめします。");
+    }
+    return { ok: true, warnings: warnings };
+  }
+
+  function createDiaryImageItem(file, meta) {
+    meta = meta || {};
+    var processed = processDiaryImageFile(file);
+    var objectUrl = "";
+    try {
+      objectUrl = URL.createObjectURL(processed);
+    } catch (e) {
+      objectUrl = "";
+    }
+    return {
+      id: meta.id || ("img-" + Date.now() + "-" + Math.random().toString(16).slice(2, 8)),
+      fileName: meta.fileName || processed.name || "image",
+      fileType: meta.fileType || processed.type || "",
+      fileSize: typeof meta.fileSize === "number" ? meta.fileSize : (processed.size || 0),
+      order: typeof meta.order === "number" ? meta.order : diaryImageItems.length,
+      altText: meta.altText || "",
+      caption: meta.caption || "",
+      isMain: false,
+      objectUrl: objectUrl,
+      file: processed,
+      missingBody: false,
+      storageStatus: meta.storageStatus || "temporary",
+      previewFailed: false
+    };
+  }
+
+  function updateDiaryImageCount() {
+    var el = document.getElementById("web-diary-image-count");
+    if (el) el.textContent = "選択枚数：" + diaryImageItems.length + " / " + DIARY_IMAGE_MAX;
+  }
+
+  function showDiaryImageError(message) {
+    var el = document.getElementById("web-diary-image-error");
+    if (!el) return;
+    if (!message) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = message;
+  }
+
+  function updateDiaryImageReloadNote() {
+    var note = document.getElementById("web-diary-image-reload-note");
+    if (!note) return;
+    var needs = diaryImageItems.some(function (item) {
+      return item.missingBody || item.storageStatus === "missing";
+    });
+    note.hidden = !needs;
+  }
+
+  function renderDiaryImageList() {
+    var listEl = document.getElementById("web-diary-image-list");
+    if (!listEl) return;
+    reindexDiaryImages();
+    updateDiaryImageCount();
+    updateDiaryImageReloadNote();
+    listEl.innerHTML = "";
+    if (!diaryImageItems.length) {
+      var empty = document.createElement("p");
+      empty.className = "empty-message";
+      empty.textContent = "写真はまだ選ばれていません。";
+      listEl.appendChild(empty);
+      return;
+    }
+    diaryImageItems.forEach(function (item, index) {
+      var card = document.createElement("article");
+      card.className = "web-diary-image-card";
+      card.setAttribute("data-image-id", item.id);
+
+      var thumbWrap = document.createElement("div");
+      thumbWrap.className = "web-diary-image-card__thumb";
+      if (item.objectUrl) {
+        var img = document.createElement("img");
+        img.src = item.objectUrl;
+        img.alt = item.altText || item.fileName || "選択した写真";
+        img.addEventListener("error", function () {
+          item.previewFailed = true;
+          thumbWrap.innerHTML = "";
+          var phFail = document.createElement("div");
+          phFail.className = "web-diary-image-card__placeholder";
+          phFail.textContent = isLikelyHeic(item.fileName, item.fileType)
+            ? "HEIC保存済み（このブラウザではプレビュー不可の可能性）"
+            : "プレビュー不可";
+          thumbWrap.appendChild(phFail);
+        });
+        thumbWrap.appendChild(img);
+      } else {
+        var ph = document.createElement("div");
+        ph.className = "web-diary-image-card__placeholder";
+        ph.textContent = "再選択が必要";
+        thumbWrap.appendChild(ph);
+      }
+      card.appendChild(thumbWrap);
+
+      var body = document.createElement("div");
+      body.className = "web-diary-image-card__body";
+
+      var orderLabel = document.createElement("p");
+      orderLabel.className = "web-diary-image-card__order";
+      orderLabel.textContent = (index + 1) + "枚目" + (index === 0 ? "（代表画像）" : "");
+      body.appendChild(orderLabel);
+
+      var statusBadge = document.createElement("span");
+      statusBadge.className = "web-diary-storage-badge web-diary-storage-badge--" +
+        (item.storageStatus || "missing");
+      statusBadge.textContent = storageStatusLabel(item.storageStatus);
+      body.appendChild(statusBadge);
+
+      var nameEl = document.createElement("p");
+      nameEl.className = "web-diary-image-card__name";
+      nameEl.textContent = item.fileName || "（ファイル名なし）";
+      body.appendChild(nameEl);
+
+      var metaEl = document.createElement("p");
+      metaEl.className = "web-diary-image-card__meta";
+      metaEl.textContent = formatDiaryFileSize(item.fileSize) +
+        (item.fileType ? " · " + item.fileType : "");
+      body.appendChild(metaEl);
+
+      if (item.missingBody || item.storageStatus === "missing") {
+        var miss = document.createElement("p");
+        miss.className = "web-diary-image-card__warn";
+        miss.textContent = "この画像本体は端末内に見つかりません。再度写真を選択してください。";
+        body.appendChild(miss);
+      }
+      if (item.previewFailed && isLikelyHeic(item.fileName, item.fileType)) {
+        var heicPrev = document.createElement("p");
+        heicPrev.className = "web-diary-image-card__warn";
+        heicPrev.textContent = "HEIC画像を保存しました。このブラウザではプレビューできない可能性があります。";
+        body.appendChild(heicPrev);
+      }
+      if (isLikelyHeic(item.fileName, item.fileType)) {
+        var heic = document.createElement("p");
+        heic.className = "web-diary-image-card__warn";
+        heic.textContent = "この写真はHEIC形式の可能性があります。ホームページ更新時にJPEGまたはWebPへの変換が必要になる場合があります。";
+        body.appendChild(heic);
+      }
+      if ((item.fileSize || 0) >= DIARY_IMAGE_WARN_BYTES) {
+        var big = document.createElement("p");
+        big.className = "web-diary-image-card__warn";
+        big.textContent = "画像サイズが大きいため、ホームページ掲載前に圧縮をおすすめします。";
+        body.appendChild(big);
+      }
+
+      var captionLabel = document.createElement("label");
+      captionLabel.className = "web-diary-image-card__field-label";
+      captionLabel.textContent = "写真説明";
+      var captionInput = document.createElement("input");
+      captionInput.type = "text";
+      captionInput.value = item.caption || "";
+      captionInput.setAttribute("data-image-field", "caption");
+      captionInput.setAttribute("data-image-id", item.id);
+      captionLabel.appendChild(captionInput);
+      body.appendChild(captionLabel);
+
+      var altLabel = document.createElement("label");
+      altLabel.className = "web-diary-image-card__field-label";
+      altLabel.textContent = "代替テキスト";
+      var altInput = document.createElement("input");
+      altInput.type = "text";
+      altInput.value = item.altText || "";
+      altInput.setAttribute("data-image-field", "altText");
+      altInput.setAttribute("data-image-id", item.id);
+      altLabel.appendChild(altInput);
+      body.appendChild(altLabel);
+
+      var actions = document.createElement("div");
+      actions.className = "web-diary-image-card__actions";
+      [
+        { label: "上へ", action: "up" },
+        { label: "下へ", action: "down" },
+        { label: "削除", action: "remove", danger: true }
+      ].forEach(function (spec) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn btn--touch" + (spec.danger ? " btn--danger" : " btn--secondary");
+        b.textContent = spec.label;
+        b.setAttribute("data-image-action", spec.action);
+        b.setAttribute("data-image-id", item.id);
+        actions.appendChild(b);
+      });
+      body.appendChild(actions);
+      card.appendChild(body);
+      listEl.appendChild(card);
+    });
+  }
+
+  function findDiaryImageIndex(imageId) {
+    return diaryImageItems.findIndex(function (item) { return item.id === imageId; });
+  }
+
+  function moveDiaryImage(imageId, direction) {
+    var idx = findDiaryImageIndex(imageId);
+    if (idx < 0) return;
+    var target = direction === "up" ? idx - 1 : idx + 1;
+    if (target < 0 || target >= diaryImageItems.length) return;
+    var tmp = diaryImageItems[idx];
+    diaryImageItems[idx] = diaryImageItems[target];
+    diaryImageItems[target] = tmp;
+    reindexDiaryImages();
+    renderDiaryImageList();
+    scheduleDiaryPreviewUpdate();
+  }
+
+  function removeDiaryImage(imageId) {
+    var idx = findDiaryImageIndex(imageId);
+    if (idx < 0) return;
+    var item = diaryImageItems[idx];
+    var choice = window.confirm(
+      "この画像を記事から外しますか？\n\nOK：記事から外すだけ（端末の一時保管庫には残します）\nキャンセル：操作をやめる"
+    );
+    if (!choice) return;
+
+    var deleteFromVault = false;
+    if (item && (item.storageStatus === "saved" || item.storageStatus === "error" || item.storageStatus === "missing")) {
+      deleteFromVault = window.confirm(
+        "端末の一時保管庫からも削除しますか？\n\nOK：保管庫からも削除\nキャンセル：記事から外すだけ"
+      );
+    }
+
+    if (deleteFromVault && MediaDB && mediaDbAvailable) {
+      var refs = 0;
+      loadDiaryEntries().forEach(function (d) {
+        (d.images || []).forEach(function (img) {
+          if (img.id === imageId && d.id !== editingDiaryId) refs += 1;
+        });
+      });
+      if (refs > 0) {
+        showToast("他の記事でも使用されています。保管庫からは削除できません。");
+        deleteFromVault = false;
+      }
+    }
+
+    if (item && item.objectUrl) {
+      try { URL.revokeObjectURL(item.objectUrl); } catch (e) { /* ignore */ }
+    }
+    diaryImageItems.splice(idx, 1);
+    reindexDiaryImages();
+    renderDiaryImageList();
+    scheduleDiaryPreviewUpdate();
+
+    if (deleteFromVault && MediaDB) {
+      MediaDB.deleteDiaryImageBlob(imageId).then(function () {
+        showToast("記事から外し、保管庫からも削除しました");
+      });
+    } else {
+      showToast("記事から外しました（保管庫には残しています）");
+    }
+  }
+
+  function updateDiaryImageMetadata(imageId, values) {
+    var idx = findDiaryImageIndex(imageId);
+    if (idx < 0) return;
+    if (values && typeof values.caption === "string") diaryImageItems[idx].caption = values.caption;
+    if (values && typeof values.altText === "string") diaryImageItems[idx].altText = values.altText;
+    scheduleDiaryPreviewUpdate();
+  }
+
+  function persistOneDiaryImageToDb(item) {
+    if (!item || !item.file) return Promise.resolve(item);
+    if (!MediaDB || mediaDbAvailable === false) {
+      item.storageStatus = "temporary";
+      return Promise.resolve(item);
+    }
+    item.storageStatus = "saving";
+    renderDiaryImageList();
+    showToast("画像を保存しています");
+    var diaryId = ensureEditingDiaryId();
+    return MediaDB.saveDiaryImageBlob({
+      imageId: item.id,
+      diaryId: diaryId,
+      fileName: item.fileName,
+      fileType: item.fileType,
+      fileSize: item.fileSize,
+      blob: item.file
+    }).then(function () {
+      item.storageStatus = "saved";
+      item.missingBody = false;
+      showToast("端末内に一時保存しました");
+      renderDiaryImageList();
+      maybeWarnMediaCapacity();
+      return item;
+    }).catch(function () {
+      mediaSaveFailCount += 1;
+      item.storageStatus = "error";
+      showDiaryImageError("画像の端末内保存に失敗しました。本文の保存は可能です。");
+      renderDiaryImageList();
+      return item;
+    });
+  }
+
+  function hydrateDiaryImagesFromMediaDb() {
+    if (!MediaDB || !diaryImageItems.length) return;
+    initMediaDbAvailability().then(function (ok) {
+      if (!ok) {
+        diaryImageItems.forEach(function (item) {
+          item.storageStatus = "missing";
+          item.missingBody = true;
+        });
+        renderDiaryImageList();
+        return;
+      }
+      var chain = Promise.resolve();
+      diaryImageItems.forEach(function (item) {
+        chain = chain.then(function () {
+          return MediaDB.getDiaryImageBlob(item.id).then(function (rec) {
+            if (!rec || !rec.blob) {
+              item.storageStatus = "missing";
+              item.missingBody = true;
+              return;
+            }
+            if (item.objectUrl) {
+              try { URL.revokeObjectURL(item.objectUrl); } catch (e) { /* ignore */ }
+            }
+            item.file = rec.blob;
+            item.fileName = rec.fileName || item.fileName;
+            item.fileType = rec.fileType || item.fileType;
+            item.fileSize = rec.fileSize || item.fileSize;
+            item.missingBody = false;
+            item.storageStatus = "saved";
+            try {
+              item.objectUrl = URL.createObjectURL(rec.blob);
+            } catch (e2) {
+              item.objectUrl = "";
+              item.previewFailed = true;
+            }
+          });
+        });
+      });
+      chain.then(function () {
+        renderDiaryImageList();
+        scheduleDiaryPreviewUpdate();
+      });
+    });
+  }
+
+  function restoreDiaryImageMetadata(images) {
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    (images || []).forEach(function (meta, i) {
+      var m = normalizeDiaryImageMeta(meta, i);
+      if (!m) return;
+      diaryImageItems.push({
+        id: m.id,
+        fileName: m.fileName,
+        fileType: m.fileType,
+        fileSize: m.fileSize,
+        order: i,
+        altText: m.altText,
+        caption: m.caption,
+        isMain: i === 0,
+        objectUrl: "",
+        file: null,
+        missingBody: true,
+        storageStatus: m.storageStatus || "missing",
+        previewFailed: false
+      });
+    });
+    renderDiaryImageList();
+    hydrateDiaryImagesFromMediaDb();
+  }
+
+  function matchExistingImageMeta(file) {
+    var name = String(file && file.name || "").toLowerCase();
+    var size = Number(file && file.size || 0) || 0;
+    var type = String(file && file.type || "").toLowerCase();
+    if (!name) return null;
+    return diaryImageItems.find(function (item) {
+      if (!item.missingBody && item.storageStatus !== "missing") return false;
+      var sameName = String(item.fileName || "").toLowerCase() === name;
+      var sameSize = !size || !item.fileSize || Number(item.fileSize) === size;
+      var sameType = !type || !item.fileType || String(item.fileType).toLowerCase() === type;
+      return sameName && sameSize && sameType;
+    }) || diaryImageItems.find(function (item) {
+      return (item.missingBody || item.storageStatus === "missing") &&
+        String(item.fileName || "").toLowerCase() === name;
+    }) || null;
+  }
+
+  function handleDiaryImageSelection(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    if (!files.length) return;
+    showDiaryImageError("");
+    ensureEditingDiaryId();
+    var room = DIARY_IMAGE_MAX - diaryImageItems.length;
+    if (room <= 0) {
+      showDiaryImageError("写真は最大" + DIARY_IMAGE_MAX + "枚までです。不要な画像を削除してから追加してください。");
+      return;
+    }
+    if (files.length > room) {
+      showDiaryImageError("追加できるのはあと" + room + "枚です。最初の" + room + "枚のみ取り込みます。");
+      files = files.slice(0, room);
+    }
+    var warnMessages = [];
+    var pending = [];
+    files.forEach(function (file) {
+      var check = validateDiaryImage(file);
+      if (!check.ok) {
+        warnMessages.push(check.message);
+        return;
+      }
+      (check.warnings || []).forEach(function (w) { warnMessages.push(w); });
+      var matched = matchExistingImageMeta(file);
+      if (matched) {
+        if (matched.objectUrl) {
+          try { URL.revokeObjectURL(matched.objectUrl); } catch (e) { /* ignore */ }
+        }
+        matched.file = processDiaryImageFile(file);
+        matched.fileName = file.name || matched.fileName;
+        matched.fileType = file.type || matched.fileType;
+        matched.fileSize = file.size || matched.fileSize;
+        matched.missingBody = false;
+        matched.storageStatus = "saving";
+        try { matched.objectUrl = URL.createObjectURL(matched.file); } catch (e2) { matched.objectUrl = ""; }
+        pending.push(matched);
+      } else {
+        var created = createDiaryImageItem(file);
+        created.storageStatus = "saving";
+        diaryImageItems.push(created);
+        pending.push(created);
+      }
+    });
+    reindexDiaryImages();
+    renderDiaryImageList();
+    scheduleDiaryPreviewUpdate();
+    var chain = Promise.resolve();
+    pending.forEach(function (item) {
+      chain = chain.then(function () { return persistOneDiaryImageToDb(item); });
+    });
+    chain.then(function () {
+      if (warnMessages.length) showDiaryImageError(warnMessages[0]);
+    });
+  }
+
+  function maybeWarnMediaCapacity() {
+    if (!MediaDB || !mediaDbAvailable) return;
+    MediaDB.getMediaStorageUsage().then(function (usage) {
+      var warn = document.getElementById("web-vault-warning");
+      var messages = [];
+      if (usage.totalBytes > 200 * 1024 * 1024) {
+        messages.push("画像一時保管庫の容量が大きくなっています。不要な画像を整理してください。");
+      }
+      if (usage.imageCount > 50) {
+        messages.push("保存画像が50枚を超えています。不要な画像を整理してください。");
+      }
+      if ((usage.records || []).some(function (r) { return (r.fileSize || 0) > 10 * 1024 * 1024; })) {
+        messages.push("10MBを超える画像があります。ホームページ掲載前の圧縮をおすすめします。");
+      }
+      if (mediaSaveFailCount > 0) {
+        messages.push("画像保存の失敗が検出されています（" + mediaSaveFailCount + "件）。");
+      }
+      return MediaDB.estimateBrowserStorage().then(function (est) {
+        if (est.available && est.quota > 0 && (est.usage / est.quota) >= 0.8) {
+          messages.push("ブラウザ保存領域の使用率が高くなっています（推定）。");
+        }
+        if (warn) {
+          if (messages.length) {
+            warn.hidden = false;
+            warn.textContent = messages[0];
+          }
+        }
+        if (messages.length) showToast(messages[0]);
+      });
+    }).catch(function () { /* ignore */ });
+  }
+
+  function openWebMediaVault() {
+    showWebCenterView("vault");
+    var stats = document.getElementById("web-vault-stats");
+    var listEl = document.getElementById("web-vault-list");
+    if (stats) stats.innerHTML = '<p class="form-hint">読み込み中…</p>';
+    if (listEl) listEl.innerHTML = "";
+    if (!MediaDB) {
+      if (stats) stats.innerHTML = '<p class="form-hint">画像一時保存は利用できません。</p>';
+      return;
+    }
+    initMediaDbAvailability().then(function (ok) {
+      if (!ok) {
+        if (stats) stats.innerHTML = '<p class="form-hint">画像一時保存は利用できません。</p>';
+        return;
+      }
+      Promise.all([
+        MediaDB.getMediaStorageUsage(),
+        MediaDB.estimateBrowserStorage()
+      ]).then(function (pair) {
+        var usage = pair[0];
+        var est = pair[1];
+        var diaryMap = {};
+        loadDiaryEntries().forEach(function (d) {
+          diaryMap[d.id] = d.title || d.id;
+        });
+        if (stats) {
+          var lines = [
+            "<p><strong>保存画像数：</strong>" + usage.imageCount + "枚</p>",
+            "<p><strong>合計容量：</strong>" + formatBytesShort(usage.totalBytes) + "</p>",
+            "<p><strong>使用中の記事数：</strong>" + usage.diaryCount + "</p>",
+            "<p><strong>最終追加：</strong>" + (usage.latestAt ? formatCreativeDate(usage.latestAt) : "—") + "</p>"
+          ];
+          if (est.available) {
+            lines.push(
+              "<p><strong>ブラウザ保存領域：</strong>使用量 " +
+              formatBytesShort(est.usage) + " / 推定上限 " + formatBytesShort(est.quota) + "</p>"
+            );
+          } else {
+            lines.push("<p>端末の保存可能容量は取得できません</p>");
+          }
+          stats.innerHTML = lines.join("");
+        }
+        maybeWarnMediaCapacity();
+        if (!listEl) return;
+        if (!usage.records.length) {
+          listEl.innerHTML = '<p class="empty-message">保管庫に画像はまだありません。</p>';
+          return;
+        }
+        listEl.innerHTML = "";
+        usage.records.sort(function (a, b) {
+          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        }).forEach(function (rec) {
+          var card = document.createElement("article");
+          card.className = "web-diary-image-card";
+          var thumb = document.createElement("div");
+          thumb.className = "web-diary-image-card__thumb";
+          if (rec.blob) {
+            try {
+              var url = URL.createObjectURL(rec.blob);
+              var img = document.createElement("img");
+              img.src = url;
+              img.alt = rec.fileName || "保管画像";
+              img.addEventListener("error", function () {
+                thumb.textContent = "プレビュー不可";
+              });
+              thumb.appendChild(img);
+            } catch (e) {
+              thumb.textContent = "プレビュー不可";
+            }
+          } else {
+            thumb.textContent = "なし";
+          }
+          card.appendChild(thumb);
+          var body = document.createElement("div");
+          body.className = "web-diary-image-card__body";
+          var name = document.createElement("p");
+          name.className = "web-diary-image-card__name";
+          name.textContent = rec.fileName || rec.imageId;
+          body.appendChild(name);
+          var meta = document.createElement("p");
+          meta.className = "web-diary-image-card__meta";
+          meta.textContent = formatBytesShort(rec.fileSize) +
+            " · 記事：" + (diaryMap[rec.diaryId] || rec.diaryId || "未割当") +
+            " · " + (rec.updatedAt ? formatDiaryUpdatedShort(rec.updatedAt) : "—");
+          body.appendChild(meta);
+          var del = document.createElement("button");
+          del.type = "button";
+          del.className = "btn btn--danger btn--touch";
+          del.textContent = "削除";
+          del.addEventListener("click", function () {
+            var usedElsewhere = false;
+            loadDiaryEntries().forEach(function (d) {
+              (d.images || []).forEach(function (img) {
+                if (img.id === rec.imageId) usedElsewhere = true;
+              });
+            });
+            if (usedElsewhere) {
+              showToast("他の記事でも使用されています。保管庫からは削除できません。");
+              return;
+            }
+            if (!window.confirm("この画像を保管庫から削除しますか？")) return;
+            MediaDB.deleteDiaryImageBlob(rec.imageId).then(function () {
+              showToast("削除しました");
+              openWebMediaVault();
+            });
+          });
+          body.appendChild(del);
+          card.appendChild(body);
+          listEl.appendChild(card);
+        });
+      });
+    });
+  }
+
+  function scheduleDiaryPreviewUpdate() {
+    if (diaryPreviewDebounceTimer) clearTimeout(diaryPreviewDebounceTimer);
+    diaryPreviewDebounceTimer = setTimeout(function () {
+      diaryPreviewDebounceTimer = null;
+      if (webCenterPreviewView && !webCenterPreviewView.hidden) {
+        updateDiaryPreview();
+      }
+    }, 300);
+  }
+
+  function updateDiaryPreview() {
+    var values = readWebDiaryFormValues();
+    var dateEl = document.getElementById("web-preview-date");
+    var titleEl = document.getElementById("web-preview-title");
+    var bodyEl = document.getElementById("web-preview-body");
+    var mainEl = document.getElementById("web-preview-main-image");
+    var galleryEl = document.getElementById("web-preview-gallery");
+    var photoEl = document.getElementById("web-preview-photo");
+    if (dateEl) dateEl.textContent = formatDiaryDisplayDate(values.publishDate) || "公開日未設定";
+    if (titleEl) titleEl.textContent = String(values.title || "").trim() || "（タイトル未入力）";
+    if (bodyEl) bodyEl.textContent = String(values.content || "").trim() || "（本文未入力）";
+
+    if (mainEl) {
+      mainEl.innerHTML = "";
+      var main = diaryImageItems[0];
+      if (main && main.objectUrl) {
+        var img = document.createElement("img");
+        img.src = main.objectUrl;
+        img.alt = main.altText || main.fileName || "代表画像";
+        mainEl.appendChild(img);
+        if (main.caption) {
+          var cap = document.createElement("p");
+          cap.className = "web-diary-preview__caption";
+          cap.textContent = main.caption;
+          mainEl.appendChild(cap);
+        }
+      } else if (main) {
+        var ph = document.createElement("div");
+        ph.className = "web-diary-preview__placeholder";
+        ph.textContent = "代表画像：" + (main.fileName || "（未選択）") + "（再選択が必要）";
+        mainEl.appendChild(ph);
+      } else {
+        var emptyMain = document.createElement("div");
+        emptyMain.className = "web-diary-preview__placeholder";
+        emptyMain.textContent = values.photoMemo
+          ? ("📷 " + values.photoMemo)
+          : "📷 写真未選択";
+        mainEl.appendChild(emptyMain);
+      }
+    }
+
+    if (galleryEl) {
+      galleryEl.innerHTML = "";
+      diaryImageItems.slice(1).forEach(function (item, i) {
+        var fig = document.createElement("figure");
+        fig.className = "web-diary-preview__figure";
+        if (item.objectUrl) {
+          var gImg = document.createElement("img");
+          gImg.src = item.objectUrl;
+          gImg.alt = item.altText || item.fileName || ("画像" + (i + 2));
+          fig.appendChild(gImg);
+        } else {
+          var gPh = document.createElement("div");
+          gPh.className = "web-diary-preview__placeholder";
+          gPh.textContent = (i + 2) + "枚目：" + (item.fileName || "") + "（再選択が必要）";
+          fig.appendChild(gPh);
+        }
+        if (item.caption) {
+          var fc = document.createElement("figcaption");
+          fc.textContent = item.caption;
+          fig.appendChild(fc);
+        }
+        galleryEl.appendChild(fig);
+      });
+    }
+
+    if (photoEl) {
+      var memo = String(values.photoMemo || "").trim();
+      if (memo) {
+        photoEl.hidden = false;
+        photoEl.textContent = "写真メモ：" + memo;
+      } else {
+        photoEl.hidden = true;
+        photoEl.textContent = "";
+      }
+    }
+  }
+
   function resetWebDiaryForm() {
     editingDiaryId = null;
     currentDiaryInstruction = "";
     clearWebDiaryFormError();
+    showDiaryImageError("");
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    renderDiaryImageList();
     var idEl = document.getElementById("web-diary-edit-id");
     var titleEl = document.getElementById("web-diary-title");
     var bodyEl = document.getElementById("web-diary-body");
     var dateEl = document.getElementById("web-diary-date");
     var memoEl = document.getElementById("web-diary-photo-memo");
+    var imagesInput = document.getElementById("web-diary-images");
+    var cameraInput = document.getElementById("web-diary-camera");
     if (idEl) idEl.value = "";
     if (titleEl) titleEl.value = "";
     if (bodyEl) bodyEl.value = "";
     if (dateEl) dateEl.value = todayInputDate();
     if (memoEl) memoEl.value = "";
+    if (imagesInput) imagesInput.value = "";
+    if (cameraInput) cameraInput.value = "";
+    ensureEditingDiaryId();
+    initMediaDbAvailability();
   }
 
   function fillWebDiaryForm(entry) {
     editingDiaryId = entry ? entry.id : null;
     currentDiaryInstruction = "";
     clearWebDiaryFormError();
+    showDiaryImageError("");
     var idEl = document.getElementById("web-diary-edit-id");
     var titleEl = document.getElementById("web-diary-title");
     var bodyEl = document.getElementById("web-diary-body");
@@ -4560,15 +5620,16 @@
     var memoEl = document.getElementById("web-diary-photo-memo");
     if (idEl) idEl.value = entry ? entry.id : "";
     if (titleEl) titleEl.value = entry ? entry.title : "";
-    if (bodyEl) bodyEl.value = entry ? entry.body : "";
+    if (bodyEl) bodyEl.value = entry ? (entry.content || entry.body || "") : "";
     if (dateEl) dateEl.value = entry && entry.publishDate ? entry.publishDate : todayInputDate();
     if (memoEl) memoEl.value = entry ? entry.photoMemo : "";
+    restoreDiaryImageMetadata(entry && entry.images ? entry.images : []);
   }
 
   function readWebDiaryFormValues() {
     return {
       title: (document.getElementById("web-diary-title") || {}).value || "",
-      body: (document.getElementById("web-diary-body") || {}).value || "",
+      content: (document.getElementById("web-diary-body") || {}).value || "",
       publishDate: (document.getElementById("web-diary-date") || {}).value || "",
       photoMemo: (document.getElementById("web-diary-photo-memo") || {}).value || ""
     };
@@ -4579,7 +5640,7 @@
       showWebDiaryFormError("タイトルを入力してください");
       return false;
     }
-    if (!String(values.body || "").trim()) {
+    if (!String(values.content || values.body || "").trim()) {
       showWebDiaryFormError("本文を入力してください");
       return false;
     }
@@ -4591,8 +5652,34 @@
     return true;
   }
 
+  function renderWebRecentList() {
+    var el = document.getElementById("web-recent-list");
+    if (!el) return;
+    var list = loadDiaryEntries().slice().sort(function (a, b) {
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    }).slice(0, 5);
+    if (!list.length) {
+      el.innerHTML = '<p class="empty-message">まだ記事がありません。「＋ 新しい活動日記」から作成してください。</p>';
+      return;
+    }
+    el.innerHTML = list.map(function (d) {
+      return (
+        '<button type="button" class="creative-history-card" data-diary-open="' + escapeHtml(d.id) + '">' +
+          '<p class="creative-history-card__title">' + escapeHtml(d.title || "無題") + "</p>" +
+          '<p class="creative-history-card__meta">' +
+            escapeHtml(d.status === "published" ? "公開済み" : "下書き") +
+            " · 更新 " + escapeHtml(formatDiaryUpdatedShort(d.updatedAt)) +
+          "</p>" +
+        "</button>"
+      );
+    }).join("");
+  }
+
   function openWebCenter() {
     if (!webCenterModal) return;
+    renderWebRecentList();
+    refreshMediaNoticeUi();
+    initMediaDbAvailability();
     showWebCenterView("menu");
     webCenterModal.classList.add("is-open");
     webCenterModal.setAttribute("aria-hidden", "false");
@@ -4605,6 +5692,9 @@
     webCenterModal.setAttribute("aria-hidden", "true");
     editingDiaryId = null;
     currentDiaryInstruction = "";
+    webDiarySearchQuery = "";
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
     showWebCenterView("menu");
     syncBodyScroll();
   }
@@ -4612,6 +5702,8 @@
   function openWebDiaryForm(entry) {
     if (entry) fillWebDiaryForm(entry);
     else resetWebDiaryForm();
+    if (!entry) ensureEditingDiaryId();
+    initMediaDbAvailability();
     showWebCenterView("form");
     setTimeout(function () {
       var titleEl = document.getElementById("web-diary-title");
@@ -4620,46 +5712,50 @@
   }
 
   /**
-   * 将来AI接続用。今回はダミー文章を返すだけ。
-   * @param {{ title?: string, body?: string, publishDate?: string, photoMemo?: string }} context
-   * @returns {Promise<{ title: string, body: string }>}
+   * 将来 OpenAI 等へ差し替えやすい文章生成入口。
+   * 今回はテンプレート／ダミー文章のみ。
+   * @param {{ title?: string, content?: string, body?: string, publishDate?: string, photoMemo?: string }} context
+   * @returns {Promise<{ title: string, content: string }>}
    */
   function generateDiaryWithAI(context) {
     context = context || {};
     var dateLabel = formatDiaryDisplayDate(context.publishDate || todayInputDate()) || "本日";
+    var seed = String(context.title || "").trim();
     return Promise.resolve({
-      title: context.title && context.title.trim()
-        ? context.title.trim()
-        : "活動日記（" + dateLabel + "）",
-      body: [
-        "株式会社えがおのきろくの活動日記です。",
+      title: seed || ("活動日記（" + dateLabel + "）"),
+      content: [
+        dateLabel + "の活動についてお伝えします。",
         "",
-        "（AI下書き・ダミー）" + dateLabel + "のできごとをここにまとめます。",
-        "イベント準備や現場の様子、これから伝えたいことを書き足してください。",
+        seed
+          ? "今回は「" + seed + "」に取り組みました。"
+          : "現場の準備やお客様とのやりとりなど、一日の様子をここにまとめます。",
         "",
-        "写真がある場合は、写真メモ欄にファイル名や置き場所を書いておくと更新指示書に反映されます。"
+        "当日の雰囲気や工夫した点、次につながる気づきを追記してください。",
+        context.photoMemo
+          ? ("写真メモ：" + String(context.photoMemo).trim())
+          : "写真がある場合は、写真メモ欄に内容を書いておくと更新指示書に反映されます。"
       ].join("\n")
     });
   }
 
   function handleWebAiWrite() {
     var values = readWebDiaryFormValues();
+    var bodyEl = document.getElementById("web-diary-body");
+    var existing = bodyEl ? String(bodyEl.value || "").trim() : "";
+    if (existing) {
+      if (!window.confirm("現在の本文をAI文章で置き換えますか？")) return;
+    }
     generateDiaryWithAI(values).then(function (result) {
       var titleEl = document.getElementById("web-diary-title");
-      var bodyEl = document.getElementById("web-diary-body");
+      var text = result.content || result.body || "";
       if (titleEl && (!titleEl.value || !titleEl.value.trim())) {
         titleEl.value = result.title;
       }
-      if (bodyEl) {
-        if (bodyEl.value && bodyEl.value.trim()) {
-          bodyEl.value = bodyEl.value.replace(/\s+$/, "") + "\n\n" + result.body;
-        } else {
-          bodyEl.value = result.body;
-        }
-      }
-      showToast("AI下書き（ダミー）を入れました");
+      if (bodyEl) bodyEl.value = text;
+      scheduleDiaryPreviewUpdate();
+      showToast("AI文章を本文へ入力しました（未保存）");
     }).catch(function () {
-      showToast("AI下書きに失敗しました");
+      showToast("文章作成に失敗しました");
     });
   }
 
@@ -4669,14 +5765,15 @@
 
     var list = loadDiaryEntries();
     var now = new Date().toISOString();
-    var id = editingDiaryId || ("diary-" + Date.now());
+    var id = ensureEditingDiaryId();
     var existing = list.find(function (d) { return d.id === id; });
     var entry = normalizeDiaryEntry({
       id: id,
       title: values.title.trim(),
-      body: values.body.trim(),
+      content: String(values.content || "").trim(),
       publishDate: values.publishDate.trim(),
       photoMemo: values.photoMemo.trim(),
+      images: serializeDiaryImageMetadata(),
       status: status,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now
@@ -4691,6 +5788,17 @@
     editingDiaryId = entry.id;
     var idEl = document.getElementById("web-diary-edit-id");
     if (idEl) idEl.value = entry.id;
+
+    if (MediaDB && mediaDbAvailable !== false) {
+      var imgs = entry.images || [];
+      var chain = Promise.resolve();
+      imgs.forEach(function (img) {
+        chain = chain.then(function () {
+          return MediaDB.updateDiaryImageDiaryId(img.id, entry.id);
+        });
+      });
+      chain.catch(function () { /* 記事本文保存は成功扱い */ });
+    }
     return entry;
   }
 
@@ -4706,6 +5814,17 @@
     showToast("公開済みとして保存しました");
   }
 
+  function openWebDiaryPreview() {
+    var values = readWebDiaryFormValues();
+    if (!validateWebDiaryForm(values)) return;
+    updateDiaryPreview();
+    showWebCenterView("preview");
+  }
+
+  function generateHomepageUpdatePrompt(entry) {
+    return buildHomepageUpdateInstruction(entry);
+  }
+
   function buildHomepageUpdateInstruction(entry) {
     entry = entry || null;
     if (!entry) {
@@ -4714,53 +5833,100 @@
       entry = normalizeDiaryEntry({
         id: editingDiaryId || "unsaved",
         title: values.title,
-        body: values.body,
+        content: values.content,
         publishDate: values.publishDate,
         photoMemo: values.photoMemo,
+        images: serializeDiaryImageMetadata(),
         status: "draft"
       });
     }
 
-    var displayDate = formatDiaryDisplayDate(entry.publishDate);
+    var content = entry.content || entry.body || "";
+    var images = Array.isArray(entry.images) ? entry.images.slice() : serializeDiaryImageMetadata();
+    images.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+
     var lines = [
-      "【ホームページ更新指示書】",
+      "【作業対象】",
+      "株式会社えがおのきろく 会社ホームページ",
       "",
-      "対象プロジェクト：CorporateSite（株式会社えがおのきろく 公式ホームページ）",
-      "対象ファイル：diary/index.htm",
-      "文字コード：Shift_JIS（UTF-8へ変更しない）",
+      "【依頼内容】",
+      "活動日記を1件追加してください。",
       "",
-      "【目的】",
-      "活動日記を1件追加する",
+      "【タイトル】",
+      entry.title || "—",
       "",
-      "【追加する記事】",
-      "日付：" + displayDate,
-      "タイトル：" + entry.title,
+      "【本文】",
+      content || "—",
       "",
-      "本文：",
-      entry.body,
+      "【公開日】",
+      formatDiaryDisplayDate(entry.publishDate) || entry.publishDate || "—",
       "",
-      "写真メモ：",
-      entry.photoMemo ? entry.photoMemo : "（なし・今回は画像タグを追加しない）",
-      "",
-      "【作業ルール】",
-      "・既存の記事・デザイン・CSS・リンク・charsetは変更しない",
-      "・新しい記事だけを、既存の最新記事より上に追加する",
-      "・作業前に diary/backup/ へバックアップを作成する",
-      "・Xserverへのアップロードは指示があるまで行わない",
-      "",
-      "【確認】",
-      "・ローカルで表示確認する",
-      "・文字化けがないか確認する"
+      "【使用する画像】"
     ];
+
+    if (!images.length) {
+      lines.push("（画像なし）");
+    } else {
+      images.forEach(function (img, i) {
+        var n = i + 1;
+        var statusText = "端末内未確認";
+        if (img.storageStatus === "saved") statusText = "端末内一時保存済み";
+        else if (img.storageStatus === "missing") statusText = "端末内に本体なし（再選択が必要）";
+        else if (img.storageStatus === "error") statusText = "端末内保存エラー";
+        else if (img.storageStatus === "saving") statusText = "端末内保存中";
+        else if (img.storageStatus === "temporary") statusText = "端末内未保存";
+        lines.push("【画像" + n + "】");
+        lines.push("画像ID：" + (img.id || "—"));
+        lines.push("ファイル名：" + (img.fileName || "—"));
+        lines.push("形式：" + (img.fileType || "—"));
+        lines.push("サイズ：" + formatDiaryFileSize(img.fileSize));
+        lines.push("並び順：" + (typeof img.order === "number" ? img.order : i));
+        lines.push("用途：" + (i === 0 || img.isMain ? "代表画像" : "記事内画像"));
+        lines.push("代替テキスト：" + (img.altText || "—"));
+        lines.push("説明：" + (img.caption || "—"));
+        lines.push("端末内保存状態：" + statusText);
+        lines.push("保存状態：" + statusText);
+        lines.push("");
+      });
+    }
+
+    lines = lines.concat([
+      "【写真メモ】",
+      entry.photoMemo ? entry.photoMemo : "（なし）",
+      "",
+      "【画像に関する注意】",
+      "・画像はSmile AI Studioを開いている端末内に保存されています。",
+      "・Cursorや会社ホームページへ自動添付はされません。",
+      "・ホームページ更新時は、元画像を作業環境へ別途渡してください。",
+      "・画像ファイルはこの指示書には添付されていません",
+      "・iPhoneから選択した元画像を、作業対象フォルダへ別途配置してください",
+      "・HEIC / HEIFの場合は、必要に応じてJPEGまたはWebPへ変換してください",
+      "・大きな画像はWeb掲載用に適切に圧縮してください",
+      "・ファイル名は半角英数字とハイフンを基本に変更してください",
+      "・縦横比を不自然に変えないでください",
+      "・alt属性へ指定された代替テキストを設定してください",
+      "",
+      "【実装条件】",
+      "・既存レイアウトを維持する",
+      "・活動日記一覧にも追加する",
+      "・新しい記事から詳細ページへ移動できるようにする",
+      "・スマホ表示を確認する",
+      "・既存記事を壊さない",
+      "・画像パスを確認する",
+      "・更新後にリンク切れと表示崩れを確認する",
+      "",
+      "【完了報告】",
+      "・変更したファイル",
+      "・追加した画像",
+      "・画像変換や圧縮の内容",
+      "・確認した画面",
+      "・残っている課題"
+    ]);
     return lines.join("\n");
   }
 
   function handleBuildWebInstruction() {
-    var saved = null;
-    if (editingDiaryId) {
-      saved = getDiaryById(editingDiaryId);
-    }
-    var text = buildHomepageUpdateInstruction(saved);
+    var text = generateHomepageUpdatePrompt(null);
     if (!text) return;
     currentDiaryInstruction = text;
     var pre = document.getElementById("web-instruction-text");
@@ -4788,49 +5954,166 @@
     return t.slice(0, maxLen) + "…";
   }
 
-  function renderWebDiaryList(containerId, status) {
+  function filterDiariesByTitle(list, query) {
+    var q = String(query || "").trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(function (d) {
+      return String(d.title || "").toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function renderWebDiaryList(containerId, status, query) {
     var container = document.getElementById(containerId);
     if (!container) return;
-    var list = loadDiaryEntries().filter(function (d) { return d.status === status; });
+    var list = filterDiariesByTitle(
+      loadDiaryEntries().filter(function (d) { return d.status === status; }),
+      query
+    );
     if (!list.length) {
       container.innerHTML = '<p class="empty-message">' +
-        (status === "draft" ? "下書きはまだありません。" : "公開済みはまだありません。") +
+        (query
+          ? "検索に一致する記事がありません。"
+          : (status === "draft" ? "下書きはまだありません。" : "公開済みはまだありません。")) +
         "</p>";
       return;
     }
 
     container.innerHTML = list.map(function (d) {
+      var actions =
+        '<button type="button" class="btn btn--primary btn--touch btn-web-edit" data-diary-id="' + escapeHtml(d.id) + '">編集</button>' +
+        '<button type="button" class="btn btn--secondary btn--touch btn-web-dup" data-diary-id="' + escapeHtml(d.id) + '">複製</button>' +
+        '<button type="button" class="btn btn--danger btn--touch btn-web-delete" data-diary-id="' + escapeHtml(d.id) + '">削除</button>';
+      if (d.status === "draft") {
+        actions +=
+          '<button type="button" class="btn btn--secondary btn--touch btn-web-publish" data-diary-id="' +
+          escapeHtml(d.id) + '">公開済みにする</button>';
+      }
+      actions +=
+        '<button type="button" class="btn btn--secondary btn--touch btn-web-instruction" data-diary-id="' +
+        escapeHtml(d.id) + '">指示書</button>';
+
       return (
         '<article class="card web-diary-card" data-diary-id="' + escapeHtml(d.id) + '">' +
           '<h4 class="card__title">' + escapeHtml(d.title || "無題") + "</h4>" +
           '<div class="web-diary-card__meta">' +
-            '<span class="badge badge--progress">' + escapeHtml(formatDiaryDisplayDate(d.publishDate) || "日付未設定") + "</span>" +
+            '<span class="badge badge--progress">更新 ' + escapeHtml(formatDiaryUpdatedShort(d.updatedAt)) + "</span>" +
             '<span class="badge ' + (d.status === "published" ? "badge--dev" : "badge--improve") + '">' +
               (d.status === "published" ? "公開済み" : "下書き") +
             "</span>" +
           "</div>" +
-          '<p class="web-diary-card__preview">' + escapeHtml(truncateDiaryPreview(d.body, 100)) + "</p>" +
-          '<div class="card__actions">' +
-            '<button type="button" class="btn btn--primary btn--touch btn-web-edit" data-diary-id="' + escapeHtml(d.id) + '">編集</button>' +
-            '<button type="button" class="btn btn--secondary btn--touch btn-web-instruction" data-diary-id="' + escapeHtml(d.id) + '">指示書</button>' +
-            '<button type="button" class="btn btn--danger btn--touch btn-web-delete" data-diary-id="' + escapeHtml(d.id) + '">削除</button>' +
-          "</div>" +
+          '<p class="web-diary-card__preview">' +
+            escapeHtml(truncateDiaryPreview(d.content || d.body, 100)) + "</p>" +
+          '<div class="card__actions">' + actions + "</div>" +
         "</article>"
       );
     }).join("");
   }
 
   function openWebDrafts() {
-    renderWebDiaryList("web-drafts-list", "draft");
+    webDiarySearchQuery = "";
+    var search = document.getElementById("web-drafts-search");
+    if (search) search.value = "";
+    renderWebDiaryList("web-drafts-list", "draft", "");
     showWebCenterView("drafts");
   }
 
   function openWebPublished() {
-    renderWebDiaryList("web-published-list", "published");
+    webDiarySearchQuery = "";
+    var search = document.getElementById("web-published-search");
+    if (search) search.value = "";
+    renderWebDiaryList("web-published-list", "published", "");
     showWebCenterView("published");
   }
 
+  function duplicateDiaryEntry(id) {
+    var src = getDiaryById(id);
+    if (!src) return null;
+    var now = new Date().toISOString();
+    var stamp = Date.now();
+    var oldImages = src.images || [];
+    var copy = normalizeDiaryEntry({
+      id: "diary-" + stamp,
+      title: (src.title || "無題") + "（コピー）",
+      content: src.content || src.body || "",
+      photoMemo: src.photoMemo || "",
+      publishDate: src.publishDate || todayInputDate(),
+      images: oldImages.map(function (img, i) {
+        return Object.assign({}, img, {
+          id: "img-copy-" + stamp + "-" + i,
+          order: i,
+          isMain: i === 0,
+          storageStatus: img.storageStatus === "saved" ? "saving" : (img.storageStatus || "missing")
+        });
+      }),
+      status: "draft",
+      createdAt: now,
+      updatedAt: now
+    });
+    var list = loadDiaryEntries();
+    list.unshift(copy);
+    saveDiaryEntries(list);
+
+    if (MediaDB && mediaDbAvailable !== false && oldImages.length) {
+      var chain = Promise.resolve();
+      oldImages.forEach(function (oldImg, i) {
+        var newMeta = copy.images[i];
+        if (!newMeta) return;
+        chain = chain.then(function () {
+          return MediaDB.getDiaryImageBlob(oldImg.id).then(function (rec) {
+            if (!rec || !rec.blob) {
+              newMeta.storageStatus = "missing";
+              return;
+            }
+            return MediaDB.saveDiaryImageBlob({
+              imageId: newMeta.id,
+              diaryId: copy.id,
+              fileName: rec.fileName || newMeta.fileName,
+              fileType: rec.fileType || newMeta.fileType,
+              fileSize: rec.fileSize || newMeta.fileSize,
+              blob: rec.blob
+            }).then(function () {
+              newMeta.storageStatus = "saved";
+            });
+          });
+        });
+      });
+      chain.then(function () {
+        var latest = loadDiaryEntries().map(function (d) {
+          return d.id === copy.id
+            ? normalizeDiaryEntry(Object.assign({}, d, { images: copy.images }))
+            : d;
+        });
+        saveDiaryEntries(latest);
+      }).catch(function () { /* ignore */ });
+    }
+    return copy;
+  }
+
+  function publishDiaryEntry(id) {
+    var list = loadDiaryEntries();
+    var found = false;
+    list = list.map(function (d) {
+      if (d.id !== id) return d;
+      found = true;
+      return normalizeDiaryEntry(Object.assign({}, d, {
+        status: "published",
+        updatedAt: new Date().toISOString()
+      }));
+    });
+    if (!found) return false;
+    saveDiaryEntries(list);
+    return true;
+  }
+
   function handleWebListClick(e) {
+    var openBtn = e.target.closest ? e.target.closest("[data-diary-open]") : null;
+    if (openBtn) {
+      var openId = openBtn.getAttribute("data-diary-open");
+      var openEntry = getDiaryById(openId);
+      if (openEntry) openWebDiaryForm(openEntry);
+      return;
+    }
+
     var btn = e.target.closest("button");
     if (!btn) return;
     var id = btn.getAttribute("data-diary-id");
@@ -4845,9 +6128,25 @@
       openWebDiaryForm(entry);
       return;
     }
+    if (btn.classList.contains("btn-web-dup")) {
+      var copied = duplicateDiaryEntry(id);
+      if (copied) {
+        showToast("複製しました");
+        openWebDrafts();
+      }
+      return;
+    }
+    if (btn.classList.contains("btn-web-publish")) {
+      if (publishDiaryEntry(id)) {
+        showToast("公開済みにしました（HP反映は未実施）");
+        openWebDrafts();
+      }
+      return;
+    }
     if (btn.classList.contains("btn-web-instruction")) {
       fillWebDiaryForm(entry);
-      currentDiaryInstruction = buildHomepageUpdateInstruction(entry);
+      currentDiaryInstruction = generateHomepageUpdatePrompt(null) ||
+        buildHomepageUpdateInstruction(entry);
       var pre = document.getElementById("web-instruction-text");
       if (pre) pre.textContent = currentDiaryInstruction;
       showWebCenterView("instruction");
@@ -4855,9 +6154,36 @@
     }
     if (btn.classList.contains("btn-web-delete")) {
       if (!window.confirm("この活動日記を削除しますか？\n「" + entry.title + "」")) return;
+      var deleteUnusedImages = false;
+      if ((entry.images || []).length) {
+        deleteUnusedImages = window.confirm(
+          "画像の扱いを選んでください。\n\nOK：記事と未使用画像を削除\nキャンセル：記事だけ削除（画像は保管庫に残す）"
+        );
+      }
+      var imageIds = (entry.images || []).map(function (img) { return img.id; }).filter(Boolean);
       var next = loadDiaryEntries().filter(function (d) { return d.id !== id; });
       saveDiaryEntries(next);
-      showToast("削除しました");
+      if (deleteUnusedImages && MediaDB && imageIds.length) {
+        var remaining = loadDiaryEntries();
+        var stillUsed = {};
+        remaining.forEach(function (d) {
+          (d.images || []).forEach(function (img) {
+            if (img.id) stillUsed[img.id] = true;
+          });
+        });
+        var chain = Promise.resolve();
+        imageIds.forEach(function (imageId) {
+          if (stillUsed[imageId]) return;
+          chain = chain.then(function () { return MediaDB.deleteDiaryImageBlob(imageId); });
+        });
+        chain.then(function () {
+          showToast("記事と未使用画像を削除しました");
+        }).catch(function () {
+          showToast("記事は削除しました（一部画像の削除に失敗）");
+        });
+      } else {
+        showToast(deleteUnusedImages ? "記事を削除しました" : "記事だけ削除しました（画像は保管庫に残しています）");
+      }
       if (entry.status === "published") openWebPublished();
       else openWebDrafts();
     }
@@ -7763,6 +9089,9 @@
   onClick("btn-web-center", function () {
     openWebCenter();
   }, "openWebCenter");
+  onClick("btn-web-center-home", function () {
+    openWebCenter();
+  });
   onClick("web-center-close", closeWebCenter, "closeWebCenter");
   onClick("btn-web-center-close-menu", closeWebCenter);
   onClick("btn-meeting-logs", function () {
@@ -8075,16 +9404,39 @@
   });
   onClick("btn-web-drafts", openWebDrafts);
   onClick("btn-web-published", openWebPublished);
+  onClick("btn-web-media-vault", openWebMediaVault);
+  onClick("btn-web-vault-back", function () {
+    renderWebRecentList();
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-media-notice-ack", function () {
+    try { localStorage.setItem(MEDIA_NOTICE_KEY, "1"); } catch (e) { /* ignore */ }
+    refreshMediaNoticeUi();
+  });
   onClick("btn-web-back-menu", function () {
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    renderWebRecentList();
     showWebCenterView("menu");
   });
   onClick("btn-web-back-from-drafts", function () {
+    renderWebRecentList();
     showWebCenterView("menu");
   });
   onClick("btn-web-back-from-published", function () {
+    renderWebRecentList();
     showWebCenterView("menu");
   });
   onClick("btn-web-ai-write", handleWebAiWrite);
+  onClick("btn-web-preview", openWebDiaryPreview);
+  onClick("btn-web-preview-save", function () {
+    handleSaveWebDiaryDraft();
+    renderWebRecentList();
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-back-from-preview", function () {
+    showWebCenterView("form");
+  });
   onClick("btn-web-save-draft", handleSaveWebDiaryDraft);
   onClick("btn-web-save-published", handleSaveWebDiaryPublished);
   onClick("btn-web-build-instruction", handleBuildWebInstruction);
@@ -8093,6 +9445,9 @@
     showWebCenterView("form");
   });
   onClick("btn-web-instruction-to-menu", function () {
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    renderWebRecentList();
     showWebCenterView("menu");
   });
   if (webCenterModal) {
@@ -8105,11 +9460,64 @@
       e.preventDefault();
       handleSaveWebDiaryDraft();
     });
+    webCenterFormView.addEventListener("input", function (e) {
+      var t = e.target;
+      if (!t) return;
+      if (t.id === "web-diary-title" || t.id === "web-diary-body" ||
+          t.id === "web-diary-photo-memo" || t.id === "web-diary-date") {
+        scheduleDiaryPreviewUpdate();
+      }
+      var field = t.getAttribute("data-image-field");
+      var imageId = t.getAttribute("data-image-id");
+      if (field && imageId) {
+        var patch = {};
+        patch[field] = t.value;
+        updateDiaryImageMetadata(imageId, patch);
+      }
+    });
+    webCenterFormView.addEventListener("click", function (e) {
+      var btn = e.target.closest ? e.target.closest("[data-image-action]") : null;
+      if (!btn) return;
+      var imageId = btn.getAttribute("data-image-id");
+      var action = btn.getAttribute("data-image-action");
+      if (!imageId || !action) return;
+      if (action === "up") moveDiaryImage(imageId, "up");
+      else if (action === "down") moveDiaryImage(imageId, "down");
+      else if (action === "remove") removeDiaryImage(imageId);
+    });
+  }
+  var webDiaryImagesInput = document.getElementById("web-diary-images");
+  if (webDiaryImagesInput) {
+    webDiaryImagesInput.addEventListener("change", function () {
+      handleDiaryImageSelection(webDiaryImagesInput.files);
+      webDiaryImagesInput.value = "";
+    });
+  }
+  var webDiaryCameraInput = document.getElementById("web-diary-camera");
+  if (webDiaryCameraInput) {
+    webDiaryCameraInput.addEventListener("change", function () {
+      handleDiaryImageSelection(webDiaryCameraInput.files);
+      webDiaryCameraInput.value = "";
+    });
   }
   var webDraftsList = document.getElementById("web-drafts-list");
   if (webDraftsList) webDraftsList.addEventListener("click", handleWebListClick);
   var webPublishedList = document.getElementById("web-published-list");
   if (webPublishedList) webPublishedList.addEventListener("click", handleWebListClick);
+  var webRecentList = document.getElementById("web-recent-list");
+  if (webRecentList) webRecentList.addEventListener("click", handleWebListClick);
+  var webDraftsSearch = document.getElementById("web-drafts-search");
+  if (webDraftsSearch) {
+    webDraftsSearch.addEventListener("input", function () {
+      renderWebDiaryList("web-drafts-list", "draft", webDraftsSearch.value);
+    });
+  }
+  var webPublishedSearch = document.getElementById("web-published-search");
+  if (webPublishedSearch) {
+    webPublishedSearch.addEventListener("input", function () {
+      renderWebDiaryList("web-published-list", "published", webPublishedSearch.value);
+    });
+  }
 
   onClick("btn-new-project", function () {
     openProjectForm(null);
@@ -8216,8 +9624,9 @@
   onClick("release-center-close", closeReleaseCenter);
   onClick("btn-release-close", closeReleaseCenter);
   onClick("btn-release-run-check", function () {
-    runAllSystemChecks();
-    renderReleaseCenter();
+    runAllSystemChecks().then(function () {
+      renderReleaseCenter();
+    });
   });
   onClick("btn-release-view-check", function () {
     closeReleaseCenter();

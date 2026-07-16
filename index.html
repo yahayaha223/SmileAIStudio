@@ -71,7 +71,7 @@
               <label class="home-compose__photo-btn" for="home-secretary-photo">
                 <span aria-hidden="true">📷</span> 写真を追加
               </label>
-              <input type="file" id="home-secretary-photo" accept="image/*" capture="environment" hidden>
+              <input type="file" id="home-secretary-photo" accept="image/*" multiple hidden>
               <div class="home-compose__preview" id="home-photo-preview" hidden>
                 <img id="home-photo-img" alt="選択した写真">
                 <button type="button" class="btn btn--ghost btn--touch" id="btn-home-photo-clear">写真を外す</button>
@@ -93,6 +93,18 @@
               <span class="home-creative-card__hint">LP・記事・SNS・アプリをスマホから依頼</span>
             </span>
             <span class="home-creative-card__chev" aria-hidden="true">›</span>
+          </button>
+        </section>
+
+        <!-- Web管理センター入口 -->
+        <section class="home-dash-card home-dash-card--web" aria-labelledby="home-web-heading">
+          <button type="button" class="web-center-card" id="btn-web-center-home">
+            <span class="web-center-card__icon" aria-hidden="true">🌐</span>
+            <span class="web-center-card__text">
+              <strong id="home-web-heading">Web管理センター</strong>
+              <small>活動日記 · お知らせ · ホームページ管理</small>
+            </span>
+            <span class="web-center-card__open">開く</span>
           </button>
         </section>
 
@@ -649,55 +661,120 @@
 
       <!-- メニュー -->
       <div class="modal__body" id="web-center-menu-view">
-        <p class="form-hint">ホームページの活動日記を管理します。保存データはこの端末の localStorage に残ります。</p>
+        <p class="form-hint">今日の仕事：活動日記を更新する。今回は活動日記のみ実装（お知らせ・HP管理は準備中）。</p>
+        <div class="web-media-notice" id="web-media-notice-banner">
+          <p><strong>画像はこのiPhoneのブラウザ内に一時保存されます。</strong></p>
+          <p>別のiPhone・パソコン・別ブラウザとは共有されません。</p>
+          <p>Safariの履歴やWebサイトデータを削除すると、画像が消える可能性があります。</p>
+          <p>大切な元写真は、iPhoneの写真ライブラリにも残してください。</p>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-media-notice-ack">確認しました</button>
+        </div>
+        <p class="form-hint web-media-notice-compact" id="web-media-notice-compact" hidden>
+          画像は端末内ブラウザに一時保存（他端末非共有／サイトデータ削除で消える可能性あり）
+        </p>
         <div class="web-center-menu">
           <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-web-new-diary">＋ 新しい活動日記</button>
-          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-drafts">下書き一覧</button>
-          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-published">公開済み一覧</button>
+          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-drafts">下書き</button>
+          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-published">公開済み</button>
+          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-media-vault">📁 画像一時保管庫</button>
         </div>
+        <p class="brain-section-title">最近の記事</p>
+        <div class="card-list" id="web-recent-list"></div>
         <div class="modal__actions modal__actions--stack">
           <button type="button" class="btn btn--ghost" id="btn-web-center-close-menu">閉じる</button>
         </div>
       </div>
 
+      <!-- 画像一時保管庫 -->
+      <div class="modal__body" id="web-center-vault-view" hidden>
+        <p class="brain-section-title">📁 画像一時保管庫</p>
+        <div class="web-vault-stats" id="web-vault-stats">
+          <p class="form-hint">読み込み中…</p>
+        </div>
+        <p class="form-error" id="web-vault-warning" role="alert" hidden></p>
+        <div class="card-list" id="web-vault-list"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-vault-back">メニューに戻る</button>
+        </div>
+      </div>
+
       <!-- 新規・編集フォーム -->
-      <form class="modal__form" id="web-center-form-view" hidden novalidate>
+      <form class="modal__form modal__form--web-diary" id="web-center-form-view" hidden novalidate>
         <div class="form-error" id="web-diary-form-error" role="alert" hidden></div>
         <input type="hidden" id="web-diary-edit-id" value="">
 
         <div class="form-group">
           <label for="web-diary-title">タイトル <span class="required-mark">必須</span></label>
-          <input type="text" id="web-diary-title" placeholder="例：ラグーナ蒲郡の縁日準備" maxlength="120">
+          <input type="text" id="web-diary-title" placeholder="例：ラグーナ蒲郡の縁日準備" maxlength="120" autocomplete="off">
         </div>
         <div class="form-group">
           <label for="web-diary-body">本文 <span class="required-mark">必須</span></label>
-          <textarea id="web-diary-body" rows="8" placeholder="活動日記の本文を入力"></textarea>
+          <textarea id="web-diary-body" class="web-diary-body-input" rows="10" placeholder="活動日記の本文を自由に編集できます"></textarea>
+        </div>
+
+        <div class="web-center-ai-row">
+          <button type="button" class="btn btn--secondary btn--block btn--touch web-diary-action-btn" id="btn-web-ai-write">✨ AIで文章作成</button>
+          <p class="form-hint">本文へ入力するだけです。保存は自動で行いません。</p>
+        </div>
+
+        <div class="form-group">
+          <p class="brain-section-title">写真</p>
+          <p class="form-hint">画像本体は端末内の一時データです。記事保存時はファイル名などの情報のみ残します。</p>
+          <p class="web-diary-image-count" id="web-diary-image-count">選択枚数：0 / 10</p>
+          <p class="form-hint">1枚目は記事一覧の代表画像として使用します</p>
+          <div class="web-diary-image-actions">
+            <label class="btn btn--primary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-images">写真を選ぶ</label>
+            <input type="file" id="web-diary-images" class="visually-hidden" accept="image/*" multiple>
+            <label class="btn btn--secondary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-camera">写真を追加</label>
+            <input type="file" id="web-diary-camera" class="visually-hidden" accept="image/*" multiple>
+            <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-pick-vault" hidden>保管庫から選ぶ</button>
+          </div>
+          <p class="form-hint">写真ライブラリまたはカメラから選べます（複数選択可）</p>
+          <p class="form-hint" id="web-diary-media-status">画像一時保存：確認中…</p>
+          <p class="form-error" id="web-diary-image-error" role="alert" hidden></p>
+          <p class="form-hint" id="web-diary-image-reload-note" hidden>画像本体は端末内に見つかりません。再度写真を選択してください。</p>
+          <div class="web-diary-image-list" id="web-diary-image-list"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="web-diary-photo-memo">写真メモ</label>
+          <textarea id="web-diary-photo-memo" rows="2" placeholder="例：現場写真3枚 / ファイル名は後日"></textarea>
         </div>
         <div class="form-group">
           <label for="web-diary-date">公開日 <span class="required-mark">必須</span></label>
           <input type="date" id="web-diary-date">
-          <p class="form-hint">日記ページ上の日付表記（例：2026.07.14）に使います。</p>
-        </div>
-        <div class="form-group">
-          <label for="web-diary-photo-memo">写真メモ（文字だけ）</label>
-          <textarea id="web-diary-photo-memo" rows="3" placeholder="例：写真は後日追加。ファイル名は未定。"></textarea>
-        </div>
-
-        <div class="web-center-ai-row">
-          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-ai-write">✨ AIで日記を書く</button>
-          <p class="form-hint">今回はダミー動作です。将来AI接続予定。</p>
         </div>
 
         <div class="modal__actions modal__actions--stack">
-          <button type="button" class="btn btn--primary" id="btn-web-save-draft">下書き保存</button>
-          <button type="button" class="btn btn--secondary" id="btn-web-save-published">公開済みとして保存</button>
-          <button type="button" class="btn btn--secondary" id="btn-web-build-instruction">ホームページ更新指示書を作る</button>
-          <button type="button" class="btn btn--ghost" id="btn-web-back-menu">メニューに戻る</button>
+          <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-preview">プレビュー</button>
+          <button type="button" class="btn btn--primary btn--touch web-diary-action-btn" id="btn-web-save-draft">下書き保存</button>
+          <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-build-instruction">ホームページ更新指示書</button>
+          <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-save-published">公開済みにする</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-menu">閉じる</button>
         </div>
       </form>
 
+      <!-- プレビュー（ホームページ風） -->
+      <div class="modal__body" id="web-center-preview-view" hidden>
+        <p class="form-hint">ホームページの活動日記風プレビューです（最新の編集内容を反映）。</p>
+        <article class="web-diary-preview" id="web-diary-preview">
+          <p class="web-diary-preview__date" id="web-preview-date"></p>
+          <h4 class="web-diary-preview__title" id="web-preview-title"></h4>
+          <div class="web-diary-preview__main-image" id="web-preview-main-image"></div>
+          <div class="web-diary-preview__body" id="web-preview-body"></div>
+          <div class="web-diary-preview__gallery" id="web-preview-gallery"></div>
+          <p class="web-diary-preview__photo" id="web-preview-photo"></p>
+        </article>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--primary btn--touch web-diary-action-btn" id="btn-web-preview-save">この内容で下書き保存</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-from-preview">編集に戻る</button>
+        </div>
+      </div>
+
       <!-- 下書き一覧 -->
       <div class="modal__body" id="web-center-drafts-view" hidden>
+        <label class="brain-search-label" for="web-drafts-search">タイトル検索</label>
+        <input type="search" id="web-drafts-search" class="brain-search" placeholder="タイトルで検索" autocomplete="off">
         <div class="card-list" id="web-drafts-list"></div>
         <div class="modal__actions modal__actions--stack">
           <button type="button" class="btn btn--ghost" id="btn-web-back-from-drafts">メニューに戻る</button>
@@ -706,6 +783,8 @@
 
       <!-- 公開済み一覧 -->
       <div class="modal__body" id="web-center-published-view" hidden>
+        <label class="brain-search-label" for="web-published-search">タイトル検索</label>
+        <input type="search" id="web-published-search" class="brain-search" placeholder="タイトルで検索" autocomplete="off">
         <div class="card-list" id="web-published-list"></div>
         <div class="modal__actions modal__actions--stack">
           <button type="button" class="btn btn--ghost" id="btn-web-back-from-published">メニューに戻る</button>
@@ -744,7 +823,7 @@
 
         <div class="secretary-photo">
           <label class="secretary-photo__label" for="secretary-photo">写真（任意）</label>
-          <input type="file" id="secretary-photo" accept="image/*" capture="environment">
+          <input type="file" id="secretary-photo" accept="image/*" multiple>
           <div class="secretary-photo__preview" id="secretary-photo-preview" hidden>
             <img id="secretary-photo-img" alt="選択した写真のプレビュー">
             <button type="button" class="btn btn--ghost btn--touch" id="btn-secretary-photo-clear">写真を外す</button>
@@ -1326,6 +1405,7 @@
     </div>
   </div>
 
+  <script src="js/smile-media-db.js"></script>
   <script src="js/creative-interview-engine.js"></script>
   <script src="script.js"></script>
 </body>
