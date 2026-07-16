@@ -1040,6 +1040,16 @@ body:has(.app--secretary-first)::before {
   background: #f1f5f9;
 }
 
+.btn--outline {
+  background: #fff;
+  color: var(--color-primary);
+  border: 2px solid rgba(79, 110, 247, 0.55);
+}
+
+.btn--outline:hover {
+  background: rgba(79, 110, 247, 0.08);
+}
+
 .btn--line {
   background: #06c755;
   color: #fff;
@@ -2792,6 +2802,41 @@ body:has(.app--secretary-first)::before {
   margin: 8px 0 16px;
 }
 
+.web-diary-save-bar {
+  margin: 0 0 18px;
+  padding: 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #eef2ff 0%, #fff 100%);
+  border: 1px solid #c7d2fe;
+}
+
+.web-diary-save-bar .btn {
+  width: 100%;
+  min-height: 56px;
+}
+
+.web-diary-save-bar .form-hint {
+  margin: 8px 0 0;
+}
+
+#btn-web-save-draft-mid {
+  margin-top: 14px;
+  width: 100%;
+}
+
+.web-diary-form-actions {
+  margin-top: 20px;
+  padding-top: 12px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.web-diary-form-actions .btn {
+  width: 100%;
+  min-height: 56px;
+}
+
 .modal--web-center {
   max-height: 92dvh;
 }
@@ -3012,6 +3057,140 @@ body:has(.app--secretary-first)::before {
   width: 100%;
 }
 
+.web-vault-filters {
+  margin: 0 0 12px;
+}
+
+.web-vault-unused-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.modal--vault-picker {
+  max-width: 560px;
+  width: calc(100% - 24px);
+  max-height: calc(100vh - 24px);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal__body--vault-picker {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  padding-bottom: 12px;
+}
+
+.vault-picker-actions {
+  padding: 12px 16px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.vault-picker-actions .btn {
+  min-height: 56px;
+}
+
+.vault-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  padding-bottom: 24px;
+}
+
+.vault-picker-card {
+  display: grid;
+  grid-template-columns: 28px 84px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.vault-picker-card.is-selected {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.vault-picker-card.is-used {
+  opacity: 0.72;
+  cursor: default;
+  background: #f8fafc;
+}
+
+.vault-picker-card__check {
+  width: 22px;
+  height: 22px;
+  margin-top: 4px;
+}
+
+.vault-picker-card__thumb {
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #eef2ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.vault-picker-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.vault-picker-card__body {
+  min-width: 0;
+}
+
+.vault-picker-card__name {
+  margin: 0 0 4px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.vault-picker-card__meta {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+@media (min-width: 390px) {
+  .vault-picker-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 389px) {
+  .vault-picker-card {
+    grid-template-columns: 28px 1fr;
+  }
+
+  .vault-picker-card__thumb {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 160px;
+  }
+}
+
 .web-diary-image-card__warn {
   color: #b45309;
   background: #fffbeb;
@@ -3087,7 +3266,7 @@ body:has(.app--secretary-first)::before {
 .modal--web-center .modal__body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 24px;
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 430px) {

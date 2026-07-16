@@ -424,6 +424,10 @@
   var diaryPreviewDebounceTimer = null;
   var DIARY_IMAGE_MAX = 10;
   var DIARY_IMAGE_WARN_BYTES = 10 * 1024 * 1024;
+  var vaultPickerModal = document.getElementById("vault-picker-modal");
+  var vaultPickerSelectedIds = {};
+  var vaultPickerCacheRecords = [];
+  var vaultListFilter = { query: "", unusedOnly: false };
   var secretaryPhotoUrl = "";
   var secretaryPhotoName = "";
   var currentSecretaryResults = null;
@@ -484,7 +488,8 @@
       (secretaryModal && secretaryModal.classList.contains("is-open")) ||
       (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
-      (releaseCenterModal && releaseCenterModal.classList.contains("is-open"))
+      (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) ||
+      (vaultPickerModal && vaultPickerModal.classList.contains("is-open"))
     );
   }
 
@@ -3417,6 +3422,62 @@
     });
   }
 
+  function checkMediaVaultPicker() {
+    var btn = document.getElementById("btn-web-pick-vault");
+    var modal = document.getElementById("vault-picker-modal");
+    var list = document.getElementById("vault-picker-list");
+    var addBtn = document.getElementById("btn-vault-picker-add");
+    if (!btn || btn.hidden) {
+      return makeCheckResult("media-vault-picker", "保管庫から選ぶ", "fail",
+        "保管庫選択ボタンがありません");
+    }
+    if (!modal || !list || !addBtn) {
+      return makeCheckResult("media-vault-picker", "保管庫から選ぶ", "fail",
+        "保管庫モーダルDOMが不足しています");
+    }
+    if (typeof openVaultPickerModal !== "function" || typeof closeVaultPickerModal !== "function" ||
+        typeof addSelectedVaultImagesToDiary !== "function") {
+      return makeCheckResult("media-vault-picker", "保管庫から選ぶ", "fail",
+        "保管庫選択処理が不足しています");
+    }
+    return makeCheckResult("media-vault-picker", "保管庫から選ぶ", "ok",
+      "保管庫選択ボタンとモーダルを確認しました");
+  }
+
+  function checkWebDiaryDraftSave() {
+    var btnIds = ["btn-web-save-draft", "btn-web-save-draft-mid", "btn-web-save-draft-bottom"];
+    var missing = btnIds.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("web-diary-draft-save", "下書き保存ボタン", "fail",
+        "下書き保存ボタンがありません: " + missing.join(", "));
+    }
+    var hasHandler = typeof handleSaveWebDiaryDraft === "function" &&
+      typeof saveWebDiary === "function" &&
+      typeof validateWebDiaryDraft === "function";
+    if (!hasHandler) {
+      return makeCheckResult("web-diary-draft-save", "下書き保存ボタン", "fail",
+        "下書き保存処理が未登録です");
+    }
+    var keyOk = false;
+    var detail = "";
+    try {
+      var probe = "smileAIStudio_draftProbe_" + Date.now();
+      localStorage.setItem(probe, "1");
+      keyOk = localStorage.getItem(probe) === "1";
+      localStorage.removeItem(probe);
+      detail = "保存先キー: " + DIARY_ENTRIES_KEY;
+    } catch (e) {
+      return makeCheckResult("web-diary-draft-save", "下書き保存ボタン", "fail",
+        "smileAIStudio_blogDraftsへ保存できません", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+    if (!keyOk) {
+      return makeCheckResult("web-diary-draft-save", "下書き保存ボタン", "fail",
+        "localStorage書き込みに失敗しました");
+    }
+    return makeCheckResult("web-diary-draft-save", "下書き保存ボタン", "ok",
+      "下書き保存ボタンと保存処理を確認しました", detail);
+  }
+
   function checkMediaVaultIntegrity() {
     if (!MediaDB) {
       return Promise.resolve(makeCheckResult("media-vault", "画像一時保管庫", "fail",
@@ -3435,11 +3496,14 @@
       var est = pair[1];
       var metaIds = {};
       var metaCount = 0;
+      var sharedRefCount = {};
       loadDiaryEntries().forEach(function (d) {
         (d.images || []).forEach(function (img) {
           if (!img || !img.id) return;
-          metaIds[img.id] = true;
+          var key = img.libraryImageId || img.id;
+          metaIds[key] = true;
           metaCount += 1;
+          sharedRefCount[key] = (sharedRefCount[key] || 0) + 1;
         });
       });
       var blobIds = {};
@@ -3454,13 +3518,18 @@
       Object.keys(blobIds).forEach(function (id) {
         if (!metaIds[id]) orphans += 1;
       });
+      var sharedKeys = Object.keys(sharedRefCount).filter(function (k) {
+        return sharedRefCount[k] > 1;
+      });
       var details = [
         "保存済み画像数: " + usage.imageCount,
         "画像メタデータ数: " + metaCount,
         "メタデータとBlobの不一致: " + mismatch,
         "孤立画像数: " + orphans,
+        "共用参照キー数: " + sharedKeys.length,
         "保存失敗数(セッション): " + mediaSaveFailCount,
-        "推定使用容量: " + formatBytesShort(usage.totalBytes)
+        "推定使用容量: " + formatBytesShort(usage.totalBytes),
+        "保管庫選択ボタン: " + (document.getElementById("btn-web-pick-vault") ? "あり" : "なし")
       ];
       if (est.available) {
         details.push("ブラウザ領域: " + formatBytesShort(est.usage) + " / " + formatBytesShort(est.quota));
@@ -3469,17 +3538,15 @@
       }
       var status = "ok";
       var message = "IndexedDB利用可、DB正常、不一致なし";
-      if (mismatch > 0 && metaCount > 0 && mismatch / metaCount >= 0.5) {
+      if (mismatch > 0) {
         status = "fail";
-        message = "保存済みメタデータの多くにBlobがありません（不一致 " + mismatch + "/" + metaCount + "）";
+        message = "参照中画像のBlob欠損があります（不一致 " + mismatch + "件）";
       } else if (mediaSaveFailCount > 0) {
         status = "fail";
         message = "画像保存処理の失敗が検出されています（" + mediaSaveFailCount + "件）";
-      } else if (orphans > 0 || usage.totalBytes > 200 * 1024 * 1024 || usage.imageCount > 50 || mismatch > 0) {
+      } else if (orphans > 0 || usage.totalBytes > 200 * 1024 * 1024 || usage.imageCount > 50) {
         status = "warn";
-        message = mismatch > 0
-          ? ("不一致 " + mismatch + "件・孤立 " + orphans + "件あり（整理推奨）")
-          : ("孤立画像または容量注意あり（孤立 " + orphans + "）");
+        message = "孤立画像または容量注意あり（孤立 " + orphans + "）";
       }
       return makeCheckResult("media-vault", "画像一時保管庫", status, message, details.join("\n"));
     }).catch(function (err) {
@@ -3546,6 +3613,8 @@
       ["interview-draft-list", "ヒアリング一覧・下書き", checkInterviewDraftList],
       ["media-idb", "IndexedDB利用可否", checkMediaIndexedDbAvailability],
       ["media-db-open", "MediaDBを開けるか", checkMediaDbOpen],
+      ["media-vault-picker", "保管庫から選ぶ", checkMediaVaultPicker],
+      ["web-diary-draft-save", "下書き保存ボタン", checkWebDiaryDraftSave],
       ["media-vault", "画像一時保管庫", checkMediaVaultIntegrity]
     ];
 
@@ -4648,8 +4717,9 @@
   function saveDiaryEntries(list) {
     try {
       localStorage.setItem(DIARY_ENTRIES_KEY, JSON.stringify(list || []));
+      return true;
     } catch (e) {
-      showToast("保存に失敗しました");
+      return false;
     }
   }
 
@@ -4663,6 +4733,12 @@
     if (["temporary", "saving", "saved", "missing", "error"].indexOf(storageStatus) === -1) {
       storageStatus = "missing";
     }
+    var source = String(raw.source || "").trim();
+    if (source !== "media-library" && source !== "device") source = "";
+    var libraryImageId = String(raw.libraryImageId || "").trim();
+    if (!libraryImageId && source === "media-library") {
+      libraryImageId = String(raw.id || "").trim();
+    }
     return {
       id: String(raw.id || ("img-meta-" + order + "-" + Date.now())),
       fileName: fileName,
@@ -4672,7 +4748,9 @@
       altText: String(raw.altText || "").trim(),
       caption: String(raw.caption || "").trim(),
       isMain: order === 0 || !!raw.isMain,
-      storageStatus: storageStatus
+      storageStatus: storageStatus,
+      source: source,
+      libraryImageId: libraryImageId
     };
   }
 
@@ -4819,13 +4897,40 @@
     var count = 0;
     loadDiaryEntries().forEach(function (d) {
       (d.images || []).forEach(function (img) {
-        if (img.id === imageId) count += 1;
+        if (!img) return;
+        if (img.id === imageId || img.libraryImageId === imageId) count += 1;
       });
     });
     diaryImageItems.forEach(function (item) {
-      if (item.id === imageId) count += 1;
+      if (item.id === imageId || item.libraryImageId === imageId) count += 1;
     });
     return count;
+  }
+
+  function findDiariesUsingImageId(imageId) {
+    var list = [];
+    var seen = {};
+    loadDiaryEntries().forEach(function (d) {
+      var hit = (d.images || []).some(function (img) {
+        return img && (img.id === imageId || img.libraryImageId === imageId);
+      });
+      if (hit && !seen[d.id]) {
+        seen[d.id] = true;
+        list.push(d);
+      }
+    });
+    return list;
+  }
+
+  function isImageUsedInCurrentDiary(imageId) {
+    return diaryImageItems.some(function (item) {
+      return item.id === imageId || item.libraryImageId === imageId;
+    });
+  }
+
+  function resolveDiaryImageBlobKey(item) {
+    if (!item) return "";
+    return String(item.libraryImageId || item.id || "").trim();
   }
 
   function clearWebDiaryFormError() {
@@ -4870,7 +4975,9 @@
         altText: item.altText || "",
         caption: item.caption || "",
         isMain: i === 0,
-        storageStatus: item.storageStatus || (item.missingBody ? "missing" : "temporary")
+        storageStatus: item.storageStatus || (item.missingBody ? "missing" : "temporary"),
+        source: item.source || "",
+        libraryImageId: item.libraryImageId || (item.source === "media-library" ? item.id : "")
       };
     });
   }
@@ -4934,7 +5041,9 @@
       file: processed,
       missingBody: false,
       storageStatus: meta.storageStatus || "temporary",
-      previewFailed: false
+      previewFailed: false,
+      source: meta.source || "device",
+      libraryImageId: meta.libraryImageId || ""
     };
   }
 
@@ -5036,7 +5145,7 @@
       if (item.missingBody || item.storageStatus === "missing") {
         var miss = document.createElement("p");
         miss.className = "web-diary-image-card__warn";
-        miss.textContent = "この画像本体は端末内に見つかりません。再度写真を選択してください。";
+        miss.textContent = "画像本体が端末内に見つかりません";
         body.appendChild(miss);
       }
       if (item.previewFailed && isLikelyHeic(item.fileName, item.fileType)) {
@@ -5135,14 +5244,17 @@
     }
 
     if (deleteFromVault && MediaDB && mediaDbAvailable) {
+      var blobKey = resolveDiaryImageBlobKey(item) || imageId;
       var refs = 0;
       loadDiaryEntries().forEach(function (d) {
+        if (d.id === editingDiaryId) return;
         (d.images || []).forEach(function (img) {
-          if (img.id === imageId && d.id !== editingDiaryId) refs += 1;
+          if (!img) return;
+          if (img.id === blobKey || img.libraryImageId === blobKey || img.id === imageId) refs += 1;
         });
       });
       if (refs > 0) {
-        showToast("他の記事でも使用されています。保管庫からは削除できません。");
+        showToast("この画像は他の記事でも使用されています");
         deleteFromVault = false;
       }
     }
@@ -5156,7 +5268,8 @@
     scheduleDiaryPreviewUpdate();
 
     if (deleteFromVault && MediaDB) {
-      MediaDB.deleteDiaryImageBlob(imageId).then(function () {
+      var deleteKey = resolveDiaryImageBlobKey(item) || imageId;
+      MediaDB.deleteDiaryImageBlob(deleteKey).then(function () {
         showToast("記事から外し、保管庫からも削除しました");
       });
     } else {
@@ -5219,7 +5332,8 @@
       var chain = Promise.resolve();
       diaryImageItems.forEach(function (item) {
         chain = chain.then(function () {
-          return MediaDB.getDiaryImageBlob(item.id).then(function (rec) {
+          var key = resolveDiaryImageBlobKey(item);
+          return MediaDB.getDiaryImageBlob(key).then(function (rec) {
             if (!rec || !rec.blob) {
               item.storageStatus = "missing";
               item.missingBody = true;
@@ -5269,7 +5383,9 @@
         file: null,
         missingBody: true,
         storageStatus: m.storageStatus || "missing",
-        previewFailed: false
+        previewFailed: false,
+        source: m.source || "",
+        libraryImageId: m.libraryImageId || ""
       });
     });
     renderDiaryImageList();
@@ -5382,6 +5498,19 @@
 
   function openWebMediaVault() {
     showWebCenterView("vault");
+    renderWebMediaVaultList();
+  }
+
+  function getVaultImageUsageInfo(imageId) {
+    var diaries = findDiariesUsingImageId(imageId);
+    return {
+      diaries: diaries,
+      used: diaries.length > 0,
+      titles: diaries.map(function (d) { return d.title || d.id; })
+    };
+  }
+
+  function renderWebMediaVaultList() {
     var stats = document.getElementById("web-vault-stats");
     var listEl = document.getElementById("web-vault-list");
     if (stats) stats.innerHTML = '<p class="form-hint">読み込み中…</p>';
@@ -5401,10 +5530,6 @@
       ]).then(function (pair) {
         var usage = pair[0];
         var est = pair[1];
-        var diaryMap = {};
-        loadDiaryEntries().forEach(function (d) {
-          diaryMap[d.id] = d.title || d.id;
-        });
         if (stats) {
           var lines = [
             "<p><strong>保存画像数：</strong>" + usage.imageCount + "枚</p>",
@@ -5424,14 +5549,25 @@
         }
         maybeWarnMediaCapacity();
         if (!listEl) return;
-        if (!usage.records.length) {
-          listEl.innerHTML = '<p class="empty-message">保管庫に画像はまだありません。</p>';
+
+        var q = String(vaultListFilter.query || "").trim().toLowerCase();
+        var records = (usage.records || []).slice().sort(function (a, b) {
+          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        }).filter(function (rec) {
+          var usageInfo = getVaultImageUsageInfo(rec.imageId);
+          if (vaultListFilter.unusedOnly && usageInfo.used) return false;
+          if (!q) return true;
+          var hay = (rec.fileName || "") + " " + usageInfo.titles.join(" ");
+          return hay.toLowerCase().indexOf(q) !== -1;
+        });
+
+        if (!records.length) {
+          listEl.innerHTML = '<p class="empty-message">表示できる画像がありません。</p>';
           return;
         }
         listEl.innerHTML = "";
-        usage.records.sort(function (a, b) {
-          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-        }).forEach(function (rec) {
+        records.forEach(function (rec) {
+          var usageInfo = getVaultImageUsageInfo(rec.imageId);
           var card = document.createElement("article");
           card.className = "web-diary-image-card";
           var thumb = document.createElement("div");
@@ -5455,6 +5591,11 @@
           card.appendChild(thumb);
           var body = document.createElement("div");
           body.className = "web-diary-image-card__body";
+          var badge = document.createElement("span");
+          badge.className = "web-diary-storage-badge " +
+            (usageInfo.used ? "web-diary-storage-badge--saved" : "web-diary-storage-badge--temporary");
+          badge.textContent = usageInfo.used ? "使用中" : "未使用";
+          body.appendChild(badge);
           var name = document.createElement("p");
           name.className = "web-diary-image-card__name";
           name.textContent = rec.fileName || rec.imageId;
@@ -5462,36 +5603,281 @@
           var meta = document.createElement("p");
           meta.className = "web-diary-image-card__meta";
           meta.textContent = formatBytesShort(rec.fileSize) +
-            " · 記事：" + (diaryMap[rec.diaryId] || rec.diaryId || "未割当") +
-            " · " + (rec.updatedAt ? formatDiaryUpdatedShort(rec.updatedAt) : "—");
+            " · " + (rec.updatedAt ? formatDiaryUpdatedShort(rec.updatedAt) : "—") +
+            " · " + (usageInfo.used ? ("記事：" + usageInfo.titles.join(" / ")) : "どの記事でも未使用");
           body.appendChild(meta);
+          var actions = document.createElement("div");
+          actions.className = "web-diary-image-card__actions";
+          if (usageInfo.diaries.length) {
+            usageInfo.diaries.slice(0, 2).forEach(function (d) {
+              var openBtn = document.createElement("button");
+              openBtn.type = "button";
+              openBtn.className = "btn btn--secondary btn--touch";
+              openBtn.textContent = "記事を開く";
+              openBtn.addEventListener("click", function () {
+                openWebDiaryForm(d);
+              });
+              actions.appendChild(openBtn);
+            });
+          }
           var del = document.createElement("button");
           del.type = "button";
           del.className = "btn btn--danger btn--touch";
-          del.textContent = "削除";
+          del.textContent = "画像を削除";
           del.addEventListener("click", function () {
-            var usedElsewhere = false;
-            loadDiaryEntries().forEach(function (d) {
-              (d.images || []).forEach(function (img) {
-                if (img.id === rec.imageId) usedElsewhere = true;
-              });
-            });
-            if (usedElsewhere) {
-              showToast("他の記事でも使用されています。保管庫からは削除できません。");
+            if (usageInfo.used) {
+              showToast("この画像は他の記事でも使用されています");
               return;
             }
-            if (!window.confirm("この画像を保管庫から削除しますか？")) return;
+            if (!window.confirm("この未使用画像を保管庫から削除しますか？")) return;
             MediaDB.deleteDiaryImageBlob(rec.imageId).then(function () {
               showToast("削除しました");
-              openWebMediaVault();
+              renderWebMediaVaultList();
             });
           });
-          body.appendChild(del);
+          actions.appendChild(del);
+          body.appendChild(actions);
           card.appendChild(body);
           listEl.appendChild(card);
         });
       });
     });
+  }
+
+  function showVaultPickerError(message) {
+    var el = document.getElementById("vault-picker-error");
+    if (!el) return;
+    if (!message) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = message;
+  }
+
+  function updateVaultPickerSelectedCount() {
+    var el = document.getElementById("vault-picker-selected-count");
+    if (!el) return;
+    var n = Object.keys(vaultPickerSelectedIds).filter(function (id) {
+      return !!vaultPickerSelectedIds[id];
+    }).length;
+    el.textContent = "選択枚数：" + n +
+      "（記事内 " + diaryImageItems.length + " / " + DIARY_IMAGE_MAX + "）";
+  }
+
+  function closeVaultPickerModal() {
+    if (!vaultPickerModal) return;
+    vaultPickerModal.classList.remove("is-open");
+    vaultPickerModal.setAttribute("aria-hidden", "true");
+    vaultPickerSelectedIds = {};
+    showVaultPickerError("");
+    syncBodyScroll();
+  }
+
+  function openVaultPickerModal() {
+    if (!vaultPickerModal) return;
+    ensureEditingDiaryId();
+    vaultPickerSelectedIds = {};
+    showVaultPickerError("");
+    vaultPickerModal.classList.add("is-open");
+    vaultPickerModal.setAttribute("aria-hidden", "false");
+    syncBodyScroll();
+    renderVaultPickerModal();
+  }
+
+  function renderVaultPickerModal() {
+    var stats = document.getElementById("vault-picker-stats");
+    var listEl = document.getElementById("vault-picker-list");
+    var filterEl = document.getElementById("vault-picker-diary-filter");
+    var searchEl = document.getElementById("vault-picker-search");
+    if (stats) stats.innerHTML = '<p class="form-hint">読み込み中…</p>';
+    if (listEl) listEl.innerHTML = "";
+    updateVaultPickerSelectedCount();
+    if (!MediaDB) {
+      if (stats) stats.innerHTML = '<p class="form-hint">画像一時保存は利用できません。</p>';
+      return;
+    }
+    initMediaDbAvailability().then(function (ok) {
+      if (!ok) {
+        if (stats) stats.innerHTML = '<p class="form-hint">画像一時保存は利用できません。</p>';
+        return;
+      }
+      MediaDB.getMediaStorageUsage().then(function (usage) {
+        vaultPickerCacheRecords = usage.records || [];
+        if (stats) {
+          stats.innerHTML =
+            "<p><strong>保存画像数：</strong>" + usage.imageCount + "枚</p>" +
+            "<p><strong>合計容量：</strong>" + formatBytesShort(usage.totalBytes) + "</p>";
+        }
+        if (filterEl) {
+          var prevFilter = filterEl.value || "";
+          filterEl.innerHTML = '<option value="">すべての記事</option>';
+          var diaryIds = {};
+          loadDiaryEntries().forEach(function (d) {
+            diaryIds[d.id] = d.title || d.id;
+          });
+          vaultPickerCacheRecords.forEach(function (rec) {
+            if (rec.diaryId && !diaryIds[rec.diaryId]) {
+              diaryIds[rec.diaryId] = rec.diaryId;
+            }
+          });
+          Object.keys(diaryIds).sort(function (a, b) {
+            return String(diaryIds[a]).localeCompare(String(diaryIds[b]));
+          }).forEach(function (id) {
+            var opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = diaryIds[id];
+            filterEl.appendChild(opt);
+          });
+          if (prevFilter) filterEl.value = prevFilter;
+        }
+        var q = searchEl ? String(searchEl.value || "").trim().toLowerCase() : "";
+        var diaryFilter = filterEl ? String(filterEl.value || "") : "";
+        var records = vaultPickerCacheRecords.slice().sort(function (a, b) {
+          return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        }).filter(function (rec) {
+          if (diaryFilter && rec.diaryId !== diaryFilter) {
+            var usageInfo = getVaultImageUsageInfo(rec.imageId);
+            var linked = usageInfo.diaries.some(function (d) { return d.id === diaryFilter; });
+            if (!linked) return false;
+          }
+          if (!q) return true;
+          var titles = getVaultImageUsageInfo(rec.imageId).titles.join(" ");
+          return ((rec.fileName || "") + " " + titles).toLowerCase().indexOf(q) !== -1;
+        });
+        if (!listEl) return;
+        if (!records.length) {
+          listEl.innerHTML = '<p class="empty-message">保管庫に選べる画像がありません。</p>';
+          return;
+        }
+        listEl.innerHTML = "";
+        records.forEach(function (rec) {
+          var inCurrent = isImageUsedInCurrentDiary(rec.imageId);
+          var usageInfo = getVaultImageUsageInfo(rec.imageId);
+          var card = document.createElement("label");
+          card.className = "vault-picker-card" +
+            (inCurrent ? " is-used" : "") +
+            (vaultPickerSelectedIds[rec.imageId] ? " is-selected" : "");
+          var check = document.createElement("input");
+          check.type = "checkbox";
+          check.className = "vault-picker-card__check";
+          check.checked = !!vaultPickerSelectedIds[rec.imageId];
+          check.disabled = inCurrent;
+          check.addEventListener("change", function () {
+            if (inCurrent) return;
+            if (check.checked) vaultPickerSelectedIds[rec.imageId] = true;
+            else delete vaultPickerSelectedIds[rec.imageId];
+            card.classList.toggle("is-selected", !!vaultPickerSelectedIds[rec.imageId]);
+            updateVaultPickerSelectedCount();
+          });
+          var thumb = document.createElement("div");
+          thumb.className = "vault-picker-card__thumb";
+          if (rec.blob) {
+            try {
+              var url = URL.createObjectURL(rec.blob);
+              var img = document.createElement("img");
+              img.src = url;
+              img.alt = rec.fileName || "保管画像";
+              img.addEventListener("error", function () {
+                thumb.textContent = "プレビュー不可";
+              });
+              thumb.appendChild(img);
+            } catch (e) {
+              thumb.textContent = "プレビュー不可";
+            }
+          } else {
+            thumb.textContent = "なし";
+          }
+          var body = document.createElement("div");
+          body.className = "vault-picker-card__body";
+          var name = document.createElement("p");
+          name.className = "vault-picker-card__name";
+          name.textContent = rec.fileName || rec.imageId;
+          body.appendChild(name);
+          var meta = document.createElement("p");
+          meta.className = "vault-picker-card__meta";
+          meta.textContent = formatBytesShort(rec.fileSize) +
+            " · " + (rec.updatedAt ? formatDiaryUpdatedShort(rec.updatedAt) : "—");
+          body.appendChild(meta);
+          var used = document.createElement("p");
+          used.className = "vault-picker-card__meta";
+          used.textContent = inCurrent
+            ? "現在の記事で使用中（追加済み）"
+            : (usageInfo.used
+              ? ("使用記事：" + usageInfo.titles.join(" / "))
+              : "未使用");
+          body.appendChild(used);
+          card.appendChild(check);
+          card.appendChild(thumb);
+          card.appendChild(body);
+          listEl.appendChild(card);
+        });
+        updateVaultPickerSelectedCount();
+      });
+    });
+  }
+
+  function addSelectedVaultImagesToDiary() {
+    showVaultPickerError("");
+    showDiaryImageError("");
+    var ids = Object.keys(vaultPickerSelectedIds).filter(function (id) {
+      return !!vaultPickerSelectedIds[id];
+    });
+    if (!ids.length) {
+      showVaultPickerError("追加する写真を選択してください");
+      return;
+    }
+    var room = DIARY_IMAGE_MAX - diaryImageItems.length;
+    if (room <= 0) {
+      showVaultPickerError("活動日記に追加できる写真は最大10枚です");
+      showDiaryImageError("活動日記に追加できる写真は最大10枚です");
+      return;
+    }
+    var records = ids.map(function (id) {
+      return vaultPickerCacheRecords.find(function (r) { return r.imageId === id; });
+    }).filter(function (rec) {
+      return rec && !isImageUsedInCurrentDiary(rec.imageId);
+    });
+    if (!records.length) {
+      showVaultPickerError("追加できる新しい写真がありません");
+      return;
+    }
+    if (records.length > room) {
+      showVaultPickerError("活動日記に追加できる写真は最大10枚です");
+      showDiaryImageError("活動日記に追加できる写真は最大10枚です");
+      records = records.slice(0, room);
+    }
+    records.forEach(function (rec) {
+      var objectUrl = "";
+      try {
+        if (rec.blob) objectUrl = URL.createObjectURL(rec.blob);
+      } catch (e) {
+        objectUrl = "";
+      }
+      diaryImageItems.push({
+        id: rec.imageId,
+        fileName: rec.fileName || rec.imageId,
+        fileType: rec.fileType || "",
+        fileSize: rec.fileSize || 0,
+        order: diaryImageItems.length,
+        altText: "",
+        caption: "",
+        isMain: diaryImageItems.length === 0,
+        objectUrl: objectUrl,
+        file: rec.blob || null,
+        missingBody: !rec.blob,
+        storageStatus: rec.blob ? "saved" : "missing",
+        previewFailed: false,
+        source: "media-library",
+        libraryImageId: rec.imageId
+      });
+    });
+    reindexDiaryImages();
+    renderDiaryImageList();
+    scheduleDiaryPreviewUpdate();
+    closeVaultPickerModal();
+    showToast(records.length + "枚を保管庫から追加しました（本体は共有参照）");
   }
 
   function scheduleDiaryPreviewUpdate() {
@@ -5635,6 +6021,17 @@
     };
   }
 
+  function validateWebDiaryDraft(values) {
+    var title = String(values.title || "").trim();
+    var content = String(values.content || values.body || "").trim();
+    if (!title && !content) {
+      showWebDiaryFormError("タイトルまたは本文を入力してください");
+      return false;
+    }
+    clearWebDiaryFormError();
+    return true;
+  }
+
   function validateWebDiaryForm(values) {
     if (!String(values.title || "").trim()) {
       showWebDiaryFormError("タイトルを入力してください");
@@ -5688,6 +6085,7 @@
 
   function closeWebCenter() {
     if (!webCenterModal) return;
+    closeVaultPickerModal();
     webCenterModal.classList.remove("is-open");
     webCenterModal.setAttribute("aria-hidden", "true");
     editingDiaryId = null;
@@ -5761,17 +6159,25 @@
 
   function saveWebDiary(status) {
     var values = readWebDiaryFormValues();
-    if (!validateWebDiaryForm(values)) return null;
+    var valid = status === "draft"
+      ? validateWebDiaryDraft(values)
+      : validateWebDiaryForm(values);
+    if (!valid) return null;
 
     var list = loadDiaryEntries();
     var now = new Date().toISOString();
     var id = ensureEditingDiaryId();
     var existing = list.find(function (d) { return d.id === id; });
+    var title = String(values.title || "").trim();
+    var content = String(values.content || "").trim();
+    if (!title && content) title = content.slice(0, 40) + (content.length > 40 ? "…" : "");
+    if (!title) title = "無題の下書き";
+    var publishDate = String(values.publishDate || "").trim() || todayInputDate();
     var entry = normalizeDiaryEntry({
       id: id,
-      title: values.title.trim(),
-      content: String(values.content || "").trim(),
-      publishDate: values.publishDate.trim(),
+      title: title,
+      content: content,
+      publishDate: publishDate,
       photoMemo: values.photoMemo.trim(),
       images: serializeDiaryImageMetadata(),
       status: status,
@@ -5784,7 +6190,11 @@
     } else {
       list.unshift(entry);
     }
-    saveDiaryEntries(list);
+    if (!saveDiaryEntries(list)) {
+      if (status === "draft") showToast("下書きを保存できませんでした");
+      else showToast("保存できませんでした");
+      return null;
+    }
     editingDiaryId = entry.id;
     var idEl = document.getElementById("web-diary-edit-id");
     if (idEl) idEl.value = entry.id;
@@ -5793,6 +6203,7 @@
       var imgs = entry.images || [];
       var chain = Promise.resolve();
       imgs.forEach(function (img) {
+        if (img.source === "media-library") return;
         chain = chain.then(function () {
           return MediaDB.updateDiaryImageDiaryId(img.id, entry.id);
         });
@@ -5877,6 +6288,11 @@
         else if (img.storageStatus === "temporary") statusText = "端末内未保存";
         lines.push("【画像" + n + "】");
         lines.push("画像ID：" + (img.id || "—"));
+        if (img.source === "media-library" || img.libraryImageId) {
+          lines.push("入手元：Smile AI Studio画像一時保管庫");
+        } else {
+          lines.push("入手元：端末の写真ライブラリまたはカメラ");
+        }
         lines.push("ファイル名：" + (img.fileName || "—"));
         lines.push("形式：" + (img.fileType || "—"));
         lines.push("サイズ：" + formatDiaryFileSize(img.fileSize));
@@ -5884,6 +6300,7 @@
         lines.push("用途：" + (i === 0 || img.isMain ? "代表画像" : "記事内画像"));
         lines.push("代替テキスト：" + (img.altText || "—"));
         lines.push("説明：" + (img.caption || "—"));
+        lines.push("写真説明：" + (img.caption || "—"));
         lines.push("端末内保存状態：" + statusText);
         lines.push("保存状態：" + statusText);
         lines.push("");
@@ -9409,6 +9826,41 @@
     renderWebRecentList();
     showWebCenterView("menu");
   });
+  onClick("btn-web-pick-vault", openVaultPickerModal);
+  onClick("vault-picker-close", closeVaultPickerModal);
+  onClick("btn-vault-picker-cancel", closeVaultPickerModal);
+  onClick("btn-vault-picker-add", addSelectedVaultImagesToDiary);
+  if (vaultPickerModal) {
+    vaultPickerModal.addEventListener("click", function (e) {
+      if (e.target === vaultPickerModal) closeVaultPickerModal();
+    });
+  }
+  var vaultPickerSearch = document.getElementById("vault-picker-search");
+  if (vaultPickerSearch) {
+    vaultPickerSearch.addEventListener("input", function () {
+      renderVaultPickerModal();
+    });
+  }
+  var vaultPickerDiaryFilter = document.getElementById("vault-picker-diary-filter");
+  if (vaultPickerDiaryFilter) {
+    vaultPickerDiaryFilter.addEventListener("change", function () {
+      renderVaultPickerModal();
+    });
+  }
+  var webVaultSearch = document.getElementById("web-vault-search");
+  if (webVaultSearch) {
+    webVaultSearch.addEventListener("input", function () {
+      vaultListFilter.query = webVaultSearch.value || "";
+      renderWebMediaVaultList();
+    });
+  }
+  var webVaultUnusedOnly = document.getElementById("web-vault-unused-only");
+  if (webVaultUnusedOnly) {
+    webVaultUnusedOnly.addEventListener("change", function () {
+      vaultListFilter.unusedOnly = !!webVaultUnusedOnly.checked;
+      renderWebMediaVaultList();
+    });
+  }
   onClick("btn-web-media-notice-ack", function () {
     try { localStorage.setItem(MEDIA_NOTICE_KEY, "1"); } catch (e) { /* ignore */ }
     refreshMediaNoticeUi();
@@ -9438,6 +9890,8 @@
     showWebCenterView("form");
   });
   onClick("btn-web-save-draft", handleSaveWebDiaryDraft);
+  onClick("btn-web-save-draft-mid", handleSaveWebDiaryDraft);
+  onClick("btn-web-save-draft-bottom", handleSaveWebDiaryDraft);
   onClick("btn-web-save-published", handleSaveWebDiaryPublished);
   onClick("btn-web-build-instruction", handleBuildWebInstruction);
   onClick("btn-web-copy-instruction", handleCopyWebInstruction);

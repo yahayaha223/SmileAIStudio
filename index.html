@@ -692,6 +692,14 @@
           <p class="form-hint">読み込み中…</p>
         </div>
         <p class="form-error" id="web-vault-warning" role="alert" hidden></p>
+        <div class="web-vault-filters">
+          <label class="brain-search-label" for="web-vault-search">タイトル / ファイル名検索</label>
+          <input type="search" id="web-vault-search" class="brain-search" placeholder="記事タイトルまたはファイル名" autocomplete="off">
+          <label class="web-vault-unused-toggle">
+            <input type="checkbox" id="web-vault-unused-only">
+            <span>未使用画像だけ表示</span>
+          </label>
+        </div>
         <div class="card-list" id="web-vault-list"></div>
         <div class="modal__actions modal__actions--stack">
           <button type="button" class="btn btn--ghost btn--touch" id="btn-web-vault-back">メニューに戻る</button>
@@ -717,23 +725,29 @@
           <p class="form-hint">本文へ入力するだけです。保存は自動で行いません。</p>
         </div>
 
+        <div class="web-diary-save-bar" id="web-diary-save-bar-top">
+          <button type="button" class="btn btn--primary btn--block btn--touch web-diary-action-btn" id="btn-web-save-draft">下書き保存</button>
+          <p class="form-hint">いつでも下書き保存できます。写真追加後もここから保存できます。</p>
+        </div>
+
         <div class="form-group">
           <p class="brain-section-title">写真</p>
           <p class="form-hint">画像本体は端末内の一時データです。記事保存時はファイル名などの情報のみ残します。</p>
           <p class="web-diary-image-count" id="web-diary-image-count">選択枚数：0 / 10</p>
           <p class="form-hint">1枚目は記事一覧の代表画像として使用します</p>
           <div class="web-diary-image-actions">
-            <label class="btn btn--primary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-images">写真を選ぶ</label>
+            <label class="btn btn--primary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-images">写真ライブラリから選ぶ</label>
             <input type="file" id="web-diary-images" class="visually-hidden" accept="image/*" multiple>
-            <label class="btn btn--secondary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-camera">写真を追加</label>
-            <input type="file" id="web-diary-camera" class="visually-hidden" accept="image/*" multiple>
-            <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-pick-vault" hidden>保管庫から選ぶ</button>
+            <label class="btn btn--secondary btn--touch web-diary-action-btn web-diary-file-label" for="web-diary-camera">カメラで撮影</label>
+            <input type="file" id="web-diary-camera" class="visually-hidden" accept="image/*" capture="environment">
+            <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-pick-vault">📁 保管庫から選ぶ</button>
           </div>
-          <p class="form-hint">写真ライブラリまたはカメラから選べます（複数選択可）</p>
+          <p class="form-hint">ライブラリ・カメラ・端末内保管庫から追加できます（最大10枚）</p>
           <p class="form-hint" id="web-diary-media-status">画像一時保存：確認中…</p>
           <p class="form-error" id="web-diary-image-error" role="alert" hidden></p>
-          <p class="form-hint" id="web-diary-image-reload-note" hidden>画像本体は端末内に見つかりません。再度写真を選択してください。</p>
+          <p class="form-hint" id="web-diary-image-reload-note" hidden>画像本体が端末内に見つかりません</p>
           <div class="web-diary-image-list" id="web-diary-image-list"></div>
+          <button type="button" class="btn btn--primary btn--block btn--touch web-diary-action-btn" id="btn-web-save-draft-mid">下書き保存</button>
         </div>
 
         <div class="form-group">
@@ -745,11 +759,11 @@
           <input type="date" id="web-diary-date">
         </div>
 
-        <div class="modal__actions modal__actions--stack">
+        <div class="modal__actions modal__actions--stack web-diary-form-actions" id="web-diary-form-actions">
+          <button type="button" class="btn btn--primary btn--touch web-diary-action-btn" id="btn-web-save-draft-bottom">下書き保存</button>
           <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-preview">プレビュー</button>
-          <button type="button" class="btn btn--primary btn--touch web-diary-action-btn" id="btn-web-save-draft">下書き保存</button>
           <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-build-instruction">ホームページ更新指示書</button>
-          <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-save-published">公開済みにする</button>
+          <button type="button" class="btn btn--outline btn--touch web-diary-action-btn" id="btn-web-save-published">公開済みにする</button>
           <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-menu">閉じる</button>
         </div>
       </form>
@@ -1401,6 +1415,36 @@
             <button type="button" class="btn btn--ghost btn--touch" id="btn-creative-detail-back">履歴に戻る</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- 保管庫から写真を選ぶ -->
+  <div class="modal-overlay" id="vault-picker-modal" aria-hidden="true">
+    <div class="modal modal--vault-picker" role="dialog" aria-labelledby="vault-picker-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="vault-picker-title">📁 保管庫から選ぶ</h3>
+        <button type="button" class="modal__close" id="vault-picker-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body modal__body--vault-picker">
+        <div class="web-vault-stats" id="vault-picker-stats">
+          <p class="form-hint">読み込み中…</p>
+        </div>
+        <label class="brain-search-label" for="vault-picker-search">タイトル / ファイル名検索</label>
+        <input type="search" id="vault-picker-search" class="brain-search" placeholder="記事タイトルまたはファイル名" autocomplete="off">
+        <label class="brain-search-label" for="vault-picker-diary-filter">使用記事で絞り込み</label>
+        <select id="vault-picker-diary-filter" class="brain-search">
+          <option value="">すべての記事</option>
+        </select>
+        <p class="web-diary-image-count" id="vault-picker-selected-count">選択枚数：0</p>
+        <p class="form-error" id="vault-picker-error" role="alert" hidden></p>
+        <div class="vault-picker-grid" id="vault-picker-list"></div>
+      </div>
+      <div class="modal__actions modal__actions--stack vault-picker-actions">
+        <button type="button" class="btn btn--primary btn--touch" id="btn-vault-picker-add">選択した写真を記事へ追加</button>
+        <button type="button" class="btn btn--ghost btn--touch" id="btn-vault-picker-cancel">キャンセル</button>
       </div>
     </div>
   </div>
