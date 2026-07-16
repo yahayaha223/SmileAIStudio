@@ -36,6 +36,82 @@ function detectCompanyOpCandidate(text) {
   return null;
 }
 
+function pickContentFromMemory(memory, currentText) {
+  var messages = (memory && memory.messages) || [];
+  for (var i = messages.length - 1; i >= 0; i--) {
+    var m = messages[i];
+    if (!m || m.role !== "user") continue;
+    var c = String(m.content || "").trim();
+    if (!c || c === currentText) continue;
+    if (knowledgeStore.detectExplicitSaveRequest(c)) continue;
+    return c;
+  }
+  return "";
+}
+
+/**
+ * LINE explicit save → knowledge-store append (real Markdown update).
+ */
+async function handleExplicitKnowledgeSave(userId, text) {
+  var intent = knowledgeStore.detectExplicitSaveRequest(text);
+  if (!intent) return null;
+
+  var content = String(intent.content || "").trim();
+  var title = String(intent.title || "").trim();
+  var memory = await memoryStore.getChatMemory(userId);
+
+  if (!content) {
+    content = pickContentFromMemory(memory, text);
+    if (content) {
+      var m = content.match(/^(.{2,40}?)(?:（[^）]*）)?(?=は|を|が|。|\n|$)/);
+      title = (m && m[0] ? m[0] : content.split(/[。\n]/)[0]).trim().slice(0, 40) || title;
+    }
+  }
+
+  if (!content) {
+    return {
+      text:
+        "保存する内容が見つかりませんでした。\n" +
+        "先に内容を送ってから、「イベント情報に保存しておいて」と送ってください。",
+      ok: false,
+      kind: "knowledge-save",
+      source: "ai-secretary"
+    };
+  }
+
+  var saved = await knowledgeStore.appendKnowledgeEntry(intent.file, title, content);
+  console.log(JSON.stringify({
+    at: new Date().toISOString(),
+    stage: "line-knowledge-save",
+    ok: !!saved.ok,
+    file: intent.file,
+    title: title,
+    error: saved.error || ""
+  }));
+
+  if (!saved.ok) {
+    return {
+      text: "保存に失敗しました。しばらくしてからもう一度お試しください。",
+      ok: false,
+      kind: "knowledge-save",
+      source: "ai-secretary"
+    };
+  }
+
+  return {
+    text: [
+      "保存しました。",
+      "カテゴリ：" + saved.file,
+      "タイトル：" + saved.title
+    ].join("\n"),
+    ok: true,
+    kind: "knowledge-save",
+    source: "ai-secretary",
+    savedFile: saved.file,
+    savedTitle: saved.title
+  };
+}
+
 async function buildContextSafe() {
   var projects = [];
   var priority = null;
@@ -55,7 +131,25 @@ async function buildContextSafe() {
 async function replyAsSecretary(userId, text) {
   var config = env.getLineConfig();
   if (!config.openaiApiKey) {
+    // Still allow knowledge save without OpenAI
+    var saveWithoutAi = await handleExplicitKnowledgeSave(userId, text);
+    if (saveWithoutAi) return saveWithoutAi;
     return { text: MSG_NO_KEY, ok: false, kind: "chat", source: "ai-secretary" };
+  }
+
+  // Explicit save must update Markdown for real — do not only "say" saved.
+  var saveResult = await handleExplicitKnowledgeSave(userId, text);
+  if (saveResult) {
+    try {
+      await memoryStore.appendChatMessages(userId, [
+        { role: "user", content: text },
+        { role: "assistant", content: saveResult.text }
+      ]);
+    } catch (e) { /* ignore */ }
+    try {
+      await projectStore.patchLineMeta({ lastAiReplyAt: new Date().toISOString() });
+    } catch (e2) { /* ignore */ }
+    return saveResult;
   }
 
   var companyContext = await buildContextSafe();
@@ -121,22 +215,23 @@ async function replyAsSecretary(userId, text) {
     reply = reply + candidate.hint;
   }
 
-  // Company Brain: queue durable-fact candidates for YAHA approval in the app UI
+  // Soft candidate only when NOT an explicit save command
   try {
-    var saveCand = knowledgeStore.detectKnowledgeSaveCandidate(text);
-    if (saveCand) {
-      var queued = await knowledgeStore.addCandidate(saveCand);
-      if (queued && reply.indexOf("保存候補") === -1) {
-        reply +=
-          "\n\n（Company Brain）この内容を会社の知識へ保存する候補に入れました。\n" +
-          "Smile AI Studio → その他 → 会社の脳 で確認できます。";
+    if (!knowledgeStore.detectExplicitSaveRequest(text)) {
+      var saveCand = knowledgeStore.detectKnowledgeSaveCandidate(text);
+      if (saveCand) {
+        var queued = await knowledgeStore.addCandidate(saveCand);
+        if (queued && reply.indexOf("保存候補") === -1) {
+          reply +=
+            "\n\n（Company Brain）この内容を会社の知識へ保存する候補に入れました。\n" +
+            "Smile AI Studio → その他 → 会社の脳 で確認できます。";
+        }
       }
     }
   } catch (candErr) {
     console.log("[ai-secretary] knowledge candidate queue failed");
   }
 
-  // Do not let memory persistence block LINE reply after a successful OpenAI answer.
   try {
     await memoryStore.appendChatMessages(userId, [
       { role: "user", content: text },
@@ -170,6 +265,7 @@ async function replyAsSecretary(userId, text) {
 module.exports = {
   replyAsSecretary: replyAsSecretary,
   detectCompanyOpCandidate: detectCompanyOpCandidate,
+  handleExplicitKnowledgeSave: handleExplicitKnowledgeSave,
   MSG_NO_KEY: MSG_NO_KEY,
   MSG_API_FAIL: MSG_API_FAIL,
   MSG_TIMEOUT: MSG_TIMEOUT,

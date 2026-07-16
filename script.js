@@ -20,8 +20,8 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.8.0",
-    build: 38,
+    version: "1.8.1",
+    build: 39,
     updatedAt: "2026-07-16"
   };
 

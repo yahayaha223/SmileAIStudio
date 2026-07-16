@@ -62,6 +62,16 @@ exports.handler = async function (event) {
       var postAction = String(body.action || action || "").trim();
 
       if (postAction === "save") {
+        // Full replace (Company Brain editor) or append entry (LINE / title+body)
+        if (body.title && (body.body != null || body.entry != null) && body.content == null) {
+          var appended = await knowledgeStore.appendKnowledgeEntry(
+            body.file,
+            body.title,
+            body.body != null ? body.body : body.entry
+          );
+          if (!appended.ok) return http.json(400, { ok: false, error: appended.error || "save_failed" });
+          return http.json(200, appended);
+        }
         var saved = await knowledgeStore.saveKnowledgeDocument(body.file, body.content);
         if (!saved.ok) return http.json(400, { ok: false, error: saved.error || "save_failed" });
         return http.json(200, saved);

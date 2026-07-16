@@ -135,6 +135,84 @@ async function saveKnowledgeDocument(fileName, content) {
 }
 
 /**
+ * Append a titled section to a knowledge markdown file.
+ */
+async function appendKnowledgeEntry(fileName, title, body) {
+  var file = safeFileName(fileName);
+  if (!file || loader.KNOWLEDGE_FILES.indexOf(file) === -1) {
+    return { ok: false, error: "invalid_file" };
+  }
+  var safeTitle = String(title || "追記").trim().slice(0, 120) || "追記";
+  var safeBody = String(body || "").trim().slice(0, 4000);
+  if (!safeBody) return { ok: false, error: "empty_content" };
+
+  var doc = await getKnowledgeDocument(file);
+  var base = doc ? String(doc.content || "") : "";
+  var append =
+    (base ? (/\n$/.test(base) ? "\n" : "\n\n") : "") +
+    "## " + safeTitle + "\n" +
+    safeBody + "\n" +
+    "（追記: " + nowIso().slice(0, 10) + "）\n";
+
+  var saved = await saveKnowledgeDocument(file, base + append);
+  if (!saved.ok) return saved;
+  return {
+    ok: true,
+    file: file,
+    title: safeTitle,
+    chars: saved.chars,
+    diskWriteOk: saved.diskWriteOk,
+    source: saved.source
+  };
+}
+
+/**
+ * Detect explicit LINE save request: 「〜に保存しておいて」
+ * Returns { file, title, content } or null.
+ */
+function detectExplicitSaveRequest(userText) {
+  var t = String(userText || "").trim();
+  if (!t) return null;
+  if (!/(保存して|保存しておいて|メモして|知識に入れて|knowledgeに)/i.test(t)) {
+    return null;
+  }
+
+  var file = "";
+  if (/イベント情報|イベント/.test(t)) file = "events.md";
+  else if (/会社情報|会社概要/.test(t)) file = "company.md";
+  else if (/人(の情報|名|員)?|people|スタッフ|担当/.test(t)) file = "people.md";
+  else if (/TODO|やること|todo/i.test(t)) file = "todo.md";
+  else if (/商品|製品|人形焼き|products/.test(t)) file = "products.md";
+  else if (/Vision|ミッション|ビジョン|mission/i.test(t)) file = "vision.md";
+  else if (/プロジェクト|projects/.test(t)) file = "projects.md";
+  else if (/FAQ|よくある質問/i.test(t)) file = "faq.md";
+  else if (/会議|ミーティング|meeting/i.test(t)) file = "meeting.md";
+  else file = "meeting.md";
+
+  var content = t
+    .replace(/(を)?(イベント情報|会社情報|人の情報|商品情報|プロジェクト情報|Vision|ビジョン|TODO|会議メモ|FAQ|知識|knowledge)?(へ|に)?(保存しておいて|保存して|メモして|入れて).*$/i, "")
+    .replace(/^(イベント情報|会社情報|人|商品|TODO|Vision|プロジェクト|FAQ|会議)(へ|に)\s*/i, "")
+    .trim();
+
+  // If only the save instruction remains, content is empty → caller uses chat memory
+  if (/^(保存しておいて|保存して|メモして)$/.test(content) || content.length < 2) {
+    content = "";
+  }
+
+  var title = content
+    ? (content.match(/^(.{2,40}?)(?:（[^）]*）)?(?=は|を|が|。|\n|$)/) || [])[0] || content.split(/[。\n]/)[0].trim().slice(0, 40)
+    : (FILE_META[file] ? FILE_META[file].label + "の追記" : "追記");
+  title = String(title || "").trim().slice(0, 40) || "追記";
+
+  return {
+    file: file,
+    title: title,
+    content: content,
+    sourceText: t
+  };
+}
+
+/**
  * Effective knowledge for AI prompts: disk + overlays (overlay wins).
  */
 async function loadEffectiveKnowledge(options) {
@@ -335,10 +413,12 @@ module.exports = {
   listKnowledgeDocuments: listKnowledgeDocuments,
   getKnowledgeDocument: getKnowledgeDocument,
   saveKnowledgeDocument: saveKnowledgeDocument,
+  appendKnowledgeEntry: appendKnowledgeEntry,
   loadEffectiveKnowledge: loadEffectiveKnowledge,
   searchKnowledgeDocuments: searchKnowledgeDocuments,
   listCandidates: listCandidates,
   addCandidate: addCandidate,
   resolveCandidate: resolveCandidate,
-  detectKnowledgeSaveCandidate: detectKnowledgeSaveCandidate
+  detectKnowledgeSaveCandidate: detectKnowledgeSaveCandidate,
+  detectExplicitSaveRequest: detectExplicitSaveRequest
 };
