@@ -7,6 +7,8 @@ var promptBuilder = require("./secretary-system-prompt");
 var projectStore = require("./project-store");
 var knowledgeLoader = require("./knowledge-loader");
 var knowledgeStore = require("./knowledge-store");
+var knowledgeLineCandidate = require("./knowledge-line-candidate");
+var conversationStore = require("./conversation-store");
 
 var MSG_NO_KEY =
   "AI会話機能はまだ設定されていません。\n『メニュー』または『ヘルプ』は利用できます。";
@@ -219,21 +221,34 @@ async function replyAsSecretary(userId, text) {
     reply = reply + candidate.hint;
   }
 
-  // Soft candidate only when NOT an explicit save command
+  // AI保存候補: 「保存して」なしでも提案（司令塔確認と同時には出さない）
+  var knowledgePromptAttached = false;
   try {
-    if (!knowledgeStore.detectExplicitSaveRequest(text)) {
+    if (!candidate && !knowledgeStore.detectExplicitSaveRequest(text)) {
       var saveCand = knowledgeStore.detectKnowledgeSaveCandidate(text);
       if (saveCand) {
-        var queued = await knowledgeStore.addCandidate(saveCand);
-        if (queued && reply.indexOf("保存候補") === -1) {
-          reply +=
-            "\n\n（Company Brain）この内容を会社の知識へ保存する候補に入れました。\n" +
-            "Smile AI Studio → その他 → 会社の脳 で確認できます。";
+        var started = await knowledgeLineCandidate.beginCandidatePrompt(userId, saveCand);
+        if (started && started.prompt && reply.indexOf("会社の知識として保存できます") === -1) {
+          // Keep room for prompt within LINE length budget
+          reply = String(reply).slice(0, 1400) + started.prompt;
+          knowledgePromptAttached = true;
         }
       }
     }
   } catch (candErr) {
-    console.log("[ai-secretary] knowledge candidate queue failed");
+    console.log("[ai-secretary] knowledge candidate prompt failed",
+      candErr && candErr.message ? candErr.message : candErr);
+  }
+
+  // If no knowledge candidate this turn, clear stale LINE candidate stage on free chat
+  if (!knowledgePromptAttached) {
+    try {
+      var conv = await conversationStore.getConversation(userId);
+      if (knowledgeLineCandidate.isKnowledgeCandidateStage(conv) &&
+          knowledgeLineCandidate.parseChoiceNumber(text) == null) {
+        await knowledgeLineCandidate.clearKnowledgeCandidate(userId);
+      }
+    } catch (e) { /* ignore */ }
   }
 
   try {
@@ -260,8 +275,10 @@ async function replyAsSecretary(userId, text) {
   return {
     text: reply,
     ok: true,
-    kind: candidate ? "confirm_candidate" : "chat",
-    pendingOp: candidate ? candidate.kind : "",
+    kind: knowledgePromptAttached
+      ? "knowledge-candidate"
+      : (candidate ? "confirm_candidate" : "chat"),
+    pendingOp: candidate ? candidate.kind : (knowledgePromptAttached ? "knowledge-save" : ""),
     source: "ai-secretary"
   };
 }

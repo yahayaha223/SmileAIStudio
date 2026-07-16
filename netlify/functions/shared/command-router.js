@@ -7,6 +7,7 @@ var meetingLogStore = require("./meeting-log-store");
 var messages = require("./message-builder");
 var memoryStore = require("./conversation-memory-store");
 var aiSecretary = require("./ai-secretary");
+var knowledgeLineCandidate = require("./knowledge-line-candidate");
 
 function normalizeCommand(text) {
   return String(text || "")
@@ -26,23 +27,36 @@ function mapCommand(normalized) {
   if (/^(ヘルプ|help|使い方)$/.test(normalized)) return { type: "help" };
   if (/^(会話リセット|リセット|reset)$/.test(normalized)) return { type: "chat-reset" };
   if (/^\d{1,2}$/.test(normalized)) return { type: "number", value: Number(normalized) };
+  // Circled numbers used by AI保存候補
+  if (/^[①②③④⑤⑥⑦⑧⑨⑩]$/.test(String(normalized))) {
+    var circledMap = { "①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5, "⑥": 6, "⑦": 7, "⑧": 8, "⑨": 9, "⑩": 10 };
+    return { type: "number", value: circledMap[normalized] };
+  }
   return { type: "freechat", raw: normalized };
 }
 
 /**
  * Classify with priority:
- * 1) number during active command stage
- * 2) explicit commands
- * 3) free chat
- * 4) future company-op candidate (handled inside AI path)
+ * 1) number during AI knowledge-candidate stage
+ * 2) number during active command stage
+ * 3) explicit commands
+ * 4) free chat
  */
 function classifyIncoming(text, conversation) {
   var cmd = mapCommand(normalizeCommand(text));
+  var knowledgeStage = knowledgeLineCandidate.isKnowledgeCandidateStage(conversation);
   var activeStage = conversation && !conversation.expired &&
     (conversation.stage === "awaiting-project" ||
       conversation.stage === "awaiting-action" ||
       conversation.stage === "awaiting-confirmation");
 
+  // Also treat "①保存する" style as knowledge choice before freechat
+  if (knowledgeStage && knowledgeLineCandidate.parseChoiceNumber(text) != null) {
+    return { route: "knowledge-candidate", cmd: cmd };
+  }
+  if (cmd.type === "number" && knowledgeStage) {
+    return { route: "knowledge-candidate", cmd: cmd };
+  }
   if (cmd.type === "number" && activeStage) {
     return { route: "command-number", cmd: cmd };
   }
@@ -239,15 +253,28 @@ async function routeIncomingText(userId, text) {
     return { text: "メッセージが空です。『ヘルプ』で使い方を確認できます。", ok: false };
   }
 
+  if (classified.route === "knowledge-candidate") {
+    var knowledgeReply = await knowledgeLineCandidate.handleKnowledgeCandidateReply(
+      userId,
+      text,
+      conversation
+    );
+    if (knowledgeReply) return knowledgeReply;
+  }
+
   if (classified.route === "command-number") {
     return handleCommandNumber(userId, cmd, conversation);
   }
 
   if (classified.route === "command") {
     if (cmd.type === "help") return { text: messages.buildHelpMessage(), ok: true, source: "command" };
-    if (cmd.type === "menu") return { text: await replyMenu(userId), ok: true, source: "command" };
+    if (cmd.type === "menu") {
+      await knowledgeLineCandidate.clearKnowledgeCandidate(userId);
+      return { text: await replyMenu(userId), ok: true, source: "command" };
+    }
     if (cmd.type === "cancel") {
       await conversationStore.clearConversation(userId);
+      await knowledgeLineCandidate.clearKnowledgeCandidate(userId);
       return { text: "現在の会話を取り消しました。『メニュー』で再開できます。", ok: true, source: "command" };
     }
     if (cmd.type === "today") {
@@ -277,6 +304,7 @@ async function routeIncomingText(userId, text) {
     }
     if (cmd.type === "chat-reset") {
       await memoryStore.clearChatMemory(userId);
+      await knowledgeLineCandidate.clearKnowledgeCandidate(userId);
       return {
         text: "自由会話の履歴をリセットしました。\nプロジェクトや会議ログなどの会社データは消していません。",
         ok: true,

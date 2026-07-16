@@ -467,15 +467,8 @@ async function resolveCandidate(id, action) {
   }
 
   if (action === "save") {
-    var doc = await getKnowledgeDocument(original.file);
-    var base = doc ? String(doc.content || "") : "";
-    var append =
-      (base && !/\n$/.test(base) ? "\n\n" : (base ? "\n" : "")) +
-      "## " + original.title + "\n" +
-      original.content + "\n" +
-      "（追記: " + nowIso().slice(0, 10) + "）\n";
-    var saved = await saveKnowledgeDocument(original.file, base + append);
-    if (!saved.ok) return { ok: false, error: "save_failed" };
+    var appended = await appendKnowledgeEntry(original.file, original.title, original.content);
+    if (!appended.ok) return { ok: false, error: "save_failed" };
   }
 
   var next = list.map(function (c) {
@@ -489,45 +482,107 @@ async function resolveCandidate(id, action) {
   return ok ? { ok: true, action: action, id: id } : { ok: false, error: "save_failed" };
 }
 
+async function updateCandidate(id, patch) {
+  var list = await listAllCandidates();
+  var found = false;
+  var next = list.map(function (c) {
+    if (!c || c.id !== id || c.status !== "pending") return c;
+    found = true;
+    var updated = Object.assign({}, c);
+    if (patch && patch.file) {
+      var file = safeFileName(patch.file);
+      if (file && loader.KNOWLEDGE_FILES.indexOf(file) !== -1) updated.file = file;
+    }
+    if (patch && patch.title) updated.title = String(patch.title).slice(0, 120);
+    if (patch && patch.content) updated.content = String(patch.content).slice(0, 4000);
+    return updated;
+  });
+  if (!found) return { ok: false, error: "not_found" };
+  var ok = await kv.kvSet(CANDIDATES_KEY, next);
+  return ok ? { ok: true, id: id } : { ok: false, error: "save_failed" };
+}
+
+async function markCandidateStatus(id, status) {
+  var list = await listAllCandidates();
+  var found = false;
+  var next = list.map(function (c) {
+    if (!c || c.id !== id || c.status !== "pending") return c;
+    found = true;
+    return Object.assign({}, c, {
+      status: status === "saved" ? "saved" : "rejected",
+      resolvedAt: nowIso()
+    });
+  });
+  if (!found) return { ok: false, error: "not_found" };
+  var ok = await kv.kvSet(CANDIDATES_KEY, next);
+  return ok ? { ok: true, id: id, status: status } : { ok: false, error: "save_failed" };
+}
+
+function makeCandidate(file, title, content) {
+  return {
+    file: file,
+    title: title,
+    content: content,
+    sourceText: content
+  };
+}
+
 /**
  * Heuristic: user statements that look like durable company facts.
+ * Used when YAHA did NOT explicitly say「保存して」.
  */
 function detectKnowledgeSaveCandidate(userText) {
   var t = String(userText || "").trim();
-  if (t.length < 8 || t.length > 400) return null;
+  if (t.length < 10 || t.length > 500) return null;
+  if (/[?？]$/.test(t) && !/(決定|確定|変更|追加|やる)/.test(t)) return null;
+  if (/^(おはよう|こんにちは|ありがとう|了解|はい|うん|テスト)/.test(t)) return null;
+
+  var title = (t.match(/^(.{2,40}?)(?:（[^）]*）)?(?=は|を|が|。|\n|$)/) || [])[0] ||
+    t.split(/[。\n]/)[0].trim().slice(0, 40);
+  title = String(title || "知識の追記").trim().slice(0, 40) || "知識の追記";
 
   if (/(販売|発売|リリース).*(1[0-2]|[1-9])\s*月|(1[0-2]|[1-9])\s*月.*(販売|発売)/.test(t) ||
-      /人形焼き/.test(t) && /(変更|決定|開始|延期)/.test(t)) {
-    return {
-      file: "products.md",
-      title: "商品情報の更新候補",
-      content: t,
-      sourceText: t
-    };
+      (/人形焼き|商品|製品/.test(t) && /(変更|決定|開始|延期|値上げ|価格)/.test(t))) {
+    return makeCandidate("products.md", title || "商品情報の更新候補", t);
   }
-  if (/(イベント|縁日|会場|開催).*(決定|変更|追加)/.test(t)) {
-    return {
-      file: "events.md",
-      title: "イベント情報の更新候補",
-      content: t,
-      sourceText: t
-    };
+  if (/(イベント|縁日|会場|開催|幼稚園|大道芸)/.test(t) &&
+      /(決定|変更|追加|やる|開催|予定|ココロ)/.test(t)) {
+    return makeCandidate("events.md", title || "イベント情報の更新候補", t);
   }
-  if (/(TODO|やること|宿題).*(追加|にする|やって)/.test(t) || /^TODO[:：]/.test(t)) {
-    return {
-      file: "todo.md",
-      title: "TODO候補",
-      content: t,
-      sourceText: t
-    };
+  if (/(TODO|やること|宿題).*(追加|にする|やって)|^(TODO|やること)[:：]/i.test(t)) {
+    return makeCandidate("todo.md", title || "TODO候補", t);
   }
-  if (/(Mission|Vision|ミッション|ビジョン).*(変更|更新)/.test(t)) {
-    return {
-      file: "vision.md",
-      title: "Vision更新候補",
-      content: t,
-      sourceText: t
-    };
+  if (/(Mission|Vision|ミッション|ビジョン).*(変更|更新|にする)/i.test(t)) {
+    return makeCandidate("vision.md", title || "Vision更新候補", t);
+  }
+  if (/(プロジェクト).*(保留|再開|最優先|延期|完了)|を保留/.test(t)) {
+    return makeCandidate("projects.md", title || "プロジェクト更新候補", t);
+  }
+  if (/(担当|スタッフ|社員|さん).*(が|は|に)|(人の情報|メンバー)/.test(t) &&
+      /(担当|入社|退職|役割|連絡)/.test(t)) {
+    return makeCandidate("people.md", title || "人の情報候補", t);
+  }
+  if (/(会社|えがおのきろく|法人).*(は|を|が).{2,}/.test(t) &&
+      /(設立|所在|代表|事業|方針)/.test(t)) {
+    return makeCandidate("company.md", title || "会社情報候補", t);
+  }
+  if (/(よくある質問|FAQ|お客様から|問い合わせ).*(回答|答える|対応)/i.test(t)) {
+    return makeCandidate("faq.md", title || "FAQ候補", t);
+  }
+  if (/(会議|打ち合わせ|ミーティング).*(決めた|決定|合意|メモ)/.test(t)) {
+    return makeCandidate("meeting.md", title || "会議メモ候補", t);
+  }
+  // Soft catch: durable-looking statements with decision verbs
+  if (/(決定|確定|正式に|これから|来月|来週).{4,}/.test(t) &&
+      /(イベント|商品|プロジェクト|TODO|担当|Vision|ミッション)/i.test(t)) {
+    var file = "meeting.md";
+    if (/イベント/.test(t)) file = "events.md";
+    else if (/商品|人形焼き/.test(t)) file = "products.md";
+    else if (/プロジェクト/.test(t)) file = "projects.md";
+    else if (/TODO|やること/i.test(t)) file = "todo.md";
+    else if (/担当|スタッフ/.test(t)) file = "people.md";
+    else if (/Vision|ミッション/i.test(t)) file = "vision.md";
+    return makeCandidate(file, title, t);
   }
   return null;
 }
@@ -543,6 +598,8 @@ module.exports = {
   listCandidates: listCandidates,
   addCandidate: addCandidate,
   resolveCandidate: resolveCandidate,
+  updateCandidate: updateCandidate,
+  markCandidateStatus: markCandidateStatus,
   detectKnowledgeSaveCandidate: detectKnowledgeSaveCandidate,
   detectExplicitSaveRequest: detectExplicitSaveRequest,
   describeStorage: function () {

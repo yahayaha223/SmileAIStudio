@@ -20,8 +20,8 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "1.8.4",
-    build: 42,
+    version: "1.9.0",
+    build: 43,
     updatedAt: "2026-07-16"
   };
 
@@ -48,7 +48,8 @@
       "LINE自然会話AI秘書",
       "司令塔コマンド＋自由会話",
       "会社knowledge読込（LINE回答）",
-      "Company Brain 管理画面"
+      "Company Brain 管理画面",
+      "AI保存候補（LINE ①②③）"
     ],
     upcoming: [
       { label: "knowledge保存確認フロー高度化", status: "準備中" },

@@ -9,6 +9,7 @@ var DATA_FILE = path.join(DATA_DIR, "line-store.json");
 var BLOB_STORE_CACHE = undefined; // undefined=uninitialized, null=unavailable, object=store
 var LAST_BLOB_ERROR = "";
 var BLOBS_CONNECTED = false;
+var BLOB_INIT_FAILED = false;
 
 function isNetlifyRuntime() {
   return !!(
@@ -58,6 +59,7 @@ function loadBlobsModule() {
  */
 function connectFromLambdaEvent(event) {
   BLOB_STORE_CACHE = undefined;
+  BLOB_INIT_FAILED = false;
   LAST_BLOB_ERROR = "";
   BLOBS_CONNECTED = false;
   var blobs = loadBlobsModule();
@@ -85,6 +87,7 @@ function connectFromLambdaEvent(event) {
 
 function getBlobStore() {
   if (BLOB_STORE_CACHE !== undefined) return BLOB_STORE_CACHE;
+  if (BLOB_INIT_FAILED) return null;
   var blobs = loadBlobsModule();
   if (!blobs || typeof blobs.getStore !== "function") {
     BLOB_STORE_CACHE = null;
@@ -98,6 +101,7 @@ function getBlobStore() {
     return BLOB_STORE_CACHE;
   } catch (e) {
     LAST_BLOB_ERROR = e && e.message ? e.message : "getStore_failed";
+    BLOB_INIT_FAILED = true;
     console.log(JSON.stringify({
       at: new Date().toISOString(),
       stage: "kv-blobs-init",
@@ -105,7 +109,6 @@ function getBlobStore() {
       message: LAST_BLOB_ERROR,
       connected: BLOBS_CONNECTED
     }));
-    BLOB_STORE_CACHE = undefined;
     return null;
   }
 }
