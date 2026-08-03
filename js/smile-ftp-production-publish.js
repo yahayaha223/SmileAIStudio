@@ -10,6 +10,20 @@
   var DryRun = root.SmileFtpDryRun || null;
   var PublishPackage = root.SmileDiaryPublishPackage || null;
   var FtpProbe = root.SmileFtpProbe || null;
+  var LOCAL_ONLY_MSG_PROD = (root.SmileFtpProbe && root.SmileFtpProbe.LOCAL_ONLY_MSG) ||
+    "FTP公開機能はローカル版でのみ利用できます";
+
+  function isLocalFtpRuntimeForProd() {
+    if (root.SmileFtpProbe && typeof root.SmileFtpProbe.isLocalFtpRuntime === "function") {
+      return !!root.SmileFtpProbe.isLocalFtpRuntime();
+    }
+    try {
+      var h = String((root.location && root.location.hostname) || "").toLowerCase();
+      return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+    } catch (e) {
+      return false;
+    }
+  }
 
   function mask(obj) {
     if (!obj || typeof obj !== "object") return obj;
@@ -772,6 +786,9 @@
   }
 
   function fetchRealPublishArmStatus() {
+    if (!isLocalFtpRuntimeForProd()) {
+      return Promise.resolve({ armed: false, localOnly: true });
+    }
     return fetch("/api/real-publish-arm-status", { cache: "no-store" })
       .then(function (res) { return res.json().catch(function () { return null; }); })
       .then(function (body) {
@@ -786,6 +803,15 @@
    */
   function requestServerRealPublishArm(options) {
     options = options || {};
+    if (!isLocalFtpRuntimeForProd()) {
+      return Promise.resolve({
+        ok: false,
+        armed: false,
+        localOnly: true,
+        blockers: [LOCAL_ONLY_MSG_PROD],
+        userMessage: LOCAL_ONLY_MSG_PROD
+      });
+    }
     var ctx = options.context || {};
     var unlock = getActiveSessionUnlock(ctx);
     if (!unlock) {
@@ -861,6 +887,17 @@
 
   function runProductionPublish(options) {
     options = options || {};
+    if (!isLocalFtpRuntimeForProd()) {
+      return Promise.resolve({
+        ok: false,
+        result: "FAILED",
+        localOnly: true,
+        userMessage: LOCAL_ONLY_MSG_PROD,
+        writeCommandCount: 0,
+        commands: [],
+        storFiles: []
+      });
+    }
     var elg = options.eligibility || lastEligibility || evaluateEligibility(options);
     if (!elg.ok) {
       return Promise.resolve({
@@ -1050,6 +1087,8 @@
   }
 
   root.SmileFtpProductionPublish = {
+    LOCAL_ONLY_MSG: LOCAL_ONLY_MSG_PROD,
+    isLocalFtpRuntime: isLocalFtpRuntimeForProd,
     evaluateEligibility: evaluateEligibility,
     evaluateRollbackReadiness: evaluateRollbackReadiness,
     evaluateRealPublishUnlockEligibility: evaluateRealPublishUnlockEligibility,

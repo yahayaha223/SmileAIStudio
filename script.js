@@ -9179,6 +9179,87 @@
     el.textContent = msg;
   }
 
+  var FTP_LOCAL_ONLY_MSG = "FTP公開機能はローカル版でのみ利用できます";
+
+  function isLocalFtpRuntime() {
+    if (FtpProbe && typeof FtpProbe.isLocalFtpRuntime === "function") {
+      return !!FtpProbe.isLocalFtpRuntime();
+    }
+    try {
+      var h = String((window.location && window.location.hostname) || "").toLowerCase();
+      return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setFtpActionButtonEnabled(id, enabled) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.setAttribute("aria-disabled", enabled ? "false" : "true");
+    if (enabled) btn.classList.remove("is-disabled");
+    else btn.classList.add("is-disabled");
+  }
+
+  /** Netlify等ではFTP系操作ボタンを無効化。HTML/パッケージ/ローカル反映は対象外 */
+  function applyFtpLocalOnlyUiGate() {
+    var local = isLocalFtpRuntime();
+    var ftpDisableWhenRemoteIds = [
+      "btn-web-ftp-save-config",
+      "btn-web-ftp-open-confirm",
+      "btn-web-ftp-open-dry-run",
+      "btn-web-ftp-run-probe",
+      "btn-web-ftp-dryrun-run",
+      "btn-web-ftp-prod-publish-open",
+      "btn-web-ftp-publish-execute",
+      "btn-web-pipeline-ftp",
+      "btn-web-pipeline-dryrun",
+      "btn-web-pipeline-prod-confirm",
+      "btn-web-real-publish-unlock",
+      "btn-web-ftp-root-confirm-save"
+    ];
+    // ローカル復帰時に無条件有効化してよい導線のみ（本番公開系は既存条件ロジックに委譲）
+    var ftpEnableWhenLocalIds = [
+      "btn-web-ftp-save-config",
+      "btn-web-ftp-open-confirm",
+      "btn-web-ftp-open-dry-run",
+      "btn-web-ftp-run-probe",
+      "btn-web-ftp-dryrun-run",
+      "btn-web-pipeline-ftp",
+      "btn-web-pipeline-dryrun"
+    ];
+    if (!local) {
+      ftpDisableWhenRemoteIds.forEach(function (id) {
+        setFtpActionButtonEnabled(id, false);
+      });
+    } else {
+      ftpEnableWhenLocalIds.forEach(function (id) {
+        setFtpActionButtonEnabled(id, true);
+      });
+    }
+    var fields = ["ftp-host", "ftp-port", "ftp-user", "ftp-pass", "ftp-root", "ftp-tls"];
+    fields.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = !local;
+    });
+    var hint = document.getElementById("ftp-config-hint");
+    if (hint) {
+      hint.textContent = local
+        ? "パスワードは画面・ログに表示しません。空欄保存で既存パスワードを維持します。"
+        : FTP_LOCAL_ONLY_MSG;
+    }
+    return local;
+  }
+
+  function guardLocalFtpOrExplain(showErrorFn) {
+    if (isLocalFtpRuntime()) return true;
+    if (typeof showErrorFn === "function") showErrorFn(FTP_LOCAL_ONLY_MSG);
+    else showWebFtpError(FTP_LOCAL_ONLY_MSG);
+    applyFtpLocalOnlyUiGate();
+    return false;
+  }
+
   function fillFtpConfigForm(cfg) {
     currentFtpConfig = cfg || null;
     var c = cfg || {};
@@ -9189,24 +9270,31 @@
     var root = document.getElementById("ftp-root");
     var tls = document.getElementById("ftp-tls");
     if (host) host.value = c.host || "";
-    if (port) port.value = String(c.port || 21);
+    if (port) port.value = cfg ? String(c.port || 21) : "21";
     if (user) user.value = c.username || "";
     if (pass) {
       pass.value = "";
       pass.placeholder = c.hasPassword ? "********（変更時のみ入力）" : "********";
     }
-    if (root) root.value = c.remoteRoot || "/";
-    if (tls) tls.checked = c.useTls !== false;
+    if (root) root.value = cfg ? (c.remoteRoot || "/") : "";
+    if (tls) tls.checked = cfg ? (c.useTls !== false) : true;
   }
 
   function openPublishMgmtView() {
     showWebFtpError("");
     showWebCenterView("publishMgmt");
+    var local = applyFtpLocalOnlyUiGate();
     if (!FtpProbe) {
       showWebFtpError("FTPモジュールがありません");
       return;
     }
+    if (!local) {
+      showWebFtpError(FTP_LOCAL_ONLY_MSG);
+      fillFtpConfigForm(null);
+      return;
+    }
     FtpProbe.loadConfig().then(function (body) {
+      applyFtpLocalOnlyUiGate();
       if (!body || !body.ok) {
         showWebFtpError((body && body.userMessage) || "FTP設定を読めませんでした");
         fillFtpConfigForm(null);
@@ -9214,12 +9302,14 @@
       }
       fillFtpConfigForm(body.config);
     }).catch(function () {
+      applyFtpLocalOnlyUiGate();
       showWebFtpError("FTP設定APIに接続できません");
     });
   }
 
   function saveFtpConfigFromForm() {
     showWebFtpError("");
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProbe) {
       showWebFtpError("FTPモジュールがありません");
       return;
@@ -9257,6 +9347,7 @@
 
   function openFtpConfirmView() {
     showWebFtpError("");
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProbe) {
       showWebFtpError("FTPモジュールがありません");
       return;
@@ -9347,6 +9438,7 @@
   }
 
   function runFtpProbeFromUi() {
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProbe) return;
     var btn = document.getElementById("btn-web-ftp-run-probe");
     if (btn) btn.disabled = true;
@@ -9366,7 +9458,8 @@
       });
       showWebCenterView("ftpResult");
     }).then(function () {
-      if (btn) btn.disabled = false;
+      applyFtpLocalOnlyUiGate();
+      if (btn && isLocalFtpRuntime()) btn.disabled = false;
     });
   }
 
@@ -9682,12 +9775,15 @@
       : null;
     var publishId = bundle && bundle.manifest ? bundle.manifest.publishId : "";
     var manifest = bundle && bundle.manifest ? bundle.manifest : null;
-    var loadCfg = FtpProbe && FtpProbe.loadConfig
+    var local = isLocalFtpRuntime();
+    var loadCfg = local && FtpProbe && FtpProbe.loadConfig
       ? FtpProbe.loadConfig()
-      : Promise.resolve({ ok: false });
-    var loadDry = FtpDryRun && FtpDryRun.hydrateFromServer
+      : Promise.resolve({ ok: false, localOnly: !local });
+    var loadDry = local && FtpDryRun && FtpDryRun.hydrateFromServer
       ? FtpDryRun.hydrateFromServer({ publishId: publishId })
-      : Promise.resolve(FtpDryRun && FtpDryRun.getLastResult ? FtpDryRun.getLastResult() : null);
+      : Promise.resolve(local
+        ? (FtpDryRun && FtpDryRun.getLastResult ? FtpDryRun.getLastResult() : null)
+        : null);
     var loadArtifacts = verifyPublishArtifactsFromManifest(manifest);
     return Promise.all([loadCfg, loadDry, loadArtifacts]).then(function (pair) {
       var body = pair[0];
@@ -9699,11 +9795,13 @@
         collectWebPublishPipelineState(currentFtpConfig, currentFtpDryRunResult, artifacts)
       );
       refreshRealPublishUnlockUi();
+      applyFtpLocalOnlyUiGate();
     }).catch(function () {
       renderWebPublishPipelineCards(
         collectWebPublishPipelineState(currentFtpConfig, currentFtpDryRunResult, null)
       );
       refreshRealPublishUnlockUi();
+      applyFtpLocalOnlyUiGate();
     });
   }
 
@@ -9718,7 +9816,14 @@
   function updateFtpRootConfirmSaveEnabled() {
     var btn = document.getElementById("btn-web-ftp-root-confirm-save");
     var cb = document.getElementById("ftp-root-confirm-public-html");
-    if (btn) btn.disabled = !(cb && cb.checked);
+    if (!btn) return;
+    if (!isLocalFtpRuntime()) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      return;
+    }
+    btn.disabled = !(cb && cb.checked);
+    btn.setAttribute("aria-disabled", btn.disabled ? "true" : "false");
   }
 
   function openFtpPublishRootConfirmView(ftpConfig, probeResult) {
@@ -9746,6 +9851,7 @@
 
   function saveFtpPublishRootConfirmationFromUi() {
     showWebFtpRootConfirmError("");
+    if (!guardLocalFtpOrExplain(showWebFtpRootConfirmError)) return;
     if (!FtpDryRun || !FtpDryRun.savePublishRootConfirmation) {
       showWebFtpRootConfirmError("公開ルート確認モジュールがありません");
       return;
@@ -9778,6 +9884,7 @@
   function openFtpDryRunConfirmView() {
     showWebFtpDryRunError("");
     showWebFtpError("");
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpDryRun || !DiaryPublishPackage) {
       showWebFtpError("予行演習モジュールがありません");
       showToast("予行演習モジュールがありません");
@@ -9892,12 +9999,19 @@
         })
         : { ok: false, blockers: ["モジュールなし"] };
       currentFtpPublishEligibility = elg;
-      pubBtn.disabled = !(ready && elg.ok) || ftpPublishInFlight;
-      pubBtn.title = pubBtn.disabled
-        ? ((elg.blockers && elg.blockers[0]) || "公開条件未充足")
-        : "最終確認へ進む（まだアップロードしません）";
+      pubBtn.disabled = !isLocalFtpRuntime() || !(ready && elg.ok) || ftpPublishInFlight;
+      pubBtn.title = !isLocalFtpRuntime()
+        ? FTP_LOCAL_ONLY_MSG
+        : (pubBtn.disabled
+          ? ((elg.blockers && elg.blockers[0]) || "公開条件未充足")
+          : "最終確認へ進む（まだアップロードしません）");
       pubBtn.textContent = "本番公開内容を確認する";
+      if (!isLocalFtpRuntime()) {
+        pubBtn.setAttribute("aria-disabled", "true");
+        pubBtn.classList.add("is-disabled");
+      }
     }
+    applyFtpLocalOnlyUiGate();
     if (errEl) {
       if (ready) {
         errEl.hidden = true;
@@ -9967,6 +10081,7 @@
   }
 
   function runFtpDryRunFromUi() {
+    if (!guardLocalFtpOrExplain(showWebFtpDryRunError)) return;
     if (!FtpDryRun) return;
     var btn = document.getElementById("btn-web-ftp-dryrun-run");
     if (btn) btn.disabled = true;
@@ -10003,7 +10118,8 @@
       });
       showWebCenterView("ftpDryRunResult");
     }).then(function () {
-      if (btn) btn.disabled = false;
+      applyFtpLocalOnlyUiGate();
+      if (btn && isLocalFtpRuntime()) btn.disabled = false;
     });
   }
 
@@ -10154,6 +10270,12 @@
   function updateRealPublishUnlockButtonEnabled(pre) {
     var btn = document.getElementById("btn-web-real-publish-unlock");
     if (!btn) return;
+    if (!isLocalFtpRuntime()) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+      btn.classList.add("is-disabled");
+      return;
+    }
     if (!pre && FtpProdPublish && FtpProdPublish.evaluateRealPublishUnlockEligibility) {
       var status = "package-ready";
       var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
@@ -10201,6 +10323,7 @@
   }
 
   function runRealPublishUnlockFromUi() {
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProdPublish || !FtpProdPublish.unlockRealPublishMode) {
       showToast("解除モジュールがありません");
       return;
@@ -10269,6 +10392,19 @@
   function updateFtpPublishExecuteEnabled() {
     var btn = document.getElementById("btn-web-ftp-publish-execute");
     if (!btn) return Promise.resolve(false);
+
+    function applyEnabled(ok) {
+      btn.disabled = !ok;
+      btn.setAttribute("aria-disabled", ok ? "false" : "true");
+      if (ok) btn.classList.remove("is-disabled");
+      else btn.classList.add("is-disabled");
+      return ok;
+    }
+
+    if (!isLocalFtpRuntime()) {
+      return Promise.resolve(applyEnabled(false));
+    }
+
     var c1 = document.getElementById("ftp-pub-check-homepage");
     var c2 = document.getElementById("ftp-pub-check-content");
     var c3 = document.getElementById("ftp-pub-check-rollback");
@@ -10285,14 +10421,6 @@
       : null;
     var unlockOk = !!unlockRec;
     var baseOk = !!(checksOk && phraseOk && rollbackOk && readyOk && unlockOk && !ftpPublishInFlight);
-
-    function applyEnabled(ok) {
-      btn.disabled = !ok;
-      btn.setAttribute("aria-disabled", ok ? "false" : "true");
-      if (ok) btn.classList.remove("is-disabled");
-      else btn.classList.add("is-disabled");
-      return ok;
-    }
 
     if (!baseOk || !FtpProdPublish || !FtpProdPublish.resolveRealPublishApiGate) {
       return Promise.resolve(applyEnabled(false));
@@ -10319,6 +10447,7 @@
   }
 
   function openFtpProductionPublishConfirm() {
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProdPublish) {
       showToast("本番公開モジュールがありません");
       return;
@@ -10574,6 +10703,7 @@
   }
 
   function executeFtpProductionPublish() {
+    if (!guardLocalFtpOrExplain()) return;
     if (!FtpProdPublish || ftpPublishInFlight) return;
     var execBtn = document.getElementById("btn-web-ftp-publish-execute");
     var phrase = document.getElementById("ftp-pub-phrase");
@@ -14370,7 +14500,7 @@
     else showWebCenterView("publishPackage");
   });
   onClick("btn-web-pipeline-ftp", function () {
-    showWebCenterView("publishMgmt");
+    openPublishMgmtView();
   });
   onClick("btn-web-pipeline-dryrun", openFtpDryRunConfirmView);
   onClick("btn-web-pipeline-refresh", function () {

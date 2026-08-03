@@ -8,6 +8,35 @@
   var Charset = root.SmileCharset || null;
   var IndexInsert = root.SmileDiaryIndexInsert || null;
   var PublishPackage = root.SmileDiaryPublishPackage || null;
+  var LOCAL_ONLY_MSG = (root.SmileFtpProbe && root.SmileFtpProbe.LOCAL_ONLY_MSG) ||
+    "FTP公開機能はローカル版でのみ利用できます";
+
+  function isLocalFtpRuntime() {
+    if (root.SmileFtpProbe && typeof root.SmileFtpProbe.isLocalFtpRuntime === "function") {
+      return !!root.SmileFtpProbe.isLocalFtpRuntime();
+    }
+    try {
+      var h = String((root.location && root.location.hostname) || "").toLowerCase();
+      return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function localOnlyDryRunResult(extra) {
+    var body = {
+      ok: false,
+      verdict: "BLOCKED",
+      localOnly: true,
+      userMessage: LOCAL_ONLY_MSG,
+      writeCommands: [],
+      xserverUpdates: 0
+    };
+    if (extra && typeof extra === "object") {
+      Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+    }
+    return body;
+  }
 
   function maskSecrets(obj) {
     if (!obj || typeof obj !== "object") return obj;
@@ -530,6 +559,9 @@
 
   function runDryRun(options) {
     options = options || {};
+    if (!isLocalFtpRuntime()) {
+      return Promise.resolve(persistLastResult(localOnlyDryRunResult()));
+    }
     var bundle = options.bundle ||
       (PublishPackage && PublishPackage.loadLastPublishManifest &&
         PublishPackage.loadLastPublishManifest());
@@ -891,6 +923,11 @@
 
   function hydrateFromServer(options) {
     options = options || {};
+    if (!isLocalFtpRuntime()) {
+      return Promise.resolve(persistLastResult(localOnlyDryRunResult({
+        publishId: normalizePublishId(options.publishId) || ""
+      })));
+    }
     var wantId = normalizePublishId(options.publishId);
     if (!wantId && PublishPackage && PublishPackage.loadLastPublishManifest) {
       try {
@@ -1115,6 +1152,8 @@
   }
 
   root.SmileFtpDryRun = {
+    LOCAL_ONLY_MSG: LOCAL_ONLY_MSG,
+    isLocalFtpRuntime: isLocalFtpRuntime,
     validateManifestBundle: validateManifestBundle,
     validateManifestRemotePaths: validateManifestRemotePaths,
     normalizeRemoteRoot: normalizeRemoteRoot,

@@ -1,6 +1,7 @@
 /**
  * Smile AI Studio — FTP接続確認（読み取り専用）フロント
  * パスワードを Console / manifest / ZIP に出さない。
+ * Netlify 等の公開ホストではローカル専用APIを呼ばず、案内のみ返す。
  */
 (function (root) {
   "use strict";
@@ -8,9 +9,35 @@
   var lastResult = null;
   var lastConfigLoadOk = false;
   var lastProbeOk = false;
+  var LOCAL_ONLY_MSG = "FTP公開機能はローカル版でのみ利用できます";
 
   function apiBase() {
     return "";
+  }
+
+  /** localhost / 127.0.0.1 / ::1 のみローカル静的サーバAPIを利用する */
+  function isLocalFtpRuntime() {
+    try {
+      var h = String((root.location && root.location.hostname) || "").toLowerCase();
+      return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function localOnlyBody(extra) {
+    var body = {
+      ok: false,
+      localOnly: true,
+      userMessage: LOCAL_ONLY_MSG,
+      writeExecuted: false,
+      deleteExecuted: false,
+      uploadExecuted: false
+    };
+    if (extra && typeof extra === "object") {
+      Object.keys(extra).forEach(function (k) { body[k] = extra[k]; });
+    }
+    return body;
   }
 
   function maskSecretsInObject(obj) {
@@ -40,6 +67,10 @@
   }
 
   function loadConfig() {
+    if (!isLocalFtpRuntime()) {
+      lastConfigLoadOk = false;
+      return Promise.resolve(localOnlyBody());
+    }
     return safeFetchJson(apiBase() + "/api/ftp-config", { method: "GET" }).then(function (r) {
       lastConfigLoadOk = !!(r.body && r.body.ok && r.body.config);
       return r.body;
@@ -50,6 +81,10 @@
   }
 
   function saveConfig(fields) {
+    if (!isLocalFtpRuntime()) {
+      lastConfigLoadOk = false;
+      return Promise.resolve(localOnlyBody());
+    }
     var payload = {
       host: String(fields.host || "").trim(),
       port: Number(fields.port) || 21,
@@ -71,6 +106,11 @@
   }
 
   function runProbe() {
+    if (!isLocalFtpRuntime()) {
+      lastResult = localOnlyBody({ category: "ローカル専用" });
+      lastProbeOk = false;
+      return Promise.resolve(lastResult);
+    }
     return safeFetchJson(apiBase() + "/api/ftp-probe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -115,11 +155,14 @@
       mdtmOk: r.ok === true && !!r.diaryIndexMdtm,
       noWrite: r.writeExecuted !== true && !forbiddenHit,
       noDelete: r.deleteExecuted !== true && !forbiddenHit,
-      noConsoleSecret: true
+      noConsoleSecret: true,
+      localOnly: !isLocalFtpRuntime()
     };
   }
 
   root.SmileFtpProbe = {
+    LOCAL_ONLY_MSG: LOCAL_ONLY_MSG,
+    isLocalFtpRuntime: isLocalFtpRuntime,
     loadConfig: loadConfig,
     saveConfig: saveConfig,
     runProbe: runProbe,
