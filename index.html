@@ -677,6 +677,7 @@
           <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-drafts">下書き</button>
           <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-published">公開済み</button>
           <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-media-vault">📁 画像一時保管庫</button>
+          <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-web-publish-mgmt">公開管理</button>
         </div>
         <p class="brain-section-title">最近の記事</p>
         <div class="card-list" id="web-recent-list"></div>
@@ -760,12 +761,95 @@
         </div>
 
         <div class="modal__actions modal__actions--stack web-diary-form-actions" id="web-diary-form-actions">
+          <p class="brain-section-title web-pipeline-stage-label">① 記事作成</p>
           <button type="button" class="btn btn--primary btn--touch web-diary-action-btn" id="btn-web-save-draft-bottom">下書き保存</button>
           <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-preview">プレビュー</button>
+          <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-build-html">ホームページHTMLを書き出す</button>
           <button type="button" class="btn btn--secondary btn--touch web-diary-action-btn" id="btn-web-build-instruction">ホームページ更新指示書</button>
-          <button type="button" class="btn btn--outline btn--touch web-diary-action-btn" id="btn-web-save-published">公開済みにする</button>
+          <button type="button" class="btn btn--outline btn--touch web-diary-action-btn" id="btn-web-save-published" title="FTP本番公開ではありません。管理上のステータスのみ変更します。">
+            管理上の公開済みにする
+          </button>
+          <p class="form-hint">「管理上の公開済み」は記事ステータスのみです。ホームページへのFTP公開ではありません。</p>
           <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-menu">閉じる</button>
         </div>
+
+        <!-- ② ホームページ公開準備 -->
+        <section class="web-pipeline-card" id="web-publish-prep-card" aria-labelledby="web-publish-prep-title">
+          <h4 class="prompt-result__title" id="web-publish-prep-title">② ホームページ公開準備</h4>
+          <p class="form-hint">公開パッケージ・FTP確認・予行演習までの進捗です。サーバー側の判定を表示します。</p>
+          <div id="web-publish-prep-summary" class="web-pipeline-summary"></div>
+          <ol class="web-pipeline-steps" id="web-publish-prep-steps"></ol>
+          <div id="web-publish-ready-banner" class="web-pipeline-ready" hidden></div>
+          <div id="web-publish-blocked-banner" class="web-pipeline-blocked" hidden></div>
+          <div class="modal__actions modal__actions--stack" id="web-publish-prep-actions">
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-web-pipeline-instruction">ホームページ更新指示書</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-web-pipeline-html">HTML・画像を書き出す</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-web-pipeline-package">公開パッケージを作成</button>
+            <button type="button" class="btn btn--secondary btn--touch" id="btn-web-pipeline-ftp">FTP接続確認</button>
+            <button type="button" class="btn btn--primary btn--touch" id="btn-web-pipeline-dryrun">本番バックアップ・公開予行演習</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-web-pipeline-refresh">状態を再読み込み</button>
+          </div>
+        </section>
+
+        <!-- ③ 本番公開（READY時のみ表示） -->
+        <section class="web-pipeline-card web-pipeline-card--prod" id="web-publish-prod-card" hidden aria-labelledby="web-publish-prod-title">
+          <h4 class="prompt-result__title" id="web-publish-prod-title">③ 本番ホームページへ公開</h4>
+          <div id="web-real-publish-active-banner" class="web-real-publish-banner" hidden role="status">
+            <p class="web-real-publish-banner__title">実公開モード有効中</p>
+            <p>このセッションでは会社ホームページを実際に更新できます。</p>
+            <p id="web-real-publish-active-expiry">有効期限：—</p>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-web-real-publish-lock">
+              実公開モードを解除する
+            </button>
+          </div>
+          <p class="web-index-check-warn web-pipeline-warn">
+            <strong>この操作を実行すると、株式会社えがおのきろくのホームページが実際に更新されます。</strong>
+          </p>
+          <p class="form-hint web-pipeline-safe-note" id="web-publish-safe-mode-note">
+            現在は本番公開UI確認モードです。Xserverは更新されません。
+          </p>
+          <div id="web-publish-prod-summary" class="web-pipeline-summary"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-web-pipeline-prod-confirm">
+              本番公開内容を確認する
+            </button>
+          </div>
+
+          <!-- 管理者向け：実公開モード解除（通常は折りたたみ） -->
+          <details class="web-real-publish-unlock" id="web-real-publish-unlock-card">
+            <summary class="web-real-publish-unlock__summary">管理者向け：実公開モードを有効にする</summary>
+            <div class="web-real-publish-unlock__body">
+              <p class="web-index-check-warn">
+                <strong>この操作を有効にすると、次の最終確認後に会社ホームページを実際に更新できるようになります。</strong>
+              </p>
+              <div id="web-real-publish-unlock-summary" class="web-pipeline-summary"></div>
+              <p class="form-error" id="web-real-publish-unlock-error" role="alert" hidden></p>
+              <div class="form-grid web-ftp-publish-checks" style="margin-top:1rem">
+                <label class="checkbox-row" for="real-pub-unlock-check-write">
+                  <input type="checkbox" id="real-pub-unlock-check-write">
+                  本番ホームページへ実際に書き込める状態になることを確認しました
+                </label>
+                <label class="checkbox-row" for="real-pub-unlock-check-diary">
+                  <input type="checkbox" id="real-pub-unlock-check-diary">
+                  公開対象が diary/index.htm と diary/image 配下だけであることを確認しました
+                </label>
+                <label class="checkbox-row" for="real-pub-unlock-check-rollback">
+                  <input type="checkbox" id="real-pub-unlock-check-rollback">
+                  問題発生時に自動ロールバックされることを確認しました
+                </label>
+                <label for="real-pub-unlock-phrase">確認入力（「本番公開を有効にする」と正確に入力）</label>
+                <input type="text" id="real-pub-unlock-phrase" class="brain-search" autocomplete="off" spellcheck="false"
+                  placeholder="本番公開を有効にする">
+              </div>
+              <div class="modal__actions modal__actions--stack" style="margin-top:0.75rem">
+                <button type="button" class="btn btn--primary btn--touch is-disabled" id="btn-web-real-publish-unlock" disabled aria-disabled="true">
+                  このセッションだけ実公開モードを有効にする
+                </button>
+              </div>
+              <p class="form-hint">解除状態は sessionStorage のみ（再読込・タブ閉鎖・30分で無効）。FTPパスワードは保存しません。</p>
+            </div>
+          </details>
+        </section>
       </form>
 
       <!-- プレビュー（ホームページ風） -->
@@ -813,6 +897,307 @@
           <button type="button" class="btn btn--primary btn--block" id="btn-web-copy-instruction">コピーする</button>
           <button type="button" class="btn btn--secondary btn--block" id="btn-web-back-from-instruction">編集に戻る</button>
           <button type="button" class="btn btn--ghost btn--block" id="btn-web-instruction-to-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- HTML書き出し（記事 + news一覧） -->
+      <div class="modal__body" id="web-center-html-export-view" hidden>
+        <h4 class="prompt-result__title">ホームページHTML書き出し</h4>
+        <p class="form-hint">FTPアップロードは行いません。記事HTML・news一覧・画像ファイルをプレビュー・コピー・ダウンロードできます。</p>
+        <p class="form-error" id="web-html-export-error" role="alert" hidden></p>
+        <div class="web-html-export-meta" id="web-html-export-meta"></div>
+        <div class="web-image-export-panel" id="web-image-export-panel" aria-live="polite">
+          <p class="brain-section-title">画像書き出し予定</p>
+          <div id="web-image-export-summary" class="web-image-export-summary">
+            <p class="form-hint">読み込み中…</p>
+          </div>
+          <div class="card-list" id="web-image-export-list"></div>
+          <p class="form-hint" id="web-image-export-conflict" hidden></p>
+          <p class="form-error" id="web-image-export-status" role="status" hidden></p>
+        </div>
+
+        <p class="brain-section-title">HTMLプレビュー</p>
+        <div class="web-html-preview-frame-wrap">
+          <iframe
+            id="web-html-preview-frame"
+            class="web-html-preview-frame"
+            title="ホームページHTMLプレビュー"
+          ></iframe>
+        </div>
+
+        <div class="web-html-export-tabs" role="tablist" aria-label="書き出し内容切替">
+          <button type="button" class="btn btn--secondary btn--touch web-html-tab is-active" id="btn-web-html-tab-article" data-html-tab="article">記事HTML</button>
+          <button type="button" class="btn btn--secondary btn--touch web-html-tab" id="btn-web-html-tab-news" data-html-tab="news">news一覧</button>
+        </div>
+        <pre class="prompt-result__text web-html-source" id="web-html-source-text"></pre>
+
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-html-copy">表示中のHTMLをコピー</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-html-download-article">記事HTMLをダウンロード</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-html-download-news">news一覧HTMLをダウンロード</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-html-download-combined">HTMLまとめてダウンロード</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-export-images">画像を書き出す</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-export-html-images">HTML＋画像をまとめて書き出す</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-open-index-insert">diary/index.htm に挿入（ローカル）</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-open-local-apply">画像とHTMLをローカルへ反映</button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-open-publish-package">公開パッケージ（ZIP）</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-from-html-export">編集に戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-html-to-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- diary/index.htm ローカル挿入 -->
+      <div class="modal__body" id="web-center-index-insert-view" hidden>
+        <h4 class="prompt-result__title">diary/index.htm へ記事を挿入</h4>
+        <p class="form-hint">
+          ダウンロード書き出し、またはローカル CorporateSite への反映ができます。FTP・本番・GitHub push はしません。
+        </p>
+        <p class="form-error" id="web-index-insert-error" role="alert" hidden></p>
+
+        <div class="form-group">
+          <label for="web-index-file">1. 現在の diary/index.htm を選択（または下のボタンで自動読込）</label>
+          <input type="file" id="web-index-file" accept=".htm,.html,text/html">
+          <p class="form-hint">例: CorporateSite/diary/diary/index.htm</p>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-index-load-corporate">
+            CorporateSite の index.htm を読み込む
+          </button>
+        </div>
+
+        <div class="web-index-insert-meta" id="web-index-insert-meta">
+          <p class="form-hint">ファイル未選択</p>
+        </div>
+
+        <p class="brain-section-title">2. 追加予定記事プレビュー</p>
+        <pre class="prompt-result__text web-html-source" id="web-index-article-preview"></pre>
+
+        <p class="brain-section-title">3. 検査結果</p>
+        <div id="web-index-insert-checks" class="web-index-insert-checks"></div>
+
+        <p class="brain-section-title">4. 更新前後の差分</p>
+        <div id="web-index-insert-diff" class="web-index-insert-diff"></div>
+        <div class="web-html-export-tabs" role="tablist" aria-label="差分表示切替">
+          <button type="button" class="btn btn--secondary btn--touch web-html-tab is-active" id="btn-web-index-tab-before">更新前（末尾寄り）</button>
+          <button type="button" class="btn btn--secondary btn--touch web-html-tab" id="btn-web-index-tab-after">更新後（挿入部）</button>
+        </div>
+        <pre class="prompt-result__text web-html-source" id="web-index-diff-text"></pre>
+
+        <!-- ローカル反映 確認画面 -->
+        <div id="web-index-local-confirm" class="web-index-local-confirm" hidden>
+          <p class="brain-section-title">画像とHTMLをローカルへ反映 — 確認</p>
+          <div id="web-index-local-confirm-body" class="web-index-local-confirm-body"></div>
+          <div class="modal__actions modal__actions--stack">
+            <button type="button" class="btn btn--primary btn--touch" id="btn-web-index-local-apply-yes">反映する</button>
+            <button type="button" class="btn btn--ghost btn--touch" id="btn-web-index-local-apply-cancel">キャンセル</button>
+          </div>
+        </div>
+
+        <div class="modal__actions modal__actions--stack" id="web-index-insert-actions">
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-index-analyze" disabled>再検査する</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-index-confirm-download" disabled>
+            確定：バックアップ＋更新HTMLをダウンロード
+          </button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-index-open-local-confirm" disabled>
+            画像とHTMLをローカルへ反映
+          </button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-back-from-index-insert">HTML書き出しに戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-index-to-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- 公開管理（FTP接続確認・読み取り専用） -->
+      <div class="modal__body" id="web-center-publish-mgmt-view" hidden>
+        <h4 class="prompt-result__title">公開管理</h4>
+        <p class="form-hint web-index-check-warn">
+          FTP接続確認は読み取り専用です。本番公開は「本番公開する」→最終確認後の明示操作でのみ実行します。
+        </p>
+        <p class="form-error" id="web-ftp-error" role="alert" hidden></p>
+
+        <p class="brain-section-title">FTP設定（ローカルのみ・Git非対象）</p>
+        <div class="form-grid">
+          <label for="ftp-host">ホスト</label>
+          <input type="text" id="ftp-host" class="brain-search" autocomplete="off" spellcheck="false" placeholder="ftp.example.xserver.jp">
+          <label for="ftp-port">ポート</label>
+          <input type="number" id="ftp-port" class="brain-search" value="21" min="1" max="65535">
+          <label for="ftp-user">ユーザー名</label>
+          <input type="text" id="ftp-user" class="brain-search" autocomplete="username" spellcheck="false">
+          <label for="ftp-pass">パスワード</label>
+          <input type="password" id="ftp-pass" class="brain-search" autocomplete="current-password" placeholder="********">
+          <label for="ftp-root">公開フォルダ（remoteRoot）</label>
+          <input type="text" id="ftp-root" class="brain-search" autocomplete="off" spellcheck="false" placeholder="/domain.jp/public_html">
+          <label class="checkbox-row" for="ftp-tls">
+            <input type="checkbox" id="ftp-tls" checked>
+            TLS（FTPS Explicit）を使用
+          </label>
+        </div>
+        <p class="form-hint" id="ftp-config-hint">パスワードは画面・ログに表示しません。空欄保存で既存パスワードを維持します。</p>
+
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-ftp-save-config">FTP設定を保存</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-open-confirm">FTP接続確認</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-open-dry-run">
+            本番バックアップ・公開予行演習
+          </button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-mgmt-to-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- 公開ルート初回確認（remoteRoot=/） -->
+      <div class="modal__body" id="web-center-ftp-root-confirm-view" hidden>
+        <h4 class="prompt-result__title">公開ルートの確認</h4>
+        <p class="form-hint web-index-check-warn">
+          このFTPアカウントでは / が egaonokiroku.co.jp の公開フォルダですか？
+        </p>
+        <p class="form-error" id="web-ftp-root-confirm-error" role="alert" hidden></p>
+        <div id="web-ftp-root-confirm-summary" class="web-publish-package-diff"></div>
+        <div class="form-grid web-ftp-publish-checks" style="margin-top:1rem">
+          <label class="checkbox-row" for="ftp-root-confirm-public-html">
+            <input type="checkbox" id="ftp-root-confirm-public-html">
+            このFTPアカウントは egaonokiroku.co.jp/public_html に限定されています
+          </label>
+        </div>
+        <p class="form-hint">書込みはまだ行いません。確認結果はホスト・ユーザー名・remoteRoot・PWDに紐付けてローカル保存します（パスワードは保存しません）。</p>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-root-confirm-cancel">キャンセル</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-root-confirm-save" disabled>
+            この公開ルートを確認済みにする
+          </button>
+        </div>
+      </div>
+
+      <!-- 本番バックアップ・公開予行演習 確認 -->
+      <div class="modal__body" id="web-center-ftp-dryrun-confirm-view" hidden>
+        <h4 class="prompt-result__title">本番バックアップ・公開予行演習</h4>
+        <p class="form-hint web-index-check-warn">
+          この操作ではXserverへアップロードされません。本番ファイルの読取・ローカルバックアップ・差分確認・シミュレーションのみです。
+        </p>
+        <p class="form-error" id="web-ftp-dryrun-error" role="alert" hidden></p>
+        <div id="web-ftp-dryrun-confirm-summary" class="web-publish-package-diff"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-dryrun-cancel">キャンセル</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-dryrun-run">予行演習を実行</button>
+        </div>
+      </div>
+
+      <!-- 本番予行演習 結果 -->
+      <div class="modal__body" id="web-center-ftp-dryrun-result-view" hidden>
+        <h4 class="prompt-result__title">本番予行演習の結果</h4>
+        <p class="form-error" id="web-ftp-dryrun-result-error" role="alert" hidden></p>
+        <div id="web-ftp-dryrun-result-body" class="web-publish-package-diff"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-prod-publish-open" disabled title="予行演習が READY_FOR_PRODUCTION のとき有効">
+            本番公開内容を確認する
+          </button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-ftp-dryrun-retry">もう一度</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-dryrun-back">公開管理に戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-dryrun-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- 本番公開 最終確認 -->
+      <div class="modal__body" id="web-center-ftp-publish-confirm-view" hidden>
+        <h4 class="prompt-result__title">本番公開の最終確認</h4>
+        <p class="form-hint web-index-check-warn">
+          この操作を実行すると、株式会社えがおのきろくのホームページが実際に更新されます。
+        </p>
+        <p class="web-pipeline-safe-note" id="web-ftp-publish-safe-banner">
+          現在は本番公開UI確認モードです。Xserverは更新されません。
+        </p>
+        <p class="form-error" id="web-ftp-publish-error" role="alert" hidden></p>
+        <div id="web-ftp-publish-confirm-summary" class="web-publish-package-diff web-pipeline-break"></div>
+        <div class="form-grid web-ftp-publish-checks" style="margin-top:1rem">
+          <label class="checkbox-row" for="ftp-pub-check-homepage">
+            <input type="checkbox" id="ftp-pub-check-homepage">
+            本番ホームページが更新されることを確認しました
+          </label>
+          <label class="checkbox-row" for="ftp-pub-check-content">
+            <input type="checkbox" id="ftp-pub-check-content">
+            記事タイトル・本文・公開日・写真を確認しました
+          </label>
+          <label class="checkbox-row" for="ftp-pub-check-rollback">
+            <input type="checkbox" id="ftp-pub-check-rollback">
+            問題発生時に自動復元されることを確認しました
+          </label>
+          <label for="ftp-pub-phrase">確認入力（「公開」と入力してください）</label>
+          <input type="text" id="ftp-pub-phrase" class="brain-search" autocomplete="off" spellcheck="false" placeholder="公開">
+        </div>
+        <p class="form-hint" id="web-ftp-publish-progress" hidden></p>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-publish-cancel">キャンセル</button>
+          <button type="button" class="btn btn--primary btn--touch is-disabled" id="btn-web-ftp-publish-execute" disabled aria-disabled="true">
+            本当に本番公開する
+          </button>
+        </div>
+      </div>
+
+      <!-- 本番公開 結果 -->
+      <div class="modal__body" id="web-center-ftp-publish-result-view" hidden>
+        <h4 class="prompt-result__title">本番公開の結果</h4>
+        <p class="form-error" id="web-ftp-publish-result-error" role="alert" hidden></p>
+        <div id="web-ftp-publish-result-body" class="web-publish-package-diff"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-publish-result-back">公開管理に戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-publish-result-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- FTP接続確認（実行前確認） -->
+      <div class="modal__body" id="web-center-ftp-confirm-view" hidden>
+        <h4 class="prompt-result__title">FTP接続確認</h4>
+        <p class="form-hint web-index-check-warn">
+          この操作ではアップロードしません。削除しません。上書きしません。読み取り専用です。
+        </p>
+        <div id="web-ftp-confirm-summary" class="web-publish-package-diff"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-cancel">キャンセル</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-ftp-run-probe">接続確認</button>
+        </div>
+      </div>
+
+      <!-- FTP接続結果 -->
+      <div class="modal__body" id="web-center-ftp-result-view" hidden>
+        <h4 class="prompt-result__title">FTP接続結果</h4>
+        <p class="form-error" id="web-ftp-result-error" role="alert" hidden></p>
+        <div id="web-ftp-result-body" class="web-publish-package-diff"></div>
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-ftp-result-retry">もう一度確認</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-result-back">公開管理に戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-ftp-result-menu">メニューに戻る</button>
+        </div>
+      </div>
+
+      <!-- 公開パッケージ（FTPなし） -->
+      <div class="modal__body" id="web-center-publish-package-view" hidden>
+        <h4 class="prompt-result__title">公開パッケージ作成</h4>
+        <p class="form-hint web-index-check-warn">
+          この操作ではXserverへ公開されません。FTPも実行しません。公開用ZIPの作成のみです。
+        </p>
+        <p class="form-error" id="web-publish-package-error" role="alert" hidden></p>
+
+        <p class="brain-section-title">公開前チェック</p>
+        <div id="web-publish-package-checks" class="web-index-insert-checks"></div>
+
+        <p class="brain-section-title">公開対象ファイル一覧</p>
+        <div id="web-publish-package-files" class="web-publish-package-files"></div>
+
+        <p class="brain-section-title">差分表示</p>
+        <div id="web-publish-package-diff" class="web-publish-package-diff"></div>
+
+        <p class="brain-section-title">警告・未確認</p>
+        <div id="web-publish-package-warnings" class="web-publish-package-warnings"></div>
+
+        <div class="modal__actions modal__actions--stack">
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-publish-recheck">再チェック</button>
+          <button type="button" class="btn btn--primary btn--touch" id="btn-web-publish-create-zip" disabled>
+            公開パッケージを作成
+          </button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-publish-copy-manifest" disabled>
+            manifestをコピー
+          </button>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-web-publish-download-zip" disabled>
+            ZIPをダウンロード
+          </button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-publish-back-html">HTML書き出しに戻る</button>
+          <button type="button" class="btn btn--ghost btn--touch" id="btn-web-publish-to-menu">メニューに戻る</button>
         </div>
       </div>
     </div>
@@ -1450,6 +1835,17 @@
   </div>
 
   <script src="js/smile-media-db.js"></script>
+  <script src="js/smile-zip.js"></script>
+  <script src="js/smile-cp932-map.js"></script>
+  <script src="js/smile-charset.js"></script>
+  <script src="js/smile-diary-html.js"></script>
+  <script src="js/smile-diary-image-export.js"></script>
+  <script src="js/smile-diary-index-insert.js"></script>
+  <script src="js/smile-diary-local-publish.js"></script>
+  <script src="js/smile-diary-publish-package.js"></script>
+  <script src="js/smile-ftp-probe.js"></script>
+  <script src="js/smile-ftp-dry-run.js"></script>
+  <script src="js/smile-ftp-production-publish.js"></script>
   <script src="js/creative-interview-engine.js"></script>
   <script src="script.js"></script>
 </body>

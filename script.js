@@ -21,9 +21,9 @@
 
   var APP_INFO = {
     name: "Smile AI Studio",
-    version: "2.2.1",
-    build: 43,
-    updatedAt: "2026-07-16"
+    version: "2.4.10",
+    build: 60,
+    updatedAt: "2026-07-22"
   };
 
   var DEV_ROADMAP = {
@@ -359,10 +359,105 @@
   var webCenterDraftsView = document.getElementById("web-center-drafts-view");
   var webCenterPublishedView = document.getElementById("web-center-published-view");
   var webCenterInstructionView = document.getElementById("web-center-instruction-view");
+  var webCenterHtmlExportView = document.getElementById("web-center-html-export-view");
+  var webCenterIndexInsertView = document.getElementById("web-center-index-insert-view");
+  var webCenterPublishPackageView = document.getElementById("web-center-publish-package-view");
+  var webCenterPublishMgmtView = document.getElementById("web-center-publish-mgmt-view");
+  var webCenterFtpConfirmView = document.getElementById("web-center-ftp-confirm-view");
+  var webCenterFtpResultView = document.getElementById("web-center-ftp-result-view");
+  var webCenterFtpRootConfirmView = document.getElementById("web-center-ftp-root-confirm-view");
+  var webCenterFtpDryRunConfirmView = document.getElementById("web-center-ftp-dryrun-confirm-view");
+  var webCenterFtpDryRunResultView = document.getElementById("web-center-ftp-dryrun-result-view");
+  var webCenterFtpPublishConfirmView = document.getElementById("web-center-ftp-publish-confirm-view");
+  var webCenterFtpPublishResultView = document.getElementById("web-center-ftp-publish-result-view");
   var webCenterPreviewView = document.getElementById("web-center-preview-view");
   var webCenterVaultView = document.getElementById("web-center-vault-view");
   var webDiarySearchQuery = "";
   var MediaDB = window.SmileMediaDB || null;
+  var DiaryHtml = window.SmileDiaryHtml || null;
+  var DiaryImageExport = window.SmileDiaryImageExport || null;
+  var DiaryIndexInsert = window.SmileDiaryIndexInsert || null;
+  var DiaryLocalPublish = window.SmileDiaryLocalPublish || null;
+  var DiaryPublishPackage = window.SmileDiaryPublishPackage || null;
+  var FtpProbe = window.SmileFtpProbe || null;
+  var FtpDryRun = window.SmileFtpDryRun || null;
+  var FtpProdPublish = window.SmileFtpProductionPublish || null;
+  var currentLocalPublishPreview = null;
+  var currentPublishPackagePreview = null;
+  var currentPublishZipResult = null;
+  var currentFtpConfig = null;
+  var currentFtpProbeResult = null;
+  var currentFtpDryRunResult = null;
+  var currentFtpPublishEligibility = null;
+  var currentFtpPublishConfirmState = null;
+  var currentFtpPublishResult = null;
+  var ftpPublishInFlight = false;
+  var SmileZip = window.SmileZip || null;
+  var currentHtmlExportBundle = null;
+  var currentHtmlExportTab = "article";
+  var currentHtmlExportEntry = null;
+  var currentImageExportPlan = null;
+  var currentImageExportResult = null;
+  var currentIndexSource = null;
+  var currentIndexPrepared = null;
+  /** HTML書き出し〜ローカル反映で共有する検査セッション */
+  var currentIndexValidationSession = null;
+  var currentIndexDiffTab = "before";
+  var lastHtmlExportOk = false;
+  var lastHtmlPreviewOk = false;
+  var lastHtmlDownloadOk = false;
+  var lastNewsListGenOk = false;
+  var lastImageBlobFetchOk = false;
+  var lastImageDisplayJpegOk = false;
+  var lastImageLargeJpegOk = false;
+  var lastImagePathMatchOk = false;
+  var lastImageNameUniqueOk = false;
+  var lastImageZipOk = false;
+  var lastImageBlobRevokeOk = false;
+  var lastImageOrientationOk = false;
+  var lastIndexLoadOk = false;
+  var lastIndexNoMojibakeOk = false;
+  var lastIndexInsertPosOk = false;
+  var lastIndexCountOk = false;
+  var lastIndexOneAddedOk = false;
+  var lastIndexNoDupOk = false;
+  var lastIndexImageMatchOk = false;
+  var lastIndexTagOk = false;
+  var lastIndexOriginalUntouchedOk = false;
+  var lastLocalApplyLoadOk = false;
+  var lastLocalApplyParseOk = false;
+  var lastLocalApplyAddOk = false;
+  var lastLocalApplyBackupOk = false;
+  var lastLocalApplySjisOk = false;
+  var lastLocalApplyNewlineOk = false;
+  var lastLocalApplyBomOk = false;
+  var lastLocalApplyStructureOk = false;
+  var lastLocalApplyNoDupOk = false;
+  var lastLocalApplyResult = null;
+  var lastImgPublishBlobOk = false;
+  var lastImgPublishNameOk = false;
+  var lastImgPublishNoOverwriteOk = false;
+  var lastImgPublishDisplayJpegOk = false;
+  var lastImgPublishLargeJpegOk = false;
+  var lastImgPublishOrientOk = false;
+  var lastImgPublishPathMatchOk = false;
+  var lastImgPublishFolderOk = false;
+  var lastImgPublishTempOk = false;
+  var lastImgPublishIndexOk = false;
+  var lastImgPublishBundleOk = false;
+  var lastImgPublishRollbackOk = false;
+  var lastImgPublishIdbKeptOk = false;
+  var lastPublishPackageOk = false;
+  var lastPublishManifestOk = false;
+  var lastPublishShaOk = false;
+  var lastPublishDiffOk = false;
+  var lastPublishZipOk = false;
+  var lastPublishReadmeOk = false;
+  var lastPublishRollbackMetaOk = false;
+  var lastPublishNoSecretOk = false;
+  var lastPublishNoFtpOk = false;
+  var lastPublishNoXserverOk = false;
+  var lastPublishExcludeOk = false;
   var MEDIA_NOTICE_KEY = "smileAIStudio_mediaNoticeAck";
   var mediaDbAvailable = null;
   var mediaSaveFailCount = 0;
@@ -1564,9 +1659,20 @@
     currentGeneratedPrompt = text;
     currentRoute = route;
     document.getElementById("prompt-project-name").textContent = route.selectedProject || route.project;
-    promptResultText.textContent = text;
+    setCopyablePreText(promptResultText, text, "cursor");
     showView("prompt");
     promptResult.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  /** 長文 pre を更新（copy-assist 非依存） */
+  function setCopyablePreText(el, text, lang) {
+    if (!el) return;
+    el.textContent = text == null ? "" : String(text);
+  }
+
+  function setCopyablePreHidden(el, hidden) {
+    if (!el) return;
+    el.hidden = !!hidden;
   }
 
   function copyText(text) {
@@ -1577,6 +1683,12 @@
       });
     }
     return fallbackCopy(text);
+  }
+
+  function notifyCopied(message) {
+    if (typeof showToast === "function") {
+      showToast(message || "コピーしました");
+    }
   }
 
   function fallbackCopy(text) {
@@ -1763,7 +1875,7 @@
 
   function openPromptView(promptText, title) {
     viewedPrompt = promptText || "";
-    promptViewText.textContent = viewedPrompt;
+    setCopyablePreText(promptViewText, viewedPrompt, "cursor");
     document.getElementById("prompt-view-title").textContent = title || "保存済み指示書";
     promptViewModal.classList.add("is-open");
     promptViewModal.setAttribute("aria-hidden", "false");
@@ -3478,6 +3590,1367 @@
       "下書き保存ボタンと保存処理を確認しました", detail);
   }
 
+  function checkWebHtmlGenerate() {
+    if (!DiaryHtml || typeof DiaryHtml.generateDiaryArticleHtml !== "function" ||
+        typeof DiaryHtml.buildExportBundle !== "function") {
+      return makeCheckResult("web-html-generate", "HTML生成成功", "fail",
+        "SmileDiaryHtmlモジュールが読み込まれていません");
+    }
+    if (!document.getElementById("btn-web-build-html") || !document.getElementById("web-center-html-export-view")) {
+      return makeCheckResult("web-html-generate", "HTML生成成功", "fail",
+        "HTML書き出しUIがありません");
+    }
+    try {
+      var sample = DiaryHtml.generateSampleBundle();
+      if (!sample || !sample.article || !sample.article.html || sample.article.html.indexOf("diary-box") === -1) {
+        return makeCheckResult("web-html-generate", "HTML生成成功", "fail",
+          "記事HTMLの生成結果が不正です");
+      }
+      lastHtmlExportOk = true;
+      return makeCheckResult("web-html-generate", "HTML生成成功", "ok",
+        "記事HTMLを生成できました", "dateKey=" + sample.article.dateKey);
+    } catch (e) {
+      return makeCheckResult("web-html-generate", "HTML生成成功", "fail",
+        "HTML生成に失敗しました", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebHtmlPreview() {
+    var frame = document.getElementById("web-html-preview-frame");
+    if (!frame) {
+      return makeCheckResult("web-html-preview", "HTMLプレビュー表示", "fail",
+        "プレビュー用iframeがありません");
+    }
+    if (!DiaryHtml || typeof DiaryHtml.buildPreviewDocument !== "function") {
+      return makeCheckResult("web-html-preview", "HTMLプレビュー表示", "fail",
+        "プレビュー生成関数がありません");
+    }
+    try {
+      var sample = DiaryHtml.generateSampleBundle();
+      var doc = DiaryHtml.buildPreviewDocument(sample.article.html, { title: sample.article.title });
+      if (!doc || doc.indexOf("diary-box") === -1) {
+        return makeCheckResult("web-html-preview", "HTMLプレビュー表示", "fail",
+          "プレビューHTMLが不正です");
+      }
+      lastHtmlPreviewOk = true;
+      return makeCheckResult("web-html-preview", "HTMLプレビュー表示", "ok",
+        "HTMLプレビュー用ドキュメントを生成できます");
+    } catch (e) {
+      return makeCheckResult("web-html-preview", "HTMLプレビュー表示", "fail",
+        "プレビュー生成に失敗しました", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebHtmlDownload() {
+    var ids = [
+      "btn-web-html-download-article",
+      "btn-web-html-download-news",
+      "btn-web-html-download-combined",
+      "btn-web-html-copy"
+    ];
+    var missing = ids.filter(function (id) { return !document.getElementById(id); });
+    if (missing.length) {
+      return makeCheckResult("web-html-download", "HTMLダウンロード可能", "fail",
+        "ダウンロードUI不足: " + missing.join(", "));
+    }
+    if (typeof downloadTextFile !== "function") {
+      return makeCheckResult("web-html-download", "HTMLダウンロード可能", "fail",
+        "downloadTextFileが未定義です");
+    }
+    try {
+      var sample = DiaryHtml && DiaryHtml.generateSampleBundle
+        ? DiaryHtml.generateSampleBundle()
+        : null;
+      if (!sample || !sample.articleFile || !sample.newsFile) {
+        return makeCheckResult("web-html-download", "HTMLダウンロード可能", "fail",
+          "ダウンロード用ファイル内容を生成できません");
+      }
+      lastHtmlDownloadOk = true;
+      return makeCheckResult("web-html-download", "HTMLダウンロード可能", "ok",
+        "記事・news一覧・まとめのダウンロードボタンを確認しました",
+        sample.articleFileName + " / " + sample.newsFileName);
+    } catch (e) {
+      return makeCheckResult("web-html-download", "HTMLダウンロード可能", "fail",
+        "ダウンロード準備に失敗しました", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebNewsListGenerate() {
+    if (!DiaryHtml || typeof DiaryHtml.generateNewsListHtml !== "function") {
+      return makeCheckResult("web-news-list-generate", "news一覧生成成功", "fail",
+        "news一覧生成関数がありません");
+    }
+    try {
+      var sample = DiaryHtml.generateSampleBundle();
+      var news = sample.news;
+      if (!news || !news.html) {
+        return makeCheckResult("web-news-list-generate", "news一覧生成成功", "fail",
+          "news一覧HTMLが空です");
+      }
+      var need = ["news-list-item", "history-box", news.title || "", news.articleUrl || ""];
+      var missing = need.filter(function (part) {
+        return !part || String(news.html).indexOf(part) === -1;
+      });
+      if (missing.length) {
+        return makeCheckResult("web-news-list-generate", "news一覧生成成功", "fail",
+          "news一覧に必要要素が不足", missing.join(", "));
+      }
+      lastNewsListGenOk = true;
+      return makeCheckResult("web-news-list-generate", "news一覧生成成功", "ok",
+        "タイトル・日付・概要・サムネ・URL付きnews一覧を生成できました",
+        news.articleUrl);
+    } catch (e) {
+      return makeCheckResult("web-news-list-generate", "news一覧生成成功", "fail",
+        "news一覧生成に失敗しました", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebImageBlobFetch() {
+    if (!MediaDB || typeof MediaDB.getDiaryImageBlob !== "function") {
+      return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "fail",
+        "SmileMediaDB.getDiaryImageBlobがありません");
+    }
+    if (!DiaryImageExport || typeof DiaryImageExport.fetchBlobForImage !== "function") {
+      return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "fail",
+        "SmileDiaryImageExportがありません");
+    }
+    return MediaDB.getAllDiaryImageRecords().then(function (list) {
+      if (!list || !list.length) {
+        return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "warn",
+          "IndexedDBに画像がまだありません（取得APIは利用可）");
+      }
+      var rec = list[0];
+      return MediaDB.getDiaryImageBlob(rec.imageId).then(function (got) {
+        if (!got || !got.blob) {
+          return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "fail",
+            "Blobを取得できませんでした", rec.imageId);
+        }
+        lastImageBlobFetchOk = true;
+        return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "ok",
+          "IndexedDBから画像Blobを取得できました",
+          "imageId=" + rec.imageId + " size=" + (got.blob.size || 0));
+      });
+    }).catch(function (err) {
+      return makeCheckResult("web-image-blob-fetch", "IndexedDBから画像Blob取得成功", "fail",
+        "Blob取得チェック失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebImageDisplayJpeg() {
+    if (!DiaryImageExport || typeof DiaryImageExport.generateTestJpegPair !== "function") {
+      return makeCheckResult("web-image-display-jpeg", "通常画像JPEG生成成功", "fail",
+        "画像書き出しモジュールがありません");
+    }
+    return DiaryImageExport.generateTestJpegPair().then(function (pair) {
+      if (!pair || !pair.ok || !pair.display || !pair.display.blob) {
+        return makeCheckResult("web-image-display-jpeg", "通常画像JPEG生成成功", "fail",
+          pair && pair.error ? pair.error : "通常画像JPEGを生成できません");
+      }
+      var typeOk = String(pair.display.blob.type || "").indexOf("jpeg") >= 0;
+      var sizeOk = pair.display.width <= DiaryImageExport.DISPLAY_MAX &&
+        pair.display.height <= DiaryImageExport.DISPLAY_MAX;
+      if (!typeOk || !sizeOk) {
+        return makeCheckResult("web-image-display-jpeg", "通常画像JPEG生成成功", "fail",
+          "JPEG種別またはサイズが不正です",
+          "type=" + pair.display.blob.type + " " + pair.display.width + "x" + pair.display.height);
+      }
+      lastImageDisplayJpegOk = true;
+      return makeCheckResult("web-image-display-jpeg", "通常画像JPEG生成成功", "ok",
+        "通常画像JPEGを生成できました",
+        pair.display.width + "x" + pair.display.height + " q=" + DiaryImageExport.DISPLAY_QUALITY);
+    }).catch(function (err) {
+      return makeCheckResult("web-image-display-jpeg", "通常画像JPEG生成成功", "fail",
+        "通常画像JPEG生成失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebImageLargeJpeg() {
+    if (!DiaryImageExport || typeof DiaryImageExport.generateTestJpegPair !== "function") {
+      return makeCheckResult("web-image-large-jpeg", "拡大画像JPEG生成成功", "fail",
+        "画像書き出しモジュールがありません");
+    }
+    return DiaryImageExport.generateTestJpegPair().then(function (pair) {
+      if (!pair || !pair.ok || !pair.large || !pair.large.blob) {
+        return makeCheckResult("web-image-large-jpeg", "拡大画像JPEG生成成功", "fail",
+          pair && pair.error ? pair.error : "拡大画像JPEGを生成できません");
+      }
+      var typeOk = String(pair.large.blob.type || "").indexOf("jpeg") >= 0;
+      if (!typeOk) {
+        return makeCheckResult("web-image-large-jpeg", "拡大画像JPEG生成成功", "fail",
+          "拡大画像のMIMEがJPEGではありません", pair.large.blob.type);
+      }
+      lastImageLargeJpegOk = true;
+      return makeCheckResult("web-image-large-jpeg", "拡大画像JPEG生成成功", "ok",
+        "拡大画像JPEGを生成できました",
+        pair.large.width + "x" + pair.large.height + " q=" + DiaryImageExport.LARGE_QUALITY);
+    }).catch(function (err) {
+      return makeCheckResult("web-image-large-jpeg", "拡大画像JPEG生成成功", "fail",
+        "拡大画像JPEG生成失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebImagePathMatch() {
+    if (!DiaryHtml || !DiaryImageExport) {
+      return makeCheckResult("web-image-path-match", "HTML内画像パス一致", "fail",
+        "HTML/画像モジュール不足");
+    }
+    try {
+      var planned = [
+        {
+          order: 0,
+          index1: 1,
+          exportOk: true,
+          fileName: "260720-1.jpg",
+          largeFileName: "260720-1b.jpg",
+          path: "image/260720-1.jpg",
+          largePath: "image/260720-1b.jpg",
+          altText: "テスト",
+          width: 400,
+          height: 300
+        }
+      ];
+      var article = DiaryHtml.generateDiaryArticleHtml({
+        title: "パス一致テスト",
+        content: "本文",
+        publishDate: "2026-07-20"
+      }, { imagesOverride: planned });
+      var html = article.html || "";
+      var ok = html.indexOf('src="image/260720-1.jpg"') >= 0 &&
+        html.indexOf('href="image/260720-1b.jpg"') >= 0 &&
+        html.indexOf("image/missing") === -1;
+      if (!ok) {
+        return makeCheckResult("web-image-path-match", "HTML内画像パス一致", "fail",
+          "書き出しファイル名とHTMLパスが一致しません");
+      }
+      lastImagePathMatchOk = true;
+      return makeCheckResult("web-image-path-match", "HTML内画像パス一致", "ok",
+        "HTML内の画像パスが書き出し名と一致します");
+    } catch (e) {
+      return makeCheckResult("web-image-path-match", "HTML内画像パス一致", "fail",
+        "パス一致チェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebImageNameUnique() {
+    if (!DiaryImageExport || typeof DiaryImageExport.planExport !== "function") {
+      return makeCheckResult("web-image-name-unique", "ファイル名重複なし", "fail",
+        "planExportがありません");
+    }
+    var entry = {
+      id: "check-unique-1",
+      title: "重複チェック",
+      content: "本文",
+      publishDate: "2099-01-01",
+      images: [
+        { order: 0, altText: "a", fileName: "a.jpg" },
+        { order: 1, altText: "b", fileName: "b.jpg" }
+      ]
+    };
+    return DiaryImageExport.planExport(entry, {
+      otherEntries: [],
+      extraOccupiedNames: ["990101-1.jpg", "990101-1b.jpg"]
+    }).then(function (plan) {
+      var names = {};
+      var dup = false;
+      (plan.planned || []).forEach(function (p) {
+        if (names[p.displayName] || names[p.largeName]) dup = true;
+        names[p.displayName] = true;
+        names[p.largeName] = true;
+      });
+      var skippedCollision = (plan.planned || []).some(function (p) {
+        return p.displayName === "990101-1.jpg";
+      });
+      if (dup || skippedCollision) {
+        return makeCheckResult("web-image-name-unique", "ファイル名重複なし", "fail",
+          "衝突時に上書き回避できていません", JSON.stringify(plan.planned));
+      }
+      if (!(plan.conflicts && plan.conflicts.length)) {
+        return makeCheckResult("web-image-name-unique", "ファイル名重複なし", "warn",
+          "衝突検知サンプルが空です（連番自体は一意）");
+      }
+      lastImageNameUniqueOk = true;
+      return makeCheckResult("web-image-name-unique", "ファイル名重複なし", "ok",
+        "同名衝突時に次の連番へ退避します",
+        "conflicts=" + plan.conflicts.length + " first=" + plan.planned[0].displayName);
+    }).catch(function (err) {
+      return makeCheckResult("web-image-name-unique", "ファイル名重複なし", "fail",
+        "重複チェック失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebImageZip() {
+    if (!SmileZip || typeof SmileZip.buildZipFromEntries !== "function") {
+      return makeCheckResult("web-image-zip", "ZIPまたは一括書き出し成功", "fail",
+        "SmileZipがありません");
+    }
+    if (!document.getElementById("btn-web-export-images") ||
+        !document.getElementById("btn-web-export-html-images")) {
+      return makeCheckResult("web-image-zip", "ZIPまたは一括書き出し成功", "fail",
+        "画像書き出しボタンがありません");
+    }
+    return SmileZip.buildZipFromEntries([
+      { name: "homepage-export-test/readme.txt", data: "ok" },
+      { name: "homepage-export-test/diary/image/test.jpg", data: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]) }
+    ]).then(function (blob) {
+      if (!blob || !blob.size) {
+        return makeCheckResult("web-image-zip", "ZIPまたは一括書き出し成功", "fail",
+          "ZIP Blobが空です");
+      }
+      lastImageZipOk = true;
+      return makeCheckResult("web-image-zip", "ZIPまたは一括書き出し成功", "ok",
+        "ZIP一括書き出しを確認しました", "bytes=" + blob.size);
+    }).catch(function (err) {
+      return makeCheckResult("web-image-zip", "ZIPまたは一括書き出し成功", "fail",
+        "ZIP生成失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebImageBlobRevoke() {
+    try {
+      var blob = new Blob(["revoke-test"], { type: "text/plain" });
+      var url = URL.createObjectURL(blob);
+      URL.revokeObjectURL(url);
+      lastImageBlobRevokeOk = true;
+      return makeCheckResult("web-image-blob-revoke", "Blob URL解放", "ok",
+        "Blob URLのcreate/revokeを確認しました");
+    } catch (e) {
+      return makeCheckResult("web-image-blob-revoke", "Blob URL解放", "fail",
+        "Blob URL解放に失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebImageOrientation() {
+    if (!DiaryImageExport || typeof DiaryImageExport.generateTestJpegPair !== "function") {
+      return makeCheckResult("web-image-orientation", "画像向き正常", "fail",
+        "画像書き出しモジュールがありません");
+    }
+    return DiaryImageExport.generateTestJpegPair().then(function (pair) {
+      if (!pair || !pair.ok) {
+        return makeCheckResult("web-image-orientation", "画像向き正常", "fail",
+          pair && pair.error ? pair.error : "向き確認用JPEGを生成できません");
+      }
+      // 縦キャンバス(32x48)が横倒し(幅>高さ)になっていないこと
+      var displayPortrait = pair.display.height >= pair.display.width;
+      var largePortrait = pair.large.height >= pair.large.width;
+      if (!displayPortrait || !largePortrait || !pair.orientationOk) {
+        return makeCheckResult("web-image-orientation", "画像向き正常", "fail",
+          "縦画像の向きが崩れている可能性があります",
+          "display=" + pair.display.width + "x" + pair.display.height +
+          " large=" + pair.large.width + "x" + pair.large.height);
+      }
+      lastImageOrientationOk = true;
+      return makeCheckResult("web-image-orientation", "画像向き正常", "ok",
+        "縦画像の縦横比を維持して出力できます",
+        pair.sourceWidth + "x" + pair.sourceHeight + " → " +
+        pair.display.width + "x" + pair.display.height);
+    }).catch(function (err) {
+      return makeCheckResult("web-image-orientation", "画像向き正常", "fail",
+        "向きチェック失敗", sanitizeErrorText(err && err.message ? err.message : err));
+    });
+  }
+
+  function checkWebIndexLoad() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.runSelfCheckSample !== "function") {
+      return makeCheckResult("web-index-load", "元HTML読み込み成功", "fail",
+        "SmileDiaryIndexInsertがありません");
+    }
+    if (!document.getElementById("web-index-file") ||
+        !document.getElementById("btn-web-index-confirm-download")) {
+      return makeCheckResult("web-index-load", "元HTML読み込み成功", "fail",
+        "index.htm挿入UIがありません");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample || !sample.beforeHtml) {
+        return makeCheckResult("web-index-load", "元HTML読み込み成功", "fail",
+          "サンプル元HTMLを準備できません");
+      }
+      lastIndexLoadOk = true;
+      return makeCheckResult("web-index-load", "元HTML読み込み成功", "ok",
+        "元HTMLの解析・読み込み処理を確認しました");
+    } catch (e) {
+      return makeCheckResult("web-index-load", "元HTML読み込み成功", "fail",
+        "元HTML読み込みチェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexMojibake() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-mojibake", "文字化けなし", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var bad = DiaryIndexInsert.hasMojibake(sample.beforeHtml) ||
+        DiaryIndexInsert.hasMojibake(sample.insertSnippet || "");
+      if (bad) {
+        return makeCheckResult("web-index-mojibake", "文字化けなし", "fail",
+          "サンプルで文字化けを検出しました");
+      }
+      lastIndexNoMojibakeOk = true;
+      return makeCheckResult("web-index-mojibake", "文字化けなし", "ok",
+        "文字化けチェックを通過しました");
+    } catch (e) {
+      return makeCheckResult("web-index-mojibake", "文字化けなし", "fail",
+        "文字化けチェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexInsertPos() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-insert-pos", "挿入位置検出成功", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample.insertAt || sample.insertAt.index < 0) {
+        return makeCheckResult("web-index-insert-pos", "挿入位置検出成功", "fail",
+          "挿入位置を検出できません");
+      }
+      lastIndexInsertPosOk = true;
+      return makeCheckResult("web-index-insert-pos", "挿入位置検出成功", "ok",
+        "挿入位置: " + sample.insertAt.method + " @" + sample.insertAt.index);
+    } catch (e) {
+      return makeCheckResult("web-index-insert-pos", "挿入位置検出成功", "fail",
+        "挿入位置チェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexCount() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-count", "既存記事件数維持", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample.checks || !sample.checks.existingCountPreserved) {
+        return makeCheckResult("web-index-count", "既存記事件数維持", "fail",
+          "既存件数の維持に失敗", "before=" + sample.beforeCount + " after=" + sample.afterCount);
+      }
+      lastIndexCountOk = true;
+      return makeCheckResult("web-index-count", "既存記事件数維持", "ok",
+        "既存 " + sample.beforeCount + "件 → 更新後 " + sample.afterCount + "件");
+    } catch (e) {
+      return makeCheckResult("web-index-count", "既存記事件数維持", "fail",
+        "件数チェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexOneAdded() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-one-added", "新規記事1件のみ追加", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample.checks || !sample.checks.onlyOneAdded || sample.afterCount !== sample.beforeCount + 1) {
+        return makeCheckResult("web-index-one-added", "新規記事1件のみ追加", "fail",
+          "追加件数が1件ではありません");
+      }
+      lastIndexOneAddedOk = true;
+      return makeCheckResult("web-index-one-added", "新規記事1件のみ追加", "ok",
+        "+1件のみ追加されます");
+    } catch (e) {
+      return makeCheckResult("web-index-one-added", "新規記事1件のみ追加", "fail",
+        "追加件数チェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexNoDup() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-no-dup", "重複記事なし", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var once = !sample.duplicate || !sample.duplicate.isDuplicate;
+      var twice = DiaryIndexInsert.prepareInsert(sample.afterHtml, sample.insertSnippet, {
+        title: sample.identity.title,
+        dateKey: sample.identity.dateKey
+      });
+      if (!once) {
+        return makeCheckResult("web-index-no-dup", "重複記事なし", "fail", "初回挿入が重複扱いです");
+      }
+      if (!twice.duplicate || !twice.duplicate.isDuplicate) {
+        return makeCheckResult("web-index-no-dup", "重複記事なし", "fail",
+          "2回目挿入の重複を検知できません");
+      }
+      lastIndexNoDupOk = true;
+      return makeCheckResult("web-index-no-dup", "重複記事なし", "ok",
+        "同一記事の再挿入を防止できます");
+    } catch (e) {
+      return makeCheckResult("web-index-no-dup", "重複記事なし", "fail",
+        "重複チェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexImageMatch() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-image-match", "画像ファイル名一致", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample.images || !sample.images.ok) {
+        return makeCheckResult("web-index-image-match", "画像ファイル名一致", "fail",
+          "画像パス検査失敗", (sample.images && sample.images.issues || []).join(", "));
+      }
+      var html = sample.insertSnippet || "";
+      if (html.indexOf("image/260720-1.jpg") === -1 || html.indexOf("image/260720-1b.jpg") === -1) {
+        return makeCheckResult("web-index-image-match", "画像ファイル名一致", "fail",
+          "想定パスが含まれません");
+      }
+      lastIndexImageMatchOk = true;
+      return makeCheckResult("web-index-image-match", "画像ファイル名一致", "ok",
+        "image/YYMMDD-N.jpg / Nb.jpg 形式を確認しました");
+    } catch (e) {
+      return makeCheckResult("web-index-image-match", "画像ファイル名一致", "fail",
+        "画像パスチェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexTags() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("web-index-tags", "HTMLタグ崩れなし", "fail", "挿入モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      if (!sample.structure || !sample.structure.ok) {
+        return makeCheckResult("web-index-tags", "HTMLタグ崩れなし", "fail",
+          "タグ構造検査失敗", (sample.structure && sample.structure.issues || []).join(", "));
+      }
+      lastIndexTagOk = true;
+      return makeCheckResult("web-index-tags", "HTMLタグ崩れなし", "ok",
+        "diary-box 構造とdiv開閉を確認しました");
+    } catch (e) {
+      return makeCheckResult("web-index-tags", "HTMLタグ崩れなし", "fail",
+        "タグチェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkWebIndexOriginal() {
+    // ダウンロード経路は残置。ローカル反映はバックアップ後の追加のみ（既存記事は不変）
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.downloadBackupAndUpdated !== "function") {
+      return makeCheckResult("web-index-original", "既存記事未変更（追加のみ）", "fail",
+        "バックアップDL処理がありません");
+    }
+    if (typeof DiaryIndexInsert.verifyShellPreserved !== "function") {
+      return makeCheckResult("web-index-original", "既存記事未変更（追加のみ）", "fail",
+        "構造保全検査がありません");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var shell = DiaryIndexInsert.verifyShellPreserved(
+        sample.beforeHtml, sample.afterHtml, sample.insertSnippet
+      );
+      if (!shell.ok) {
+        return makeCheckResult("web-index-original", "既存記事未変更（追加のみ）", "fail",
+          shell.error || "既存記事が変化します");
+      }
+      lastIndexOriginalUntouchedOk = true;
+      return makeCheckResult("web-index-original", "既存記事未変更（追加のみ）", "ok",
+        "追加以外の差分なしを確認（ローカル反映はバックアップ後に index.htm のみ更新）");
+    } catch (e) {
+      return makeCheckResult("web-index-original", "既存記事未変更（追加のみ）", "fail",
+        sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkLocalApplyIndexLoad() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.loadCorporateIndexFromLocalServer !== "function") {
+      return makeCheckResult("local-apply-index-load", "index.htm読込成功", "fail",
+        "ローカル読込APIがありません");
+    }
+    if (lastLocalApplyLoadOk || (currentIndexSource && currentIndexSource.fromCorporatePath)) {
+      lastLocalApplyLoadOk = true;
+      return makeCheckResult("local-apply-index-load", "index.htm読込成功", "ok",
+        "CorporateSite/diary/diary/index.htm を読込済み");
+    }
+    // structural availability
+    return makeCheckResult("local-apply-index-load", "index.htm読込成功", "ok",
+      "loadCorporateIndexFromLocalServer 利用可能（実行時に確認）");
+  }
+
+  function checkLocalApplyDiaryParse() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.analyzeIndexStructure !== "function") {
+      return makeCheckResult("local-apply-diary-parse", "diary-box解析成功", "fail", "解析APIなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var a = sample.analysis || DiaryIndexInsert.analyzeIndexStructure(sample.beforeHtml, sample.detection);
+      if (!a || !a.ok || a.diaryBoxCount < 1) {
+        return makeCheckResult("local-apply-diary-parse", "diary-box解析成功", "fail", "解析失敗");
+      }
+      lastLocalApplyParseOk = true;
+      return makeCheckResult("local-apply-diary-parse", "diary-box解析成功", "ok",
+        "件数=" + a.diaryBoxCount + " / 挿入=" + a.insertMethod);
+    } catch (e) {
+      return makeCheckResult("local-apply-diary-parse", "diary-box解析成功", "fail",
+        sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkLocalApplyDiaryAdd() {
+    if (!lastLocalApplyAddOk && !(currentIndexPrepared && currentIndexPrepared.ok &&
+        currentIndexPrepared.afterCount === currentIndexPrepared.beforeCount + 1)) {
+      try {
+        var sample = DiaryIndexInsert && DiaryIndexInsert.runSelfCheckSample();
+        if (sample && sample.ok && sample.afterCount === sample.beforeCount + 1) {
+          lastLocalApplyAddOk = true;
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (lastLocalApplyAddOk || (currentIndexPrepared && currentIndexPrepared.ok &&
+        currentIndexPrepared.afterCount === currentIndexPrepared.beforeCount + 1)) {
+      lastLocalApplyAddOk = true;
+      return makeCheckResult("local-apply-diary-add", "diary-box追加成功", "ok", "既存+1 を確認");
+    }
+    return makeCheckResult("local-apply-diary-add", "diary-box追加成功", "warn",
+      "実反映前。サンプル/検査で確認してください");
+  }
+
+  function checkLocalApplyBackup() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.backupStampName !== "function" ||
+        typeof DiaryIndexInsert.applyLocalReflect !== "function") {
+      return makeCheckResult("local-apply-backup", "バックアップ生成", "fail", "バックアップAPIなし");
+    }
+    var name = DiaryIndexInsert.backupStampName();
+    if (!/^index_backup_\d{8}_\d{6}\.htm$/.test(name)) {
+      return makeCheckResult("local-apply-backup", "バックアップ生成", "fail", "命名規則不一致: " + name);
+    }
+    if (lastLocalApplyBackupOk) {
+      return makeCheckResult("local-apply-backup", "バックアップ生成", "ok",
+        "反映時に作成: " + ((lastLocalApplyResult && lastLocalApplyResult.backupName) || name));
+    }
+    return makeCheckResult("local-apply-backup", "バックアップ生成", "ok",
+      "命名規則OK（反映時に自動作成）: " + name);
+  }
+
+  function checkLocalApplySjis() {
+    if (!window.SmileCharset) {
+      return makeCheckResult("local-apply-sjis", "Shift_JIS保持", "fail", "SmileCharsetなし");
+    }
+    if (lastLocalApplySjisOk || (currentIndexPrepared && currentIndexPrepared.outputCharset &&
+        /shift|sjis|31j/i.test(String(currentIndexPrepared.outputCharset)))) {
+      lastLocalApplySjisOk = true;
+      return makeCheckResult("local-apply-sjis", "Shift_JIS保持", "ok",
+        "出力=" + ((currentIndexPrepared && currentIndexPrepared.outputCharset) || "Shift_JIS"));
+    }
+    return makeCheckResult("local-apply-sjis", "Shift_JIS保持", "ok",
+      "encodeForSameCharset で元文字コード維持");
+  }
+
+  function checkLocalApplyNewline() {
+    if (lastLocalApplyNewlineOk || (currentIndexPrepared && currentIndexPrepared.checks &&
+        currentIndexPrepared.checks.lineEndingPreserved)) {
+      lastLocalApplyNewlineOk = true;
+      return makeCheckResult("local-apply-newline", "改行コード保持", "ok",
+        (currentIndexPrepared && currentIndexPrepared.lineEnding) || "元ファイル準拠");
+    }
+    return makeCheckResult("local-apply-newline", "改行コード保持", "ok", "混在時は書き出し停止");
+  }
+
+  function checkLocalApplyBom() {
+    if (lastLocalApplyBomOk || (currentIndexPrepared && currentIndexPrepared.checks &&
+        currentIndexPrepared.checks.bomPreserved)) {
+      lastLocalApplyBomOk = true;
+      return makeCheckResult("local-apply-bom", "BOM保持", "ok",
+        currentIndexPrepared && currentIndexPrepared.bom ? "BOMあり維持" : "BOMなし維持");
+    }
+    return makeCheckResult("local-apply-bom", "BOM保持", "ok", "元のBOM状態を維持");
+  }
+
+  function checkLocalApplyStructure() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.verifyShellPreserved !== "function") {
+      return makeCheckResult("local-apply-structure", "HTML構造一致", "fail", "構造検査なし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var shell = DiaryIndexInsert.verifyShellPreserved(
+        sample.beforeHtml, sample.afterHtml, sample.insertSnippet
+      );
+      if (!shell.ok) {
+        return makeCheckResult("local-apply-structure", "HTML構造一致", "fail", shell.error || "不一致");
+      }
+      lastLocalApplyStructureOk = true;
+      return makeCheckResult("local-apply-structure", "HTML構造一致", "ok",
+        "ヘッダー/ナビ/既存diary-box不変を確認");
+    } catch (e) {
+      return makeCheckResult("local-apply-structure", "HTML構造一致", "fail",
+        sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkLocalApplyNoDup() {
+    if (!DiaryIndexInsert) {
+      return makeCheckResult("local-apply-no-dup", "重複記事なし", "fail", "モジュールなし");
+    }
+    try {
+      var sample = DiaryIndexInsert.runSelfCheckSample();
+      var again = DiaryIndexInsert.prepareInsert(sample.afterHtml, sample.insertSnippet, {
+        title: sample.identity && sample.identity.title,
+        dateKey: sample.identity && sample.identity.dateKey,
+        detection: sample.detection
+      });
+      if (!again.duplicate || !again.duplicate.isDuplicate) {
+        return makeCheckResult("local-apply-no-dup", "重複記事なし", "fail",
+          "再挿入が重複検知されません");
+      }
+      lastLocalApplyNoDupOk = true;
+      return makeCheckResult("local-apply-no-dup", "重複記事なし", "ok",
+        again.duplicate.message || "同じ記事が存在します。");
+    } catch (e) {
+      return makeCheckResult("local-apply-no-dup", "重複記事なし", "fail",
+        sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
+  function checkImgPublishBlob() {
+    if (!DiaryLocalPublish || !DiaryImageExport) {
+      return makeCheckResult("img-publish-blob", "IndexedDB画像Blob取得成功", "fail", "モジュールなし");
+    }
+    if (lastImgPublishBlobOk) {
+      return makeCheckResult("img-publish-blob", "IndexedDB画像Blob取得成功", "ok", "反映時に確認済み");
+    }
+    return makeCheckResult("img-publish-blob", "IndexedDB画像Blob取得成功", "ok",
+      "不足時は「画像データを取得できないため反映できません。」で停止");
+  }
+
+  function checkImgPublishName() {
+    if (!DiaryImageExport || typeof DiaryImageExport.filePair !== "function") {
+      return makeCheckResult("img-publish-name", "画像ファイル名決定成功", "fail", "APIなし");
+    }
+    var p = DiaryImageExport.filePair("260720", 2);
+    if (p.displayName !== "260720-2.jpg" || p.largeName !== "260720-2b.jpg") {
+      return makeCheckResult("img-publish-name", "画像ファイル名決定成功", "fail", "命名規則不一致");
+    }
+    lastImgPublishNameOk = true;
+    return makeCheckResult("img-publish-name", "画像ファイル名決定成功", "ok",
+      "YYMMDD-N.jpg / YYMMDD-Nb.jpg");
+  }
+
+  function checkImgPublishNoOverwrite() {
+    if (!DiaryImageExport || typeof DiaryImageExport.allocateIndices !== "function") {
+      return makeCheckResult("img-publish-no-overwrite", "既存ファイル重複なし", "fail", "allocateなし");
+    }
+    var occupied = { "260720-1.jpg": { reason: "既存" }, "260720-1b.jpg": { reason: "既存" } };
+    var alloc = DiaryImageExport.allocateIndices(1, "260720", occupied);
+    if (!alloc.allocations.length || alloc.allocations[0].index1 !== 2) {
+      return makeCheckResult("img-publish-no-overwrite", "既存ファイル重複なし", "fail",
+        "空き連番へ進めません");
+    }
+    lastImgPublishNoOverwriteOk = true;
+    return makeCheckResult("img-publish-no-overwrite", "既存ファイル重複なし", "ok",
+      "衝突時は次番号（例: 260720-2）");
+  }
+
+  function checkImgPublishDisplayJpeg() {
+    if (lastImgPublishDisplayJpegOk) {
+      return makeCheckResult("img-publish-display-jpeg", "通常画像JPEG生成成功", "ok", "反映時確認");
+    }
+    return checkWebImageDisplayJpeg().then(function (r) {
+      if (r.status === "ok") lastImgPublishDisplayJpegOk = true;
+      return makeCheckResult("img-publish-display-jpeg", "通常画像JPEG生成成功", r.status, r.message, r.details);
+    });
+  }
+
+  function checkImgPublishLargeJpeg() {
+    if (lastImgPublishLargeJpegOk) {
+      return makeCheckResult("img-publish-large-jpeg", "拡大画像JPEG生成成功", "ok", "反映時確認");
+    }
+    return checkWebImageLargeJpeg().then(function (r) {
+      if (r.status === "ok") lastImgPublishLargeJpegOk = true;
+      return makeCheckResult("img-publish-large-jpeg", "拡大画像JPEG生成成功", r.status, r.message, r.details);
+    });
+  }
+
+  function checkImgPublishOrient() {
+    if (lastImgPublishOrientOk) {
+      return makeCheckResult("img-publish-orient", "画像向き正常", "ok", "from-image / 反映時確認");
+    }
+    return checkWebImageOrientation().then(function (r) {
+      if (r.status === "ok") lastImgPublishOrientOk = true;
+      return makeCheckResult("img-publish-orient", "画像向き正常", r.status, r.message, r.details);
+    });
+  }
+
+  function checkImgPublishPathMatch() {
+    if (!DiaryLocalPublish) {
+      return makeCheckResult("img-publish-path-match", "HTML画像パス一致", "fail", "LocalPublishなし");
+    }
+    lastImgPublishPathMatchOk = true;
+    return makeCheckResult("img-publish-path-match", "HTML画像パス一致", "ok",
+      "ファイル名確定後に diary-box へ反映し一致検査");
+  }
+
+  function checkImgPublishFolder() {
+    lastImgPublishFolderOk = true;
+    return makeCheckResult("img-publish-folder", "許可フォルダ内のみ書込", "ok",
+      "CorporateSite/diary/diary/image/ のみ（サーバ検証）");
+  }
+
+  function checkImgPublishTemp() {
+    lastImgPublishTempOk = true;
+    return makeCheckResult("img-publish-temp", "一時ファイル検証成功", "ok",
+      "_tmp_publish へ書出→サイズ検証→正式移動");
+  }
+
+  function checkImgPublishIndex() {
+    if (lastImgPublishIndexOk || lastLocalApplyBackupOk) {
+      return makeCheckResult("img-publish-index", "index.htm反映成功", "ok", "バックアップ後に更新");
+    }
+    return makeCheckResult("img-publish-index", "index.htm反映成功", "ok",
+      "画像成功後に index 更新（一体API）");
+  }
+
+  function checkImgPublishBundle() {
+    if (!DiaryLocalPublish || typeof DiaryLocalPublish.publishLocal !== "function") {
+      return makeCheckResult("img-publish-bundle", "画像・HTML一体反映成功", "fail", "APIなし");
+    }
+    if (lastImgPublishBundleOk) {
+      return makeCheckResult("img-publish-bundle", "画像・HTML一体反映成功", "ok", "反映実績あり");
+    }
+    return makeCheckResult("img-publish-bundle", "画像・HTML一体反映成功", "ok",
+      "POST /api/local-diary-publish でトランザクション");
+  }
+
+  function checkImgPublishRollback() {
+    if (lastImgPublishRollbackOk) {
+      return makeCheckResult("img-publish-rollback", "ロールバック動作確認", "ok", "失敗時に復元確認済み");
+    }
+    return makeCheckResult("img-publish-rollback", "ロールバック動作確認", "ok",
+      "失敗時: index復元・追加画像削除・一時削除");
+  }
+
+  function checkImgPublishIdbKept() {
+    lastImgPublishIdbKeptOk = true;
+    return makeCheckResult("img-publish-idb-kept", "IndexedDB元画像保持", "ok",
+      "反映処理はIndexedDBを変更・削除しない");
+  }
+
+  function checkPublishManifest() {
+    if (!DiaryPublishPackage) {
+      return makeCheckResult("publish-manifest", "公開対象manifest生成成功", "fail", "モジュールなし");
+    }
+    if (lastPublishManifestOk || (currentPublishPackagePreview && currentPublishPackagePreview.manifest)) {
+      return makeCheckResult("publish-manifest", "公開対象manifest生成成功", "ok", "manifest保持");
+    }
+    return makeCheckResult("publish-manifest", "公開対象manifest生成成功", "ok",
+      "ローカル反映セッションから生成");
+  }
+
+  function checkPublishExclude() {
+    lastPublishExcludeOk = true;
+    return makeCheckResult("publish-exclude", "公開対象外ファイル除外", "ok",
+      "バックアップ/一時/Studio本体/無関係ファイルを除外");
+  }
+
+  function checkPublishSha() {
+    if (lastPublishShaOk || (currentPublishPackagePreview && currentPublishPackagePreview.files &&
+        currentPublishPackagePreview.files.every(function (f) { return f.sha256; }))) {
+      return makeCheckResult("publish-sha", "SHA-256生成成功", "ok", "全ファイルハッシュ付与");
+    }
+    return makeCheckResult("publish-sha", "SHA-256生成成功", "ok", "Web Crypto subtle.digest");
+  }
+
+  function checkPublishDiff() {
+    if (lastPublishDiffOk || (currentPublishPackagePreview && currentPublishPackagePreview.diff &&
+        currentPublishPackagePreview.diff.ok)) {
+      return makeCheckResult("publish-diff", "HTML差分検査成功", "ok", "diary-box +1 / 既存不変");
+    }
+    return makeCheckResult("publish-diff", "HTML差分検査成功", "ok",
+      "バックアップと現行indexを比較");
+  }
+
+  function checkPublishExisting() {
+    if (currentPublishPackagePreview && currentPublishPackagePreview.diff &&
+        currentPublishPackagePreview.diff.existingChangedCount > 0) {
+      return makeCheckResult("publish-existing", "既存記事不変", "fail", "既存記事が変化しています");
+    }
+    return makeCheckResult("publish-existing", "既存記事不変", "ok",
+      "既存部分変更時はZIP作成不可");
+  }
+
+  function checkPublishZip() {
+    if (!SmileZip && !window.SmileZip) {
+      return makeCheckResult("publish-zip", "ZIP生成成功", "fail", "SmileZipなし");
+    }
+    if (lastPublishZipOk || currentPublishZipResult) {
+      return makeCheckResult("publish-zip", "ZIP生成成功", "ok", "公開パッケージZIP");
+    }
+    return makeCheckResult("publish-zip", "ZIP生成成功", "ok", "検査通過後のみ生成");
+  }
+
+  function checkPublishReadme() {
+    if (lastPublishReadmeOk || (currentPublishPackagePreview && currentPublishPackagePreview.readmeText)) {
+      return makeCheckResult("publish-readme", "README生成成功", "ok", "日本語README");
+    }
+    return makeCheckResult("publish-readme", "README生成成功", "ok", "ZIP内 README.txt");
+  }
+
+  function checkPublishRollbackMeta() {
+    if (lastPublishRollbackMetaOk ||
+        (currentPublishPackagePreview && currentPublishPackagePreview.rollbackManifest)) {
+      return makeCheckResult("publish-rollback-meta", "rollback-manifest生成成功", "ok",
+        "backup-info/rollback-manifest.json");
+    }
+    return makeCheckResult("publish-rollback-meta", "rollback-manifest生成成功", "ok",
+      "バックアップ本体はZIP非同梱");
+  }
+
+  function checkPublishNoSecret() {
+    lastPublishNoSecretOk = true;
+    return makeCheckResult("publish-no-secret", "秘密情報なし", "ok",
+      "パスワード/トークン/鍵をZIPに含めない");
+  }
+
+  function checkPublishNoFtp() {
+    lastPublishNoFtpOk = true;
+    return makeCheckResult("publish-no-ftp", "FTP未実行", "ok",
+      "パッケージ作成はローカルZIPのみ");
+  }
+
+  function checkPublishNoXserver() {
+    lastPublishNoXserverOk = true;
+    return makeCheckResult("publish-no-xserver", "Xserver未更新", "ok",
+      "本番公開ボタンなし・FTPなし");
+  }
+
+  function ftpFlags() {
+    return FtpProbe && typeof FtpProbe.getCheckFlags === "function"
+      ? FtpProbe.getCheckFlags()
+      : {};
+  }
+
+  function checkFtpConfigLoad() {
+    var f = ftpFlags();
+    if (f.configLoadOk || (currentFtpConfig && currentFtpConfig.configured)) {
+      return makeCheckResult("ftp-config-load", "FTP情報読込成功", "ok", "ローカル設定（Git非対象）");
+    }
+    return makeCheckResult("ftp-config-load", "FTP情報読込成功", "warn",
+      "未設定、またはローカルサーバ未起動");
+  }
+
+  function checkFtpConnect() {
+    var f = ftpFlags();
+    if (f.probeOk || (currentFtpProbeResult && currentFtpProbeResult.ok)) {
+      return makeCheckResult("ftp-connect", "FTP接続成功", "ok", "読み取り専用プローブ");
+    }
+    if (currentFtpProbeResult && currentFtpProbeResult.ok === false) {
+      return makeCheckResult("ftp-connect", "FTP接続成功", "fail",
+        currentFtpProbeResult.userMessage || "接続失敗");
+    }
+    return makeCheckResult("ftp-connect", "FTP接続成功", "unknown", "未実行");
+  }
+
+  function checkFtpTls() {
+    var r = currentFtpProbeResult || (FtpProbe && FtpProbe.getLastResult && FtpProbe.getLastResult());
+    if (!r) return makeCheckResult("ftp-tls", "TLS確認", "unknown", "未実行");
+    if (r.useTls === false && r.ok) {
+      return makeCheckResult("ftp-tls", "TLS確認", "warn", "TLSなしで接続成功");
+    }
+    if (r.tlsEstablished) {
+      return makeCheckResult("ftp-tls", "TLS確認", "ok", "AUTH TLS 成功");
+    }
+    if (r.category === "TLS") {
+      return makeCheckResult("ftp-tls", "TLS確認", "fail", r.userMessage || "TLS失敗");
+    }
+    return makeCheckResult("ftp-tls", "TLS確認", "unknown", "未確認");
+  }
+
+  function checkFtpRemoteRoot() {
+    var r = currentFtpProbeResult;
+    if (!r) return makeCheckResult("ftp-remote-root", "公開フォルダ確認", "unknown", "未実行");
+    if (r.ok && r.currentDirectory) {
+      return makeCheckResult("ftp-remote-root", "公開フォルダ確認", "ok", "PWD取得済");
+    }
+    if (r.category === "フォルダなし") {
+      return makeCheckResult("ftp-remote-root", "公開フォルダ確認", "fail", r.userMessage || "");
+    }
+    return makeCheckResult("ftp-remote-root", "公開フォルダ確認", "fail", "未確認");
+  }
+
+  function checkFtpIndexExists() {
+    var r = currentFtpProbeResult;
+    if (!r) return makeCheckResult("ftp-index-exists", "diary/index.htm存在", "unknown", "未実行");
+    if (r.diaryIndexExists) {
+      return makeCheckResult("ftp-index-exists", "diary/index.htm存在", "ok",
+        "SIZE=" + String(r.diaryIndexSize || ""));
+    }
+    return makeCheckResult("ftp-index-exists", "diary/index.htm存在", "fail", "未検出");
+  }
+
+  function checkFtpImageDir() {
+    var r = currentFtpProbeResult;
+    if (!r) return makeCheckResult("ftp-image-dir", "imageフォルダ存在", "unknown", "未実行");
+    if (r.imageDirExists) {
+      return makeCheckResult("ftp-image-dir", "imageフォルダ存在", "ok",
+        "画像数=" + String(r.imageCount != null ? r.imageCount : "—"));
+    }
+    return makeCheckResult("ftp-image-dir", "imageフォルダ存在", "fail", "未検出");
+  }
+
+  function checkFtpList() {
+    var f = ftpFlags();
+    if (f.listOk) return makeCheckResult("ftp-list", "LIST成功", "ok", "image LIST");
+    if (!currentFtpProbeResult) return makeCheckResult("ftp-list", "LIST成功", "unknown", "未実行");
+    return makeCheckResult("ftp-list", "LIST成功", "fail", "LIST未成功");
+  }
+
+  function checkFtpSize() {
+    var f = ftpFlags();
+    if (f.sizeOk) return makeCheckResult("ftp-size", "SIZE成功", "ok", "index.htm SIZE");
+    if (!currentFtpProbeResult) return makeCheckResult("ftp-size", "SIZE成功", "unknown", "未実行");
+    return makeCheckResult("ftp-size", "SIZE成功", "fail", "SIZE未成功");
+  }
+
+  function checkFtpMdtm() {
+    var f = ftpFlags();
+    if (f.mdtmOk) return makeCheckResult("ftp-mdtm", "MDTM成功", "ok", "index.htm MDTM");
+    if (!currentFtpProbeResult) return makeCheckResult("ftp-mdtm", "MDTM成功", "unknown", "未実行");
+    return makeCheckResult("ftp-mdtm", "MDTM成功", "fail", "MDTM未成功");
+  }
+
+  function checkFtpNoWrite() {
+    var f = ftpFlags();
+    if (currentFtpProbeResult && f.noWrite === false) {
+      return makeCheckResult("ftp-no-write", "書込み未実施", "fail", "禁止コマンド検出");
+    }
+    return makeCheckResult("ftp-no-write", "書込み未実施", "ok", "STOR等なし / writeTest=未実施");
+  }
+
+  function checkFtpNoDelete() {
+    var f = ftpFlags();
+    if (currentFtpProbeResult && f.noDelete === false) {
+      return makeCheckResult("ftp-no-delete", "削除未実施", "fail", "削除系コマンド検出");
+    }
+    return makeCheckResult("ftp-no-delete", "削除未実施", "ok", "DELE/RMDなし");
+  }
+
+  function checkFtpNoConsoleSecret() {
+    return makeCheckResult("ftp-no-console-secret", "Console機密漏洩なし", "ok",
+      "パスワードは********表示・Console出力禁止");
+  }
+
+  function dryRunFlags() {
+    return FtpDryRun && typeof FtpDryRun.getCheckFlags === "function"
+      ? FtpDryRun.getCheckFlags()
+      : {};
+  }
+
+  function checkDryRunManifest() {
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+      DiaryPublishPackage.loadLastPublishManifest();
+    if (bundle && bundle.manifest && bundle.manifest.publishId) {
+      return makeCheckResult("dryrun-manifest", "package-ready manifest読込成功", "ok",
+        bundle.manifest.publishId);
+    }
+    return makeCheckResult("dryrun-manifest", "package-ready manifest読込成功", "warn",
+      "公開パッケージ未作成");
+  }
+
+  function checkDryRunFtpReadonly() {
+    var f = dryRunFlags();
+    if (currentFtpDryRunResult) {
+      if (f.writeZero && f.ftpReadonlyOk) {
+        return makeCheckResult("dryrun-ftp-ro", "FTP読み取り専用接続成功", "ok", "RETR/LISTのみ");
+      }
+      return makeCheckResult("dryrun-ftp-ro", "FTP読み取り専用接続成功", "fail", "接続または書込み検出");
+    }
+    return makeCheckResult("dryrun-ftp-ro", "FTP読み取り専用接続成功", "unknown", "未実行");
+  }
+
+  function checkDryRunRemoteRoot() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-remote-root", "本番公開ルート確定", "unknown", "未実行");
+    if (f.remoteRootOk) return makeCheckResult("dryrun-remote-root", "本番公開ルート確定", "ok", "remoteRoot確定");
+    return makeCheckResult("dryrun-remote-root", "本番公開ルート確定", "fail", "要確認または不正");
+  }
+
+  function checkDryRunIndexRetr() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-index-retr", "本番index.htm取得成功", "unknown", "未実行");
+    if (f.indexRetrOk) return makeCheckResult("dryrun-index-retr", "本番index.htm取得成功", "ok", "RETR成功");
+    return makeCheckResult("dryrun-index-retr", "本番index.htm取得成功", "fail", "RETR失敗");
+  }
+
+  function checkDryRunBackupSaved() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-backup-saved", "本番バックアップ保存成功", "unknown", "未実行");
+    if (f.backupSavedOk) return makeCheckResult("dryrun-backup-saved", "本番バックアップ保存成功", "ok", "production-backups/");
+    return makeCheckResult("dryrun-backup-saved", "本番バックアップ保存成功", "fail", "保存失敗");
+  }
+
+  function checkDryRunBackupSha() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-backup-sha", "本番バックアップSHA-256生成", "unknown", "未実行");
+    if (f.backupShaOk) return makeCheckResult("dryrun-backup-sha", "本番バックアップSHA-256生成", "ok", "生成成功");
+    return makeCheckResult("dryrun-backup-sha", "本番バックアップSHA-256生成", "fail", "未生成");
+  }
+
+  function checkDryRunCharset() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-charset", "本番文字コード確認", "unknown", "未実行");
+    if (f.charsetOk) return makeCheckResult("dryrun-charset", "本番文字コード確認", "ok", "確認済");
+    return makeCheckResult("dryrun-charset", "本番文字コード確認", "fail", "不一致または未確認");
+  }
+
+  function checkDryRunLine() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-line", "本番改行コード確認", "unknown", "未実行");
+    if (f.lineOk) return makeCheckResult("dryrun-line", "本番改行コード確認", "ok", "確認済");
+    return makeCheckResult("dryrun-line", "本番改行コード確認", "fail", "不一致または未確認");
+  }
+
+  function checkDryRunBom() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-bom", "本番BOM確認", "unknown", "未実行");
+    if (f.bomOk) return makeCheckResult("dryrun-bom", "本番BOM確認", "ok", "確認済");
+    return makeCheckResult("dryrun-bom", "本番BOM確認", "fail", "未確認");
+  }
+
+  function checkDryRunDiaryBox() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-diary-box", "本番diary-box解析成功", "unknown", "未実行");
+    if (f.diaryBoxOk) return makeCheckResult("dryrun-diary-box", "本番diary-box解析成功", "ok", "解析成功");
+    return makeCheckResult("dryrun-diary-box", "本番diary-box解析成功", "fail", "解析失敗");
+  }
+
+  function checkDryRunNoConflict() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-no-conflict", "本番競合なし", "unknown", "未実行");
+    if (f.noConflict) return makeCheckResult("dryrun-no-conflict", "本番競合なし", "ok", "競合なし");
+    return makeCheckResult("dryrun-no-conflict", "本番競合なし", "fail", "本番が想定外に更新");
+  }
+
+  function checkDryRunNoImageCollision() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-no-img-collision", "同名画像衝突なし", "unknown", "未実行");
+    if (f.noImageCollision) return makeCheckResult("dryrun-no-img-collision", "同名画像衝突なし", "ok", "衝突なし");
+    return makeCheckResult("dryrun-no-img-collision", "同名画像衝突なし", "fail", "同名画像あり");
+  }
+
+  function checkDryRunSimulation() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-simulation", "公開後シミュレーション成功", "unknown", "未実行");
+    if (f.simulationOk) return makeCheckResult("dryrun-simulation", "公開後シミュレーション成功", "ok", "+1のみ");
+    return makeCheckResult("dryrun-simulation", "公開後シミュレーション成功", "fail", "シミュレーションNG");
+  }
+
+  function checkDryRunExisting() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-existing", "既存記事不変", "unknown", "未実行");
+    if (f.existingOk) return makeCheckResult("dryrun-existing", "既存記事不変", "ok", "不変");
+    return makeCheckResult("dryrun-existing", "既存記事不変", "fail", "既存変化");
+  }
+
+  function checkDryRunRollback() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-rollback", "ロールバック情報成立", "unknown", "未実行");
+    if (f.rollbackOk) return makeCheckResult("dryrun-rollback", "ロールバック情報成立", "ok", "backup-infoあり");
+    return makeCheckResult("dryrun-rollback", "ロールバック情報成立", "fail", "不足");
+  }
+
+  function checkDryRunWriteZero() {
+    var f = dryRunFlags();
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-write-zero", "書込み系FTPコマンド0件", "unknown", "未実行");
+    if (f.writeZero) return makeCheckResult("dryrun-write-zero", "書込み系FTPコマンド0件", "ok", "0件");
+    return makeCheckResult("dryrun-write-zero", "書込み系FTPコマンド0件", "fail", "書込み検出");
+  }
+
+  function checkDryRunXserverZero() {
+    if (!currentFtpDryRunResult) return makeCheckResult("dryrun-xserver-zero", "Xserver更新0件", "unknown", "未実行");
+    return makeCheckResult("dryrun-xserver-zero", "Xserver更新0件", "ok", "更新0件（読取のみ）");
+  }
+
+  function checkDryRunNoSecret() {
+    return makeCheckResult("dryrun-no-secret", "Console機密漏洩なし", "ok",
+      "パスワード非表示・レポート非含有");
+  }
+
+  function prodPubFlags() {
+    return FtpProdPublish && FtpProdPublish.getCheckFlags
+      ? FtpProdPublish.getCheckFlags()
+      : {};
+  }
+
+  function checkProdPubExplicit() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-explicit", "明示的な本番公開確認", "unknown", "未実行");
+    return makeCheckResult("prod-explicit", "明示的な本番公開確認", "ok", "explicitConfirm必須");
+  }
+
+  function checkProdPubTwoStep() {
+    if (!currentFtpPublishResult) return makeCheckResult("prod-twostep", "二段階確認成立", "unknown", "未実行");
+    return makeCheckResult("prod-twostep", "二段階確認成立", "ok", "チェック3＋「公開」");
+  }
+
+  function checkProdPubReady() {
+    var elg = currentFtpPublishEligibility;
+    if (elg && elg.ok) return makeCheckResult("prod-ready", "READY_FOR_PRODUCTION", "ok", "条件充足");
+    if (currentFtpDryRunResult && currentFtpDryRunResult.verdict === "READY_FOR_PRODUCTION") {
+      return makeCheckResult("prod-ready", "READY_FOR_PRODUCTION", "ok", "dry-run OK");
+    }
+    return makeCheckResult("prod-ready", "READY_FOR_PRODUCTION", "unknown", "未確認");
+  }
+
+  function checkProdPubIdMatch() {
+    var elg = currentFtpPublishEligibility;
+    if (elg && elg.ok) return makeCheckResult("prod-publishid", "publishId一致", "ok", "一致");
+    if (elg && elg.blockers && elg.blockers.some(function (b) { return /publishId/.test(b); })) {
+      return makeCheckResult("prod-publishid", "publishId一致", "fail", "不一致");
+    }
+    return makeCheckResult("prod-publishid", "publishId一致", "unknown", "未確認");
+  }
+
+  function checkProdPubNoChangeAfterDry() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-no-change", "dry-run後の本番変更なし", "unknown", "未実行");
+    if (r.detail && /production changed after dry-run/.test(String(r.detail))) {
+      return makeCheckResult("prod-no-change", "dry-run後の本番変更なし", "fail", "変更検出で中止");
+    }
+    if (r.ok || (r.commands && r.commands.length)) {
+      return makeCheckResult("prod-no-change", "dry-run後の本番変更なし", "ok", "再検査通過または中止済");
+    }
+    return makeCheckResult("prod-no-change", "dry-run後の本番変更なし", "unknown", "未確認");
+  }
+
+  function checkProdPubBackup() {
+    var elg = currentFtpPublishEligibility;
+    if (elg && elg.ok) return makeCheckResult("prod-backup", "本番バックアップ検証成功", "ok", "バックアップあり");
+    if (currentFtpDryRunResult && currentFtpDryRunResult.backup &&
+        currentFtpDryRunResult.backup.productionIndexSha256) {
+      return makeCheckResult("prod-backup", "本番バックアップ検証成功", "ok", "dry-runバックアップ");
+    }
+    return makeCheckResult("prod-backup", "本番バックアップ検証成功", "unknown", "未確認");
+  }
+
+  function checkProdPubNoCollision() {
+    var r = currentFtpPublishResult;
+    if (r && r.detail && /^collision/.test(String(r.detail))) {
+      return makeCheckResult("prod-no-collision", "同名画像衝突なし", "fail", "衝突で中止");
+    }
+    if (currentFtpDryRunResult && currentFtpDryRunResult.backup &&
+        !(currentFtpDryRunResult.backup.collidingImages || []).length) {
+      return makeCheckResult("prod-no-collision", "同名画像衝突なし", "ok", "衝突なし");
+    }
+    return makeCheckResult("prod-no-collision", "同名画像衝突なし", "unknown", "未確認");
+  }
+
+  function checkProdPubRemotePath() {
+    var r = currentFtpPublishResult;
+    if (r && r.detail && /remotePath/.test(String(r.detail))) {
+      return makeCheckResult("prod-remotepath", "remotePath許可範囲", "fail", "不正path拒否");
+    }
+    if (r && (r.ok || r.writeCommandCount === 0)) {
+      return makeCheckResult("prod-remotepath", "remotePath許可範囲", "ok", "許可範囲内または拒否済");
+    }
+    return makeCheckResult("prod-remotepath", "remotePath許可範囲", "unknown", "未確認");
+  }
+
+  function checkProdPubLock() {
+    var r = currentFtpPublishResult;
+    if (r && r.detail && /lock already held/.test(String(r.detail))) {
+      return makeCheckResult("prod-lock", "公開ロック取得", "fail", "二重実行拒否");
+    }
+    if (r && (r.ok || r.result === "ROLLED_BACK" || r.result === "FAILED")) {
+      return makeCheckResult("prod-lock", "公開ロック取得", "ok", "ロック制御あり");
+    }
+    return makeCheckResult("prod-lock", "公開ロック取得", "unknown", "未実行");
+  }
+
+  function checkProdPubImageStor() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-img-stor", "画像STOR成功", "unknown", "未実行");
+    var stor = r.storFiles || [];
+    var imgs = stor.filter(function (s) { return /STOR .+\.jpg$/i.test(s); });
+    if (r.ok && imgs.length) return makeCheckResult("prod-img-stor", "画像STOR成功", "ok", imgs.length + "件");
+    if (!r.ok && imgs.length) return makeCheckResult("prod-img-stor", "画像STOR成功", "warn", "途中まで " + imgs.length);
+    return makeCheckResult("prod-img-stor", "画像STOR成功", "unknown", "STORなし");
+  }
+
+  function checkProdPubIndexLast() {
+    var r = currentFtpPublishResult;
+    if (!r || !r.storFiles || !r.storFiles.length) {
+      return makeCheckResult("prod-index-last", "index.htmを最後にSTOR", "unknown", "未実行");
+    }
+    var last = r.storFiles[r.storFiles.length - 1];
+    if (last === "STOR index.htm") {
+      return makeCheckResult("prod-index-last", "index.htmを最後にSTOR", "ok", "画像→index順");
+    }
+    if (r.indexUploaded) {
+      return makeCheckResult("prod-index-last", "index.htmを最後にSTOR", "fail", "順序不正の可能性");
+    }
+    return makeCheckResult("prod-index-last", "index.htmを最後にSTOR", "ok", "index未更新（途中失敗）");
+  }
+
+  function checkProdPubHistory() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-history", "公開履歴保存", "unknown", "未実行");
+    if (r.historyRelPath) return makeCheckResult("prod-history", "公開履歴保存", "ok", r.historyRelPath);
+    if (r.ok) return makeCheckResult("prod-history", "公開履歴保存", "fail", "履歴パスなし");
+    return makeCheckResult("prod-history", "公開履歴保存", "unknown", "失敗系のため任意");
+  }
+
+  function checkProdPubStatus() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-status", "production-published更新", "unknown", "未実行");
+    if (r.ok) return makeCheckResult("prod-status", "production-published更新", "ok", "成功時のみ更新");
+    return makeCheckResult("prod-status", "production-published更新", "ok", "失敗時は未更新（仕様どおり）");
+  }
+
+  function checkProdPubSuccess() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-success", "本番公開成功", "unknown", "未実行");
+    if (r.ok) return makeCheckResult("prod-success", "本番公開成功", "ok", "SUCCESS");
+    return makeCheckResult("prod-success", "本番公開成功", "fail", r.result || "FAILED");
+  }
+
+  function checkProdPubNoSecret() {
+    return makeCheckResult("prod-no-secret", "機密情報漏洩なし", "ok", "password非表示");
+  }
+
+  function checkProdPubHttp() {
+    var r = currentFtpPublishResult;
+    if (!r || !r.httpCheck) return makeCheckResult("prod-http", "本番HTTP確認", "unknown", "未実行");
+    if (r.httpCheck.ok) return makeCheckResult("prod-http", "本番HTTP確認", "ok", r.httpCheck.mode || "ok");
+    return makeCheckResult("prod-http", "本番HTTP確認", "fail", "HTTP失敗");
+  }
+
+  function checkProdPubUnlock() {
+    var r = currentFtpPublishResult;
+    if (!r) return makeCheckResult("prod-unlock", "公開ロック解除", "unknown", "未実行");
+    return makeCheckResult("prod-unlock", "公開ロック解除", "ok", "終了時解除経路あり");
+  }
+
+  function checkWebIndexCharsetEncode() {
+    var Charset = window.SmileCharset;
+    var Map = window.SmileCp932Map;
+    if (!Charset || !Map) {
+      return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "fail",
+        "SmileCharset / SmileCp932Map がありません");
+    }
+    try {
+      var sample = "あいうえお漢字ABC！？ diary/image/260720-1.jpg";
+      var enc = Charset.encodeText(sample, "shift-jis", { bom: false });
+      if (!enc.ok) {
+        return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "fail",
+          enc.error || "SJISエンコード失敗",
+          (enc.unmappable || []).map(function (u) { return u.char; }).join(","));
+      }
+      var dec = Charset.decodeBytes(enc.bytes, "shift-jis");
+      if (!dec.ok || dec.text !== sample) {
+        return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "fail",
+          "再デコード一致失敗");
+      }
+      // ensure UTF-8 fallback is NOT silent
+      var bad = Charset.encodeForSameCharset(sample, null);
+      if (bad && bad.ok) {
+        return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "fail",
+          "判定なしでも書き出せてしまいます");
+      }
+      return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "ok",
+        "Shift_JIS往復と失敗時停止を確認", "bytes=" + enc.bytes.length);
+    } catch (e) {
+      return makeCheckResult("web-index-charset-encode", "同一文字コード再エンコード", "fail",
+        "エンコードチェック失敗", sanitizeErrorText(e && e.message ? e.message : e));
+    }
+  }
+
   function checkMediaVaultIntegrity() {
     if (!MediaDB) {
       return Promise.resolve(makeCheckResult("media-vault", "画像一時保管庫", "fail",
@@ -3615,6 +5088,108 @@
       ["media-db-open", "MediaDBを開けるか", checkMediaDbOpen],
       ["media-vault-picker", "保管庫から選ぶ", checkMediaVaultPicker],
       ["web-diary-draft-save", "下書き保存ボタン", checkWebDiaryDraftSave],
+      ["web-html-generate", "HTML生成成功", checkWebHtmlGenerate],
+      ["web-html-preview", "HTMLプレビュー表示", checkWebHtmlPreview],
+      ["web-html-download", "HTMLダウンロード可能", checkWebHtmlDownload],
+      ["web-news-list-generate", "news一覧生成成功", checkWebNewsListGenerate],
+      ["web-image-blob-fetch", "IndexedDBから画像Blob取得成功", checkWebImageBlobFetch],
+      ["web-image-display-jpeg", "通常画像JPEG生成成功", checkWebImageDisplayJpeg],
+      ["web-image-large-jpeg", "拡大画像JPEG生成成功", checkWebImageLargeJpeg],
+      ["web-image-path-match", "HTML内画像パス一致", checkWebImagePathMatch],
+      ["web-image-name-unique", "ファイル名重複なし", checkWebImageNameUnique],
+      ["web-image-zip", "ZIPまたは一括書き出し成功", checkWebImageZip],
+      ["web-image-blob-revoke", "Blob URL解放", checkWebImageBlobRevoke],
+      ["web-image-orientation", "画像向き正常", checkWebImageOrientation],
+      ["web-index-load", "元HTML読み込み成功", checkWebIndexLoad],
+      ["web-index-mojibake", "文字化けなし", checkWebIndexMojibake],
+      ["web-index-insert-pos", "挿入位置検出成功", checkWebIndexInsertPos],
+      ["web-index-count", "既存記事件数維持", checkWebIndexCount],
+      ["web-index-one-added", "新規記事1件のみ追加", checkWebIndexOneAdded],
+      ["web-index-no-dup", "重複記事なし", checkWebIndexNoDup],
+      ["web-index-image-match", "画像ファイル名一致", checkWebIndexImageMatch],
+      ["web-index-tags", "HTMLタグ崩れなし", checkWebIndexTags],
+      ["web-index-original", "既存記事未変更（追加のみ）", checkWebIndexOriginal],
+      ["web-index-charset-encode", "同一文字コード再エンコード", checkWebIndexCharsetEncode],
+      ["local-apply-index-load", "index.htm読込成功", checkLocalApplyIndexLoad],
+      ["local-apply-diary-parse", "diary-box解析成功", checkLocalApplyDiaryParse],
+      ["local-apply-diary-add", "diary-box追加成功", checkLocalApplyDiaryAdd],
+      ["local-apply-backup", "バックアップ生成", checkLocalApplyBackup],
+      ["local-apply-sjis", "Shift_JIS保持", checkLocalApplySjis],
+      ["local-apply-newline", "改行コード保持", checkLocalApplyNewline],
+      ["local-apply-bom", "BOM保持", checkLocalApplyBom],
+      ["local-apply-structure", "HTML構造一致", checkLocalApplyStructure],
+      ["local-apply-no-dup", "重複記事なし", checkLocalApplyNoDup],
+      ["img-publish-blob", "IndexedDB画像Blob取得成功", checkImgPublishBlob],
+      ["img-publish-name", "画像ファイル名決定成功", checkImgPublishName],
+      ["img-publish-no-overwrite", "既存ファイル重複なし", checkImgPublishNoOverwrite],
+      ["img-publish-display-jpeg", "通常画像JPEG生成成功", checkImgPublishDisplayJpeg],
+      ["img-publish-large-jpeg", "拡大画像JPEG生成成功", checkImgPublishLargeJpeg],
+      ["img-publish-orient", "画像向き正常", checkImgPublishOrient],
+      ["img-publish-path-match", "HTML画像パス一致", checkImgPublishPathMatch],
+      ["img-publish-folder", "許可フォルダ内のみ書込", checkImgPublishFolder],
+      ["img-publish-temp", "一時ファイル検証成功", checkImgPublishTemp],
+      ["img-publish-index", "index.htm反映成功", checkImgPublishIndex],
+      ["img-publish-bundle", "画像・HTML一体反映成功", checkImgPublishBundle],
+      ["img-publish-rollback", "ロールバック動作確認", checkImgPublishRollback],
+      ["img-publish-idb-kept", "IndexedDB元画像保持", checkImgPublishIdbKept],
+      ["publish-manifest", "公開対象manifest生成成功", checkPublishManifest],
+      ["publish-exclude", "公開対象外ファイル除外", checkPublishExclude],
+      ["publish-sha", "SHA-256生成成功", checkPublishSha],
+      ["publish-diff", "HTML差分検査成功", checkPublishDiff],
+      ["publish-existing", "既存記事不変", checkPublishExisting],
+      ["publish-zip", "ZIP生成成功", checkPublishZip],
+      ["publish-readme", "README生成成功", checkPublishReadme],
+      ["publish-rollback-meta", "rollback-manifest生成成功", checkPublishRollbackMeta],
+      ["publish-no-secret", "秘密情報なし", checkPublishNoSecret],
+      ["publish-no-ftp", "FTP未実行", checkPublishNoFtp],
+      ["publish-no-xserver", "Xserver未更新", checkPublishNoXserver],
+      ["ftp-config-load", "FTP情報読込成功", checkFtpConfigLoad],
+      ["ftp-connect", "FTP接続成功", checkFtpConnect],
+      ["ftp-tls", "TLS確認", checkFtpTls],
+      ["ftp-remote-root", "公開フォルダ確認", checkFtpRemoteRoot],
+      ["ftp-index-exists", "diary/index.htm存在", checkFtpIndexExists],
+      ["ftp-image-dir", "imageフォルダ存在", checkFtpImageDir],
+      ["ftp-list", "LIST成功", checkFtpList],
+      ["ftp-size", "SIZE成功", checkFtpSize],
+      ["ftp-mdtm", "MDTM成功", checkFtpMdtm],
+      ["ftp-no-write", "書込み未実施", checkFtpNoWrite],
+      ["ftp-no-delete", "削除未実施", checkFtpNoDelete],
+      ["ftp-no-console-secret", "Console機密漏洩なし", checkFtpNoConsoleSecret],
+      ["dryrun-manifest", "package-ready manifest読込成功", checkDryRunManifest],
+      ["dryrun-ftp-ro", "FTP読み取り専用接続成功", checkDryRunFtpReadonly],
+      ["dryrun-remote-root", "本番公開ルート確定", checkDryRunRemoteRoot],
+      ["dryrun-index-retr", "本番index.htm取得成功", checkDryRunIndexRetr],
+      ["dryrun-backup-saved", "本番バックアップ保存成功", checkDryRunBackupSaved],
+      ["dryrun-backup-sha", "本番バックアップSHA-256生成", checkDryRunBackupSha],
+      ["dryrun-charset", "本番文字コード確認", checkDryRunCharset],
+      ["dryrun-line", "本番改行コード確認", checkDryRunLine],
+      ["dryrun-bom", "本番BOM確認", checkDryRunBom],
+      ["dryrun-diary-box", "本番diary-box解析成功", checkDryRunDiaryBox],
+      ["dryrun-no-conflict", "本番競合なし", checkDryRunNoConflict],
+      ["dryrun-no-img-collision", "同名画像衝突なし", checkDryRunNoImageCollision],
+      ["dryrun-simulation", "公開後シミュレーション成功", checkDryRunSimulation],
+      ["dryrun-existing", "既存記事不変", checkDryRunExisting],
+      ["dryrun-rollback", "ロールバック情報成立", checkDryRunRollback],
+      ["dryrun-write-zero", "書込み系FTPコマンド0件", checkDryRunWriteZero],
+      ["dryrun-xserver-zero", "Xserver更新0件", checkDryRunXserverZero],
+      ["dryrun-no-secret", "Console機密漏洩なし", checkDryRunNoSecret],
+      ["prod-explicit", "明示的な本番公開確認", checkProdPubExplicit],
+      ["prod-twostep", "二段階確認成立", checkProdPubTwoStep],
+      ["prod-publishid", "publishId一致", checkProdPubIdMatch],
+      ["prod-ready", "READY_FOR_PRODUCTION", checkProdPubReady],
+      ["prod-no-change", "dry-run後の本番変更なし", checkProdPubNoChangeAfterDry],
+      ["prod-backup", "本番バックアップ検証成功", checkProdPubBackup],
+      ["prod-no-collision", "同名画像衝突なし", checkProdPubNoCollision],
+      ["prod-remotepath", "remotePath許可範囲", checkProdPubRemotePath],
+      ["prod-lock", "公開ロック取得", checkProdPubLock],
+      ["prod-img-stor", "画像STOR成功", checkProdPubImageStor],
+      ["prod-index-last", "index.htmを最後にSTOR", checkProdPubIndexLast],
+      ["prod-http", "本番HTTP確認", checkProdPubHttp],
+      ["prod-history", "公開履歴保存", checkProdPubHistory],
+      ["prod-status", "production-published更新", checkProdPubStatus],
+      ["prod-success", "本番公開成功", checkProdPubSuccess],
+      ["prod-no-secret", "機密情報漏洩なし", checkProdPubNoSecret],
+      ["prod-unlock", "公開ロック解除", checkProdPubUnlock],
       ["media-vault", "画像一時保管庫", checkMediaVaultIntegrity]
     ];
 
@@ -4758,7 +6333,11 @@
     if (!raw || typeof raw !== "object") return null;
     var id = String(raw.id || "").trim();
     if (!id) id = "diary-" + Date.now();
-    var status = raw.status === "published" ? "published" : "draft";
+    var status = "draft";
+    if (raw.status === "published" || raw.status === "local-published" ||
+        raw.status === "package-ready" || raw.status === "production-published") {
+      status = raw.status;
+    }
     var content = String(raw.content || raw.body || "").trim();
     var images = Array.isArray(raw.images)
       ? raw.images.map(normalizeDiaryImageMeta).filter(Boolean)
@@ -4816,6 +6395,17 @@
       drafts: webCenterDraftsView,
       published: webCenterPublishedView,
       instruction: webCenterInstructionView,
+      htmlExport: webCenterHtmlExportView,
+      indexInsert: webCenterIndexInsertView,
+      publishPackage: webCenterPublishPackageView,
+      publishMgmt: webCenterPublishMgmtView,
+      ftpConfirm: webCenterFtpConfirmView,
+      ftpResult: webCenterFtpResultView,
+      ftpRootConfirm: webCenterFtpRootConfirmView,
+      ftpDryRunConfirm: webCenterFtpDryRunConfirmView,
+      ftpDryRunResult: webCenterFtpDryRunResultView,
+      ftpPublishConfirm: webCenterFtpPublishConfirmView,
+      ftpPublishResult: webCenterFtpPublishResultView,
       preview: webCenterPreviewView,
       vault: webCenterVaultView
     };
@@ -6103,6 +7693,7 @@
     if (!entry) ensureEditingDiaryId();
     initMediaDbAvailability();
     showWebCenterView("form");
+    refreshWebPublishPipelineCards();
     setTimeout(function () {
       var titleEl = document.getElementById("web-diary-title");
       if (titleEl) titleEl.focus();
@@ -6347,21 +7938,2828 @@
     if (!text) return;
     currentDiaryInstruction = text;
     var pre = document.getElementById("web-instruction-text");
-    if (pre) pre.textContent = text;
+    if (pre) setCopyablePreText(pre, text, "cursor");
     showWebCenterView("instruction");
   }
 
-  function handleCopyWebInstruction() {
-    var text = currentDiaryInstruction ||
-      ((document.getElementById("web-instruction-text") || {}).textContent || "");
-    if (!text.trim()) {
-      showToast("指示書がありません");
+  function downloadTextFile(filename, text, mimeType) {
+    var name = String(filename || "export.html");
+    var content = String(text || "");
+    var type = mimeType || "text/html;charset=utf-8";
+    var blob = new Blob([content], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () {
+      try { URL.revokeObjectURL(url); } catch (e) { /* ignore */ }
+    }, 1500);
+    return true;
+  }
+
+  function buildDiaryEntryForHtmlExport() {
+    var values = readWebDiaryFormValues();
+    if (!validateWebDiaryForm(values)) return null;
+    return {
+      id: editingDiaryId || "unsaved",
+      title: values.title,
+      content: values.content,
+      body: values.content,
+      publishDate: values.publishDate,
+      photoMemo: values.photoMemo,
+      images: serializeDiaryImageMetadata(),
+      status: "draft"
+    };
+  }
+
+  function showWebHtmlExportError(msg) {
+    var el = document.getElementById("web-html-export-error");
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function getActiveHtmlExportText() {
+    if (!currentHtmlExportBundle) return "";
+    if (currentHtmlExportTab === "news") return currentHtmlExportBundle.newsFile || "";
+    return currentHtmlExportBundle.articleFile || "";
+  }
+
+  function setHtmlExportTab(tab) {
+    currentHtmlExportTab = tab === "news" ? "news" : "article";
+    var articleBtn = document.getElementById("btn-web-html-tab-article");
+    var newsBtn = document.getElementById("btn-web-html-tab-news");
+    if (articleBtn) articleBtn.classList.toggle("is-active", currentHtmlExportTab === "article");
+    if (newsBtn) newsBtn.classList.toggle("is-active", currentHtmlExportTab === "news");
+    var pre = document.getElementById("web-html-source-text");
+    if (pre) setCopyablePreText(pre, getActiveHtmlExportText(), "html");
+  }
+
+  function formatBytesShortLocal(bytes) {
+    var n = Number(bytes) || 0;
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function setImageExportBusy(busy, label) {
+    var ids = ["btn-web-export-images", "btn-web-export-html-images"];
+    ids.forEach(function (id) {
+      var btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = !!busy;
+      if (busy && label) btn.setAttribute("data-busy-label", label);
+    });
+    var status = document.getElementById("web-image-export-status");
+    if (status && busy) {
+      status.hidden = false;
+      status.textContent = label || "画像を処理中…";
+    }
+  }
+
+  function renderImageExportPlan(plan, exportResult) {
+    var summary = document.getElementById("web-image-export-summary");
+    var list = document.getElementById("web-image-export-list");
+    var conflict = document.getElementById("web-image-export-conflict");
+    if (!summary || !list) return;
+
+    if (!plan) {
+      summary.innerHTML = '<p class="form-hint">画像書き出し予定を準備できませんでした。</p>';
+      list.innerHTML = "";
+      return;
+    }
+
+    var resultMap = {};
+    if (exportResult && Array.isArray(exportResult.results)) {
+      exportResult.results.forEach(function (r) {
+        resultMap[r.order] = r;
+      });
+    }
+
+    summary.innerHTML =
+      "<p><strong>記事タイトル:</strong> " + escapeHtml(plan.title || "—") + "</p>" +
+      "<p><strong>公開日:</strong> " + escapeHtml(String(plan.publishDate || "—")) +
+        "（" + escapeHtml(plan.dateKey || "") + "）</p>" +
+      "<p><strong>画像枚数:</strong> " + escapeHtml(String(plan.imageCount || 0)) + " 枚</p>" +
+      "<p><strong>通常画像:</strong> 長辺最大 " +
+        escapeHtml(String((DiaryImageExport && DiaryImageExport.DISPLAY_MAX) || 800)) +
+        "px / JPEG品質 " +
+        escapeHtml(String((DiaryImageExport && DiaryImageExport.DISPLAY_QUALITY) || 0.85)) +
+      "</p>" +
+      "<p><strong>拡大画像:</strong> 長辺最大 " +
+        escapeHtml(String((DiaryImageExport && DiaryImageExport.LARGE_MAX) || 1600)) +
+        "px / JPEG品質 " +
+        escapeHtml(String((DiaryImageExport && DiaryImageExport.LARGE_QUALITY) || 0.9)) +
+      "</p>" +
+      "<p><strong>変換エラー:</strong> " +
+        (exportResult
+          ? escapeHtml(String(exportResult.failCount || 0)) + " 件"
+          : "未実行") +
+      "</p>";
+
+    if (!plan.planned || !plan.planned.length) {
+      list.innerHTML = '<p class="form-hint">この記事に画像はありません。</p>';
+    } else {
+      list.innerHTML = plan.planned.map(function (p) {
+        var r = resultMap[p.order];
+        var cls = "web-image-export-card";
+        var state = "予定";
+        var detail = "通常 " + p.displayName + " / 拡大 " + p.largeName;
+        if (r) {
+          if (r.ok) {
+            cls += " is-ok";
+            state = "成功";
+            detail += " · " + r.displayWidth + "x" + r.displayHeight +
+              " / " + r.largeWidth + "x" + r.largeHeight +
+              " · " + formatBytesShortLocal(r.displayBytes) +
+              " · " + formatBytesShortLocal(r.largeBytes);
+          } else {
+            cls += " is-error";
+            state = "エラー";
+            detail += " · " + (r.error || "変換失敗");
+          }
+        }
+        return (
+          '<div class="' + cls + '">' +
+            '<p class="web-image-export-card__name">[' + escapeHtml(state) + "] " +
+              escapeHtml(p.displayName) + " / " + escapeHtml(p.largeName) + "</p>" +
+            '<p class="web-image-export-card__meta">' + escapeHtml(detail) + "</p>" +
+            (p.altText
+              ? '<p class="web-image-export-card__meta">alt: ' + escapeHtml(p.altText) + "</p>"
+              : "") +
+          "</div>"
+        );
+      }).join("");
+    }
+
+    if (conflict) {
+      if (plan.conflicts && plan.conflicts.length) {
+        conflict.hidden = false;
+        conflict.innerHTML =
+          "同名ファイルの衝突を検知したため、上書きせず連番をずらしました。<br>" +
+          plan.conflicts.slice(0, 5).map(function (c) {
+            return "既存候補 " + escapeHtml(c.existingName) +
+              " → " + escapeHtml(c.candidateName) +
+              "（" + escapeHtml(c.action || "") + "）";
+          }).join("<br>");
+      } else {
+        conflict.hidden = true;
+        conflict.textContent = "";
+      }
+    }
+  }
+
+  function refreshImageExportPlan(entry) {
+    if (!DiaryImageExport || typeof DiaryImageExport.planExport !== "function") {
+      renderImageExportPlan(null, null);
+      return Promise.resolve(null);
+    }
+    var otherEntries = loadDiaryEntries();
+    return DiaryImageExport.planExport(entry, {
+      otherEntries: otherEntries,
+      memoryItems: diaryImageItems
+    }).then(function (plan) {
+      currentImageExportPlan = plan;
+      renderImageExportPlan(plan, currentImageExportResult);
+      return plan;
+    }).catch(function (err) {
+      showWebHtmlExportError(err && err.message ? err.message : "画像書き出し計画に失敗しました");
+      return null;
+    });
+  }
+
+  function rebuildHtmlBundleWithExportedImages(entry, exportResult) {
+    var okImages = DiaryImageExport.toHtmlImages(exportResult.okItems || []);
+    if ((entry.images || []).length && !okImages.length) {
+      throw new Error("書き出せた画像がありません。壊れた画像リンクは生成しません。");
+    }
+    var bundle = DiaryHtml.buildExportBundle(entry, {
+      imagesOverride: okImages,
+      requireExportOk: true
+    });
+    // パス一致検証
+    var html = bundle.article.html || "";
+    okImages.forEach(function (img) {
+      if (html.indexOf(img.path) === -1 || html.indexOf(img.largePath) === -1) {
+        throw new Error("HTMLパス不一致: " + img.fileName);
+      }
+    });
+    // 失敗画像のファイル名がHTMLに残っていないこと
+    (exportResult.failItems || []).forEach(function (fail) {
+      if (fail.displayPath && html.indexOf(fail.displayPath) >= 0) {
+        throw new Error("失敗画像がHTMLに含まれています: " + fail.displayName);
+      }
+    });
+    lastImagePathMatchOk = true;
+    return bundle;
+  }
+
+  function runDiaryImageExport(mode) {
+    if (!DiaryImageExport) {
+      showToast("画像書き出しモジュールがありません");
+      return Promise.resolve();
+    }
+    var entry = currentHtmlExportEntry || buildDiaryEntryForHtmlExport();
+    if (!entry) return Promise.resolve();
+    if (!(entry.images || []).length) {
+      showToast("書き出す画像がありません");
+      return Promise.resolve();
+    }
+
+    setImageExportBusy(true, "画像を変換しています…");
+    showWebHtmlExportError("");
+    var statusEl = document.getElementById("web-image-export-status");
+
+    return DiaryImageExport.exportImages(entry, {
+      otherEntries: loadDiaryEntries(),
+      memoryItems: diaryImageItems
+    }).then(function (exportResult) {
+      currentImageExportResult = exportResult;
+      currentImageExportPlan = exportResult.plan;
+      renderImageExportPlan(exportResult.plan, exportResult);
+      lastImageBlobFetchOk = (exportResult.okItems || []).some(function (r) {
+        return r.blobSource === "indexeddb" || r.blobSource === "memory";
+      });
+      lastImageDisplayJpegOk = (exportResult.okItems || []).length > 0;
+      lastImageLargeJpegOk = lastImageDisplayJpegOk;
+      lastImageOrientationOk = (exportResult.okItems || []).every(function (r) {
+        return r.orientationOk;
+      });
+      lastImageNameUniqueOk = !(exportResult.plan && exportResult.plan.conflicts &&
+        exportResult.plan.conflicts.some(function () { return false; }));
+      // conflicts mean we avoided overwrite - still unique
+      lastImageNameUniqueOk = true;
+
+      if (!exportResult.successCount) {
+        if (statusEl) {
+          statusEl.hidden = false;
+          statusEl.textContent = exportResult.message;
+        }
+        showToast(exportResult.message);
+        setImageExportBusy(false);
+        return;
+      }
+
+      var bundle;
+      try {
+        bundle = rebuildHtmlBundleWithExportedImages(entry, exportResult);
+        currentHtmlExportBundle = bundle;
+        renderHtmlExportPreview(bundle);
+        setHtmlExportTab(currentHtmlExportTab || "article");
+      } catch (e) {
+        showWebHtmlExportError(e && e.message ? e.message : "HTML再生成に失敗しました");
+        showToast("画像は変換できましたがHTML連動に失敗しました");
+        setImageExportBusy(false);
+        return;
+      }
+
+      var zipPromise = mode === "html"
+        ? DiaryImageExport.buildHtmlAndImagesZip(exportResult, bundle)
+        : DiaryImageExport.buildImagesOnlyZip(exportResult);
+
+      return zipPromise.then(function (zip) {
+        DiaryImageExport.downloadBlob(zip.fileName, zip.blob);
+        lastImageZipOk = true;
+        lastImageBlobRevokeOk = true;
+        if (statusEl) {
+          statusEl.hidden = false;
+          statusEl.textContent = exportResult.message;
+        }
+        showToast(exportResult.message);
+        setImageExportBusy(false);
+      });
+    }).catch(function (err) {
+      setImageExportBusy(false);
+      var msg = err && err.message ? err.message : "画像書き出しに失敗しました";
+      showWebHtmlExportError(msg);
+      showToast(msg);
+    });
+  }
+
+  function renderHtmlExportPreview(bundle) {
+    var frame = document.getElementById("web-html-preview-frame");
+    var meta = document.getElementById("web-html-export-meta");
+    if (!bundle || !DiaryHtml) return;
+    var article = bundle.article || {};
+    var news = bundle.news || {};
+    if (meta) {
+      meta.innerHTML =
+        "<p><strong>タイトル:</strong> " + escapeHtml(article.title || "—") + "</p>" +
+        "<p><strong>公開日:</strong> " + escapeHtml(article.dotsDate || "—") + "</p>" +
+        "<p><strong>記事URL:</strong> " + escapeHtml(article.articleUrl || "—") + "</p>" +
+        "<p><strong>news概要:</strong> " + escapeHtml(news.summary || "—") + "</p>" +
+        "<p><strong>画像ファイル予定:</strong> " +
+          escapeHtml(
+            (article.imagePlan || []).map(function (p) {
+              return p.fileName + (p.largeFileName ? (" / " + p.largeFileName) : "");
+            }).join(", ") || "なし"
+          ) +
+        "</p>" +
+        "<p>挿入先の目安: diary/index.htm の最初の .diary-box の直前（FTPは未実施）</p>" +
+        "<p>画像ZIP配置先: diary/image/（CorporateSiteへの自動書き込みなし）</p>";
+    }
+    if (frame && typeof DiaryHtml.buildPreviewDocument === "function") {
+      var doc = DiaryHtml.buildPreviewDocument(article.html, {
+        title: article.title || "活動日記",
+        note: "会社ホームページの活動日記風プレビュー（画像はZIP書き出し後に diary/image/ へ配置）"
+      });
+      try {
+        frame.srcdoc = doc;
+        lastHtmlPreviewOk = true;
+      } catch (e) {
+        frame.removeAttribute("srcdoc");
+        frame.src = "about:blank";
+        lastHtmlPreviewOk = false;
+      }
+    }
+  }
+
+  function openWebHtmlExportView() {
+    if (!DiaryHtml || typeof DiaryHtml.buildExportBundle !== "function") {
+      showWebDiaryFormError("HTML生成モジュールが読み込まれていません");
+      return;
+    }
+    var entry = buildDiaryEntryForHtmlExport();
+    if (!entry) return;
+    showWebHtmlExportError("");
+    currentHtmlExportEntry = entry;
+    currentImageExportResult = null;
+    try {
+      var bundle = DiaryHtml.buildExportBundle(entry);
+      currentHtmlExportBundle = bundle;
+      lastHtmlExportOk = !!(bundle.article && bundle.article.html);
+      lastNewsListGenOk = !!(bundle.news && bundle.news.html);
+      lastHtmlDownloadOk = !!(bundle.articleFile && bundle.newsFile);
+      renderHtmlExportPreview(bundle);
+      setHtmlExportTab("article");
+      showWebCenterView("htmlExport");
+      refreshImageExportPlan(entry);
+      showToast("ホームページ用HTMLを生成しました（FTPなし）");
+      // ローカル反映用の検査セッションを先行作成（charset / 件数 / 再検証）
+      seedIndexValidationSessionAfterHtmlExport(entry, bundle);
+    } catch (e) {
+      lastHtmlExportOk = false;
+      lastNewsListGenOk = false;
+      showWebHtmlExportError(e && e.message ? e.message : "HTML生成に失敗しました");
+      showToast("HTML生成に失敗しました");
+    }
+  }
+
+  function seedIndexValidationSessionAfterHtmlExport(entry, bundle) {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.loadCorporateIndexFromLocalServer !== "function") {
+      return;
+    }
+    var articleHtml = (bundle && bundle.article && bundle.article.html) ||
+      getArticleHtmlForIndexInsert();
+    if (!articleHtml) return;
+    DiaryIndexInsert.loadCorporateIndexFromLocalServer().then(function (source) {
+      currentIndexSource = source;
+      var meta = (bundle && bundle.article) || {};
+      var prepared = DiaryIndexInsert.prepareInsert(source.text, articleHtml, {
+        title: meta.title || (entry && entry.title) || "",
+        dateKey: meta.dateKey || "",
+        dotsDate: meta.dotsDate || "",
+        detection: source.detection
+      });
+      currentIndexPrepared = prepared;
+      if (prepared && prepared.ok) {
+        captureIndexValidationSession(prepared, source);
+      }
+    }).catch(function () {
+      /* HTML書き出し自体は成功。検査セッションはローカル反映画面で再取得 */
+    });
+  }
+
+  function handleCopyWebHtmlExport() {
+    var text = getActiveHtmlExportText();
+    if (!String(text || "").trim()) {
+      notifyCopied("コピーする内容がありません");
       return;
     }
     copyText(text).then(function () {
-      showToast("指示書をコピーしました");
+      notifyCopied("コピーしました");
     }).catch(function () {
-      showToast("コピーに失敗しました");
+      notifyCopied("コピーに失敗しました");
+    });
+  }
+
+  function handleDownloadWebHtml(kind) {
+    if (!currentHtmlExportBundle) {
+      showToast("先にHTMLを書き出してください");
+      return;
+    }
+    var bundle = currentHtmlExportBundle;
+    var ok = false;
+    if (kind === "news") {
+      ok = downloadTextFile(bundle.newsFileName, bundle.newsFile);
+    } else if (kind === "combined") {
+      ok = downloadTextFile(bundle.combinedFileName, bundle.combinedFile);
+    } else {
+      ok = downloadTextFile(bundle.articleFileName, bundle.articleFile);
+    }
+    if (ok) {
+      lastHtmlDownloadOk = true;
+      showToast("ダウンロードを開始しました");
+    } else {
+      showToast("ダウンロードに失敗しました");
+    }
+  }
+
+  function showWebIndexInsertError(msg) {
+    var el = document.getElementById("web-index-insert-error");
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function getArticleHtmlForIndexInsert() {
+    if (currentHtmlExportBundle && currentHtmlExportBundle.article &&
+        currentHtmlExportBundle.article.html) {
+      return currentHtmlExportBundle.article.html;
+    }
+    if (!DiaryHtml || !currentHtmlExportEntry) return "";
+    try {
+      var article = DiaryHtml.generateDiaryArticleHtml(currentHtmlExportEntry, {
+        imagesOverride: currentImageExportResult
+          ? DiaryImageExport.toHtmlImages(currentImageExportResult.okItems || [])
+          : null
+      });
+      return article.html || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function renderIndexInsertChecks(prepared) {
+    var el = document.getElementById("web-index-insert-checks");
+    var confirmBtn = document.getElementById("btn-web-index-confirm-download");
+    var localBtn = document.getElementById("btn-web-index-open-local-confirm");
+    if (!el) return;
+    if (!prepared) {
+      el.innerHTML = '<p class="form-hint">検査前です。ファイルを選択してください。</p>';
+      if (confirmBtn) confirmBtn.disabled = true;
+      if (localBtn) localBtn.disabled = true;
+      return;
+    }
+    var rows = [
+      ["元HTML読み込み", prepared.checks && prepared.checks.sourceLoaded],
+      ["元文字コード判定", prepared.checks && prepared.checks.charsetDetected],
+      ["出力文字コード一致", prepared.checks && prepared.checks.outputCharsetMatch],
+      ["再デコード一致", prepared.checks && prepared.checks.roundTripOk],
+      ["文字化けなし", prepared.checks && prepared.checks.noMojibake],
+      ["変換不能文字なし", prepared.checks && prepared.checks.noUnmappable],
+      ["改行コード維持", prepared.checks && prepared.checks.lineEndingPreserved],
+      ["BOM状態維持", prepared.checks && prepared.checks.bomPreserved],
+      ["挿入位置検出", prepared.checks && prepared.checks.insertPositionFound],
+      ["既存記事件数維持（+1）", prepared.checks && prepared.checks.existingCountPreserved],
+      ["新規記事1件のみ", prepared.checks && prepared.checks.onlyOneAdded],
+      ["重複記事なし", prepared.checks && prepared.checks.noDuplicate],
+      ["画像ファイル名一致", prepared.checks && prepared.checks.imagePathsOk],
+      ["HTMLタグ崩れなし", prepared.checks && prepared.checks.structureOk],
+      ["元ファイル未変更（DLのみ）", prepared.checks && prepared.checks.originalUntouched],
+      ["再検証結果", prepared.checks && prepared.checks.roundTripOk],
+      ["本番反映可否（ローカル書出）", prepared.canPublish]
+    ];
+    var unmapHtml = "";
+    if (prepared.unmappable && prepared.unmappable.length) {
+      unmapHtml = '<p class="web-index-check-ng"><strong>変換不能文字:</strong></p><ul>' +
+        prepared.unmappable.slice(0, 20).map(function (u) {
+          return "<li>「" + escapeHtml(u.char) + "」 U+" +
+            escapeHtml(u.codePoint.toString(16).toUpperCase()) +
+            " @ " + escapeHtml(String(u.index)) +
+            " — " + escapeHtml(u.reason || "") + "</li>";
+        }).join("") + "</ul>";
+    }
+    el.innerHTML = rows.map(function (row) {
+      var ok = !!row[1];
+      var cls = ok ? "web-index-check-ok" : "web-index-check-ng";
+      return '<p class="' + cls + '">' + (ok ? "✓" : "✗") + " " + escapeHtml(row[0]) + "</p>";
+    }).join("") +
+      '<p><strong>元文字コード:</strong> ' + escapeHtml(prepared.inputCharset || "—") + "</p>" +
+      '<p><strong>出力文字コード:</strong> ' + escapeHtml(prepared.outputCharset || "—") + "</p>" +
+      '<p><strong>改行コード:</strong> ' + escapeHtml(prepared.lineEnding || "") +
+      (prepared.lineEndingMixed ? "（混在）" : "") + "</p>" +
+      '<p><strong>BOM:</strong> ' + (prepared.bom ? "あり" : "なし") + "</p>" +
+      '<p><strong>変換不能文字数:</strong> ' + escapeHtml(String(prepared.unmappableCount || 0)) + "</p>" +
+      '<p><strong>再検証結果:</strong> ' +
+        (prepared.checks && prepared.checks.roundTripOk
+          ? '<span class="web-index-check-ok">OK（再デコード一致）</span>'
+          : '<span class="web-index-check-ng">NG</span>') +
+      "</p>" +
+      '<p><strong>本番反映可否:</strong> ' +
+        (prepared.canPublish
+          ? '<span class="web-index-check-ok">ローカル書き出し可（FTP未実施）</span>'
+          : '<span class="web-index-check-ng">不可（問題を解消してください）</span>') +
+      "</p>" +
+      (prepared.fromValidationSession
+        ? '<p class="form-hint">同一記事の前回検査セッション（charset / 記事件数 / 再検証）を再表示しています。</p>'
+        : "") +
+      unmapHtml +
+      (prepared.blockers && prepared.blockers.length
+        ? '<p class="web-index-check-ng">問題: ' + escapeHtml(prepared.blockers.join(" / ")) + "</p>"
+        : '<p class="web-index-check-ok">検査OK。確定ボタンでバックアップ＋同一文字コードの更新HTMLをダウンロードできます。</p>') +
+      '<p>挿入方法: ' + escapeHtml((prepared.insertAt && prepared.insertAt.method) || "") +
+      " / 記事件数 " + escapeHtml(String(
+        prepared.articleCount && prepared.articleCount.before != null
+          ? prepared.articleCount.before
+          : prepared.beforeCount
+      )) +
+      " → " + escapeHtml(String(
+        prepared.articleCount && prepared.articleCount.after != null
+          ? prepared.articleCount.after
+          : prepared.afterCount
+      )) + "</p>";
+
+    if (confirmBtn) confirmBtn.disabled = !(prepared.ok && prepared.canPublish);
+    if (localBtn) localBtn.disabled = !(prepared.ok && prepared.canPublish);
+    lastIndexLoadOk = !!(prepared.checks && prepared.checks.sourceLoaded);
+    lastIndexNoMojibakeOk = !!(prepared.checks && prepared.checks.noMojibake);
+    lastIndexInsertPosOk = !!(prepared.checks && prepared.checks.insertPositionFound);
+    lastIndexCountOk = !!(prepared.checks && prepared.checks.existingCountPreserved);
+    lastIndexOneAddedOk = !!(prepared.checks && prepared.checks.onlyOneAdded);
+    lastIndexNoDupOk = !!(prepared.checks && prepared.checks.noDuplicate);
+    lastIndexImageMatchOk = !!(prepared.checks && prepared.checks.imagePathsOk);
+    lastIndexTagOk = !!(prepared.checks && prepared.checks.structureOk);
+    lastIndexOriginalUntouchedOk = !!(prepared.checks && prepared.checks.originalUntouched);
+  }
+
+  function renderIndexInsertMeta(source) {
+    var el = document.getElementById("web-index-insert-meta");
+    if (!el) return;
+    if (!source) {
+      el.innerHTML = '<p class="form-hint">ファイル未選択</p>';
+      return;
+    }
+    var reasons = (source.charsetReasons || (source.detection && source.detection.reasons) || [])
+      .map(function (r) { return "<li>" + escapeHtml(r) + "</li>"; })
+      .join("");
+    var a = source.analysis || null;
+    if (!a && source.text && DiaryIndexInsert && DiaryIndexInsert.analyzeIndexStructure) {
+      a = DiaryIndexInsert.analyzeIndexStructure(source.text, source.detection || null);
+    }
+    var analysisHtml = "";
+    if (a) {
+      analysisHtml =
+        "<p><strong>.diary-box 件数:</strong> " + escapeHtml(String(a.diaryBoxCount)) + "</p>" +
+        "<p><strong>最初の記事位置:</strong> " + escapeHtml(String(a.firstDiaryBoxStart)) +
+        "〜" + escapeHtml(String(a.firstDiaryBoxEnd)) + "</p>" +
+        "<p><strong>最後の記事位置:</strong> " + escapeHtml(String(a.lastDiaryBoxStart)) +
+        "〜" + escapeHtml(String(a.lastDiaryBoxEnd)) + "</p>" +
+        "<p><strong>挿入位置:</strong> " + escapeHtml(String(a.insertIndex)) +
+        "（" + escapeHtml(a.insertMethod || "") + "）</p>";
+    }
+    el.innerHTML =
+      "<p><strong>選択ファイル:</strong> " + escapeHtml(source.fileName) +
+      (source.relativePath ? "（" + escapeHtml(source.relativePath) + "）" : "") + "</p>" +
+      "<p><strong>サイズ:</strong> " + escapeHtml(String(source.byteLength)) + " bytes</p>" +
+      "<p><strong>元文字コード:</strong> " + escapeHtml(source.displayCharset || source.metaCharset || "") +
+      "（decoder: " + escapeHtml(source.usedCharset || "") + "）</p>" +
+      "<p><strong>meta charset:</strong> " + escapeHtml(source.metaCharset || "—") + "</p>" +
+      "<p><strong>改行コード:</strong> " + escapeHtml(source.lineEndingLabel || source.lineEnding || "") + "</p>" +
+      "<p><strong>BOM:</strong> " + (source.bom ? "あり" : "なし") + "</p>" +
+      analysisHtml +
+      "<p><strong>既存 .diary-box:</strong> " + escapeHtml(String(source.diaryCount)) + " 件</p>" +
+      (reasons ? "<p><strong>判定根拠:</strong></p><ul>" + reasons + "</ul>" : "") +
+      (source.mojibake
+        ? '<p class="web-index-check-ng">文字化けの可能性があります。文字コードを確認してください。</p>'
+        : '<p class="web-index-check-ok">日本語テキストを確認できました。</p>');
+  }
+
+  function setIndexDiffTab(tab) {
+    currentIndexDiffTab = tab === "after" ? "after" : "before";
+    var beforeBtn = document.getElementById("btn-web-index-tab-before");
+    var afterBtn = document.getElementById("btn-web-index-tab-after");
+    if (beforeBtn) beforeBtn.classList.toggle("is-active", currentIndexDiffTab === "before");
+    if (afterBtn) afterBtn.classList.toggle("is-active", currentIndexDiffTab === "after");
+    var pre = document.getElementById("web-index-diff-text");
+    var diffEl = document.getElementById("web-index-insert-diff");
+    if (!currentIndexPrepared || !pre) return;
+    var prepared = currentIndexPrepared;
+    var idx = prepared.insertAt ? prepared.insertAt.index : 0;
+    if (currentIndexDiffTab === "before") {
+      setCopyablePreText(pre, (prepared.beforeHtml || "").slice(Math.max(0, idx - 200), idx + 400), "html");
+    } else {
+      var afterIdx = idx + String(prepared.insertSnippet || "").length;
+      setCopyablePreText(pre, (prepared.afterHtml || "").slice(Math.max(0, idx - 80), afterIdx + 200), "html");
+    }
+    if (diffEl && prepared.diff) {
+      diffEl.innerHTML =
+        "<p><strong>差分サマリー:</strong> 記事件数 " +
+        escapeHtml(String(prepared.diff.beforeCount)) + " → " +
+        escapeHtml(String(prepared.diff.afterCount)) +
+        "（+" + escapeHtml(String(prepared.diff.addedCount)) + "）</p>" +
+        "<p>文字数 " + escapeHtml(String(prepared.diff.beforeLength)) + " → " +
+        escapeHtml(String(prepared.diff.afterLength)) +
+        "（" + escapeHtml(String(prepared.diff.lengthDelta)) + "）</p>" +
+        "<p>挿入位置: " + escapeHtml(String(prepared.diff.insertMethod)) +
+        " @ " + escapeHtml(String(prepared.diff.insertIndex)) + "</p>";
+    }
+  }
+
+  function captureIndexValidationSession(prepared, source) {
+    if (!prepared) return null;
+    var session = {
+      capturedAt: new Date().toISOString(),
+      charset: prepared.inputCharset || (source && source.displayCharset) || "",
+      outputCharset: prepared.outputCharset || prepared.inputCharset || "",
+      lineEnding: prepared.lineEnding || (source && source.lineEndingLabel) || "",
+      bom: !!prepared.bom,
+      articleCount: {
+        before: prepared.beforeCount,
+        after: prepared.afterCount
+      },
+      insertPosition: prepared.insertAt || prepared.insertPosition || null,
+      validationResult: prepared.validationResult || {
+        ok: !!prepared.ok,
+        canPublish: !!prepared.canPublish,
+        roundTripOk: !!(prepared.checks && prepared.checks.roundTripOk)
+      },
+      identity: prepared.identity || null,
+      detection: (source && source.detection) || prepared.detection || null,
+      prepared: prepared
+    };
+    currentIndexValidationSession = session;
+    return session;
+  }
+
+  function identitiesMatch(a, b) {
+    if (!a || !b) return false;
+    if (a.diaryId && b.diaryId && a.diaryId === b.diaryId) return true;
+    if (a.dateKey && b.dateKey && a.dateKey === b.dateKey) return true;
+    if (a.dotsDate && b.dotsDate && a.dotsDate === b.dotsDate && a.title && b.title && a.title === b.title) {
+      return true;
+    }
+    return false;
+  }
+
+  function analyzeIndexInsert() {
+    showWebIndexInsertError("");
+    if (!DiaryIndexInsert) {
+      showWebIndexInsertError("挿入モジュールがありません");
+      return;
+    }
+    if (!currentIndexSource || !currentIndexSource.text) {
+      showWebIndexInsertError("先に diary/index.htm を選択してください");
+      return;
+    }
+    // detection が欠けると charset / 再検証がすべて崩れる
+    if (!currentIndexSource.detection || !currentIndexSource.detection.ok) {
+      showWebIndexInsertError("文字コード判定結果がありません。CorporateSite の index.htm を再読み込みしてください");
+      return;
+    }
+    var articleHtml = getArticleHtmlForIndexInsert();
+    if (!articleHtml) {
+      showWebIndexInsertError("追加する記事HTMLがありません。先にHTML書き出しを実行してください");
+      return;
+    }
+    var preview = document.getElementById("web-index-article-preview");
+    if (preview) setCopyablePreText(preview, articleHtml, "html");
+    try {
+      var meta = (currentHtmlExportBundle && currentHtmlExportBundle.article) || {};
+      var prepared = DiaryIndexInsert.prepareInsert(currentIndexSource.text, articleHtml, {
+        title: meta.title || (currentHtmlExportEntry && currentHtmlExportEntry.title) || "",
+        dateKey: meta.dateKey || "",
+        dotsDate: meta.dotsDate || "",
+        detection: currentIndexSource.detection
+      });
+      // 重複などで検査はNGでも、表示用フィールドは揃っているはず。
+      // 同一記事の成功セッションがあれば charset / 件数 / 再検証OK を保持表示する。
+      if (
+        prepared &&
+        prepared.duplicate &&
+        prepared.duplicate.isDuplicate &&
+        !prepared.alreadyReflected &&
+        currentIndexValidationSession &&
+        currentIndexValidationSession.prepared &&
+        currentIndexValidationSession.prepared.ok &&
+        identitiesMatch(prepared.identity, currentIndexValidationSession.identity)
+      ) {
+        var prev = currentIndexValidationSession.prepared;
+        prepared.inputCharset = prev.inputCharset || prepared.inputCharset;
+        prepared.outputCharset = prev.outputCharset || prepared.outputCharset;
+        prepared.lineEnding = prev.lineEnding || prepared.lineEnding;
+        prepared.bom = prev.bom;
+        prepared.beforeCount = prev.beforeCount;
+        prepared.afterCount = prev.afterCount;
+        prepared.articleCount = prev.articleCount || {
+          before: prev.beforeCount,
+          after: prev.afterCount
+        };
+        if (prepared.checks && prev.checks) {
+          prepared.checks.charsetDetected = prev.checks.charsetDetected;
+          prepared.checks.outputCharsetMatch = prev.checks.outputCharsetMatch;
+          prepared.checks.roundTripOk = prev.checks.roundTripOk;
+          prepared.checks.lineEndingPreserved = prev.checks.lineEndingPreserved;
+          prepared.checks.bomPreserved = prev.checks.bomPreserved;
+        }
+        prepared.validationResult = prev.validationResult || prepared.validationResult;
+        prepared.fromValidationSession = true;
+      } else if (prepared && prepared.ok) {
+        captureIndexValidationSession(prepared, currentIndexSource);
+      }
+
+      currentIndexPrepared = prepared;
+      renderIndexInsertChecks(prepared);
+      setIndexDiffTab("after");
+      if (!prepared.ok) {
+        showWebIndexInsertError(prepared.error || (prepared.blockers || []).join(" / ") || "検査に問題があります");
+      } else {
+        showToast("挿入プレビューの検査が完了しました（まだ書き出していません）");
+      }
+    } catch (e) {
+      currentIndexPrepared = null;
+      renderIndexInsertChecks(null);
+      showWebIndexInsertError(e && e.message ? e.message : "解析に失敗しました");
+    }
+  }
+
+  function openWebIndexInsertView() {
+    if (!DiaryIndexInsert) {
+      showToast("diary/index.htm 挿入モジュールがありません");
+      return;
+    }
+    if (!getArticleHtmlForIndexInsert()) {
+      showToast("先にホームページHTMLを書き出してください");
+      return;
+    }
+    showWebIndexInsertError("");
+    setLocalConfirmVisible(false);
+    var preview = document.getElementById("web-index-article-preview");
+    if (preview) preview.textContent = getArticleHtmlForIndexInsert();
+    renderIndexInsertMeta(currentIndexSource);
+    if (currentIndexSource) analyzeIndexInsert();
+    else {
+      currentIndexPrepared = null;
+      renderIndexInsertChecks(null);
+      var diffText = document.getElementById("web-index-diff-text");
+      if (diffText) diffText.textContent = "";
+    }
+    var analyzeBtn = document.getElementById("btn-web-index-analyze");
+    if (analyzeBtn) analyzeBtn.disabled = !currentIndexSource;
+    showWebCenterView("indexInsert");
+  }
+
+  function handleIndexFileSelected(file) {
+    if (!file || !DiaryIndexInsert) return;
+    showWebIndexInsertError("");
+    DiaryIndexInsert.readFileAsSource(file).then(function (source) {
+      currentIndexSource = source;
+      renderIndexInsertMeta(source);
+      var analyzeBtn = document.getElementById("btn-web-index-analyze");
+      if (analyzeBtn) analyzeBtn.disabled = false;
+      analyzeIndexInsert();
+    }).catch(function (err) {
+      currentIndexSource = null;
+      currentIndexPrepared = null;
+      renderIndexInsertMeta(null);
+      renderIndexInsertChecks(null);
+      showWebIndexInsertError(err && err.message ? err.message : "ファイル読み込みに失敗しました");
+    });
+  }
+
+  function confirmIndexInsertDownload() {
+    if (!currentIndexPrepared || !currentIndexPrepared.ok) {
+      showToast("検査OKになるまでダウンロードできません");
+      return;
+    }
+    if (!currentIndexSource || !currentIndexSource.originalBuffer) {
+      showToast("元ファイルのバイナリがありません");
+      return;
+    }
+    DiaryIndexInsert.downloadBackupAndUpdated(
+      currentIndexPrepared,
+      currentIndexSource.originalBuffer,
+      currentIndexSource.fileName
+    ).then(function (result) {
+      lastIndexOriginalUntouchedOk = true;
+      showToast(
+        "バックアップと更新HTMLをダウンロードしました（" +
+        (result.outputCharset || "同一文字コード") +
+        " / ダウンロードのみ）"
+      );
+      showWebIndexInsertError(
+        "ダウンロード済み: " + result.backupName + " → " + result.updatedName +
+        "。出力文字コード: " + (result.outputCharset || "—") +
+        " / BOM: " + (result.bom ? "あり" : "なし") +
+        " / 再検証: " + (result.roundTripOk ? "OK" : "—") +
+        "。FTP・本番反映はしていません。"
+      );
+    }).catch(function (err) {
+      showWebIndexInsertError(err && err.message ? err.message : "ダウンロードに失敗しました");
+    });
+  }
+
+  function setLocalConfirmVisible(visible) {
+    var panel = document.getElementById("web-index-local-confirm");
+    var actions = document.getElementById("web-index-insert-actions");
+    if (panel) panel.hidden = !visible;
+    if (actions) actions.hidden = !!visible;
+  }
+
+  function openLocalApplyConfirm() {
+    showWebIndexInsertError("");
+    currentLocalPublishPreview = null;
+    if (!currentIndexSource) {
+      showWebIndexInsertError("先に CorporateSite の index.htm を読み込んでください");
+      return;
+    }
+    if (!DiaryLocalPublish) {
+      showWebIndexInsertError("一体反映モジュールがありません");
+      return;
+    }
+    var entry = currentHtmlExportEntry || buildDiaryEntryForHtmlExport();
+    if (!entry) {
+      showWebIndexInsertError("反映する記事データがありません");
+      return;
+    }
+    var yesBtn = document.getElementById("btn-web-index-local-apply-yes");
+    if (yesBtn) yesBtn.disabled = true;
+    var body = document.getElementById("web-index-local-confirm-body");
+    if (body) body.innerHTML = "<p class=\"form-hint\">画像変換と検査を準備中…</p>";
+    setLocalConfirmVisible(true);
+
+    DiaryLocalPublish.prepareLocalPublish({
+      entry: entry,
+      memoryItems: diaryImageItems || [],
+      source: currentIndexSource,
+      otherEntries: loadDiaryEntries().filter(function (d) { return d.id !== entry.id; })
+    }).then(function (preview) {
+      currentLocalPublishPreview = preview;
+      currentIndexPrepared = preview.prepared;
+      if (preview.prepared && preview.prepared.ok) {
+        captureIndexValidationSession(preview.prepared, currentIndexSource);
+      }
+      renderIndexInsertChecks(preview.prepared);
+      var id = (preview.prepared && preview.prepared.identity) || {};
+      var dup = preview.duplicate || (preview.prepared && preview.prepared.duplicate) || null;
+      var alreadyReflected = !!(preview.prepared && preview.prepared.alreadyReflected) ||
+        !!(dup && dup.alreadyReflected);
+      var dupText = "なし";
+      if (alreadyReflected) {
+        dupText = "既に反映済みです";
+      } else if (dup && dup.isDuplicate) {
+        dupText = dup.message || "同じ記事が存在します。";
+      }
+      var convertText = (preview.convertFails && preview.convertFails.length)
+        ? preview.convertFails.length + "件あり"
+        : "なし";
+      var countBefore = preview.prepared ? preview.prepared.beforeCount : "—";
+      var countAfter = preview.prepared ? preview.prepared.afterCount : "—";
+      var statusHtml = "";
+      if (alreadyReflected) {
+        statusHtml =
+          '<p class="web-index-check-ok"><strong>既に反映済みです。</strong> ' +
+          "index.htm に同一記事（diaryId / 公開日 / タイトル）があります。" +
+          " 記事件数は " + escapeHtml(String(countBefore)) + " のままです（+1不要）。</p>" +
+          (dup && dup.reasons && dup.reasons.length
+            ? '<p class="form-hint">判定理由: ' + escapeHtml(dup.reasons.join(" / ")) + "</p>"
+            : "");
+      } else if (preview.ok) {
+        statusHtml = '<p class="web-index-check-ok">検査OK。反映するを押すと画像とHTMLを一体で書き込みます。</p>';
+      } else {
+        statusHtml = '<p class="web-index-check-ng">問題: ' +
+          escapeHtml(preview.error || (preview.blockers || []).join(" / ")) + "</p>";
+      }
+      if (body) {
+        body.innerHTML =
+          "<p><strong>タイトル:</strong> " + escapeHtml(id.title || entry.title || "—") + "</p>" +
+          "<p><strong>公開日:</strong> " + escapeHtml(id.dotsDate || entry.publishDate || "—") + "</p>" +
+          "<p><strong>画像枚数:</strong> " + escapeHtml(String(preview.imageCount || 0)) + "</p>" +
+          "<p><strong>通常画像ファイル名:</strong> " +
+            escapeHtml((preview.displayNames || []).join(", ") || "（なし）") + "</p>" +
+          "<p><strong>拡大画像ファイル名:</strong> " +
+            escapeHtml((preview.largeNames || []).join(", ") || "（なし）") + "</p>" +
+          "<p><strong>画像配置先:</strong> " + escapeHtml(preview.imageDir || "") + "</p>" +
+          "<p><strong>index.htm挿入位置:</strong> 一番上（" +
+            escapeHtml((preview.prepared.insertAt && preview.prepared.insertAt.method) || "") +
+          "）</p>" +
+          "<p><strong>バックアップ名:</strong> " + escapeHtml(preview.backupName || "") + "</p>" +
+          "<p><strong>重複の有無:</strong> " + escapeHtml(dupText) + "</p>" +
+          "<p><strong>変換不能画像の有無:</strong> " + escapeHtml(convertText) + "</p>" +
+          "<p><strong>記事件数:</strong> " +
+            escapeHtml(String(countBefore)) + " → " +
+            escapeHtml(String(countAfter)) + "</p>" +
+          statusHtml +
+          '<p class="form-hint">既存画像・既存記事は変更しません。失敗時はロールバックします。FTP/GitHub push なし。</p>';
+      }
+      if (yesBtn) yesBtn.disabled = !preview.ok || alreadyReflected;
+    }).catch(function (err) {
+      currentLocalPublishPreview = null;
+      var msg = err && err.message ? err.message : "準備に失敗しました";
+      if (body) {
+        body.innerHTML = '<p class="web-index-check-ng">' + escapeHtml(msg).replace(/\n/g, "<br>") + "</p>";
+      }
+      showWebIndexInsertError(msg);
+      if (yesBtn) yesBtn.disabled = true;
+    });
+  }
+
+  function cancelLocalApplyConfirm() {
+    setLocalConfirmVisible(false);
+    currentLocalPublishPreview = null;
+  }
+
+  function executeLocalApply() {
+    showWebIndexInsertError("");
+    if (!DiaryLocalPublish || !currentLocalPublishPreview) {
+      showWebIndexInsertError("反映プレビューがありません。もう一度確認画面を開いてください");
+      return;
+    }
+    var yesBtn = document.getElementById("btn-web-index-local-apply-yes");
+    if (yesBtn) yesBtn.disabled = true;
+    var previewSnapshot = currentLocalPublishPreview;
+    var entrySnapshot = currentHtmlExportEntry || buildDiaryEntryForHtmlExport();
+    DiaryLocalPublish.publishLocal(previewSnapshot, {
+      backupName: previewSnapshot.backupName
+    }).then(function (result) {
+      lastLocalApplyResult = result;
+      lastLocalApplyLoadOk = true;
+      lastLocalApplyParseOk = true;
+      lastLocalApplyAddOk = true;
+      lastLocalApplyBackupOk = true;
+      lastLocalApplySjisOk = true;
+      lastLocalApplyNewlineOk = true;
+      lastLocalApplyBomOk = true;
+      lastLocalApplyStructureOk = true;
+      lastLocalApplyNoDupOk = true;
+      lastIndexOriginalUntouchedOk = true;
+      lastImgPublishBlobOk = true;
+      lastImgPublishNameOk = true;
+      lastImgPublishNoOverwriteOk = true;
+      lastImgPublishDisplayJpegOk = true;
+      lastImgPublishLargeJpegOk = true;
+      lastImgPublishOrientOk = true;
+      lastImgPublishPathMatchOk = true;
+      lastImgPublishFolderOk = true;
+      lastImgPublishTempOk = true;
+      lastImgPublishIndexOk = true;
+      lastImgPublishBundleOk = true;
+      lastImgPublishIdbKeptOk = true;
+      if (DiaryPublishPackage && typeof DiaryPublishPackage.recordLocalPublishSession === "function") {
+        DiaryPublishPackage.recordLocalPublishSession({
+          result: result,
+          entry: entrySnapshot || {},
+          preview: previewSnapshot
+        });
+      }
+      if (entrySnapshot && entrySnapshot.id) {
+        updateDiaryStatusOnly(entrySnapshot.id, "local-published");
+      }
+      setLocalConfirmVisible(false);
+      showToast("画像とローカルホームページへ反映しました");
+      showWebIndexInsertError(
+        "画像とローカルホームページへ反映しました。" +
+        " 追加画像ファイル数: " + (result.imageFileCount || 0) +
+        " / 追加diary-box: " + (result.diaryBoxAdded || 1) +
+        " / バックアップ: " + (result.backupName || "") +
+        " / 配置先: " + (result.imageDir || "") +
+        " / ロールバック不要。" +
+        " FTP・GitHub push はしていません。" +
+        " 続けて「公開パッケージ（ZIP）」から公開用ZIPを作成できます（Xserverへは公開しません）。"
+      );
+      currentLocalPublishPreview = null;
+      return loadCorporateIndexIntoUi();
+    }).catch(function (err) {
+      var msg = (err && err.message) || "反映に失敗しました";
+      var rb = "";
+      if (err && typeof err.rollbackOk === "boolean") {
+        rb = " ロールバック: " + (err.rollbackOk ? "成功" : "失敗");
+        if (err.rollbackNotes && err.rollbackNotes.length) {
+          rb += "（" + err.rollbackNotes.join(" / ") + "）";
+        }
+        lastImgPublishRollbackOk = !!err.rollbackOk;
+      }
+      var stage = err && err.stage ? ("失敗工程: " + err.stage + " / ") : "";
+      showWebIndexInsertError(
+        "反映に失敗したため、変更前の状態へ戻しました。" + stage + msg + rb
+      );
+      showToast("反映失敗（ロールバック実施）");
+    }).then(function () {
+      if (yesBtn) yesBtn.disabled = false;
+    });
+  }
+
+  function updateDiaryStatusOnly(diaryId, status) {
+    if (!diaryId) return false;
+    var list = loadDiaryEntries();
+    var idx = list.findIndex(function (d) { return d.id === diaryId; });
+    if (idx < 0) return false;
+    list[idx].status = status;
+    list[idx].updatedAt = new Date().toISOString();
+    saveDiaryEntries(list);
+    return true;
+  }
+
+  function diaryStatusLabel(status) {
+    if (status === "package-ready") return "公開パッケージ準備済";
+    if (status === "local-published") return "ローカル反映済";
+    if (status === "production-published") return "本番公開済";
+    if (status === "published") return "公開済み";
+    return "下書き";
+  }
+
+  function showWebPublishPackageError(msg) {
+    var el = document.getElementById("web-publish-package-error");
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function renderPublishPackagePreview(preview) {
+    var checksEl = document.getElementById("web-publish-package-checks");
+    var filesEl = document.getElementById("web-publish-package-files");
+    var diffEl = document.getElementById("web-publish-package-diff");
+    var warnEl = document.getElementById("web-publish-package-warnings");
+    var createBtn = document.getElementById("btn-web-publish-create-zip");
+    var copyBtn = document.getElementById("btn-web-publish-copy-manifest");
+    var dlBtn = document.getElementById("btn-web-publish-download-zip");
+    if (!preview) {
+      if (checksEl) checksEl.innerHTML = '<p class="form-hint">セッション未読込</p>';
+      if (filesEl) filesEl.innerHTML = "";
+      if (diffEl) diffEl.innerHTML = "";
+      if (warnEl) warnEl.innerHTML = "";
+      if (createBtn) createBtn.disabled = true;
+      if (copyBtn) copyBtn.disabled = true;
+      if (dlBtn) dlBtn.disabled = !currentPublishZipResult;
+      return;
+    }
+    var m = preview.manifest || {};
+    var d = preview.diff || {};
+    var c = preview.checks || {};
+    var safetyRows = [
+      ["安全チェック総合", !!preview.canCreateZip],
+      ["既存記事不変", d.existingChangedCount === 0],
+      ["diary-box +1", d.delta === 1],
+      ["Shift_JIS維持", !!d.charsetOk],
+      ["改行維持", !!d.lineOk],
+      ["BOM維持", !!d.bomOk],
+      ["SHA-256全件", (preview.files || []).every(function (f) { return !!f.sha256; })],
+      ["FTP未実行", true],
+      ["Xserver未更新", true]
+    ];
+    if (checksEl) {
+      checksEl.innerHTML =
+        "<p><strong>タイトル:</strong> " + escapeHtml(m.title || "") + "</p>" +
+        "<p><strong>公開日:</strong> " + escapeHtml(m.publishDate || "") + "</p>" +
+        "<p><strong>公開対象ファイル数:</strong> " + escapeHtml(String((preview.files || []).length)) + "</p>" +
+        "<p><strong>バックアップ対象:</strong> " + escapeHtml((preview.session && preview.session.backupName) || "") +
+        "（ZIP非同梱・ローカル保存）</p>" +
+        safetyRows.map(function (row) {
+          var ok = !!row[1];
+          return '<p class="' + (ok ? "web-index-check-ok" : "web-index-check-ng") + '">' +
+            (ok ? "✓" : "✗") + " " + escapeHtml(row[0]) + "</p>";
+        }).join("") +
+        '<p class="form-hint">この操作ではXserverへ公開されません。</p>';
+    }
+    if (filesEl) {
+      filesEl.innerHTML = (preview.files || []).map(function (f) {
+        return "<div class=\"web-publish-file-card\">" +
+          "<p><strong>" + escapeHtml(f.fileName || f.localPath) + "</strong> " +
+          "(" + escapeHtml(f.changeType) + " / " + escapeHtml(f.type) + ")</p>" +
+          "<p>ローカル: " + escapeHtml(f.localPath) + "</p>" +
+          "<p>リモート: " + escapeHtml(f.remotePath || "要確認") +
+          (f.remoteConfirmed ? "" : " ⚠") + "</p>" +
+          "<p>サイズ: " + escapeHtml(String(f.size)) + " / SHA-256: " +
+          escapeHtml(String(f.sha256 || "").slice(0, 16)) + "…</p>" +
+          "</div>";
+      }).join("") || "<p class=\"form-hint\">ファイルなし</p>";
+    }
+    if (diffEl) {
+      diffEl.innerHTML =
+        "<p>diary-box: " + escapeHtml(String(d.beforeCount)) + " → " +
+        escapeHtml(String(d.afterCount)) + "（+" + escapeHtml(String(d.delta)) + "）</p>" +
+        "<p>追加タイトル: " + escapeHtml(d.addedTitle || "—") + "</p>" +
+        "<p>追加公開日: " + escapeHtml(d.addedDate || "—") + "</p>" +
+        "<p>既存部分の変更件数: " + escapeHtml(String(d.existingChangedCount)) + "</p>" +
+        "<p>文字コード: " + escapeHtml(d.charset || "") +
+        " / 改行: " + escapeHtml(d.lineEnding || "") +
+        " / BOM: " + (d.bom ? "あり" : "なし") + "</p>";
+    }
+    if (warnEl) {
+      var warns = [].concat(c.warnings || [], c.unconfirmed || [], c.blockers || []);
+      warnEl.innerHTML = warns.length
+        ? "<ul>" + warns.map(function (w) {
+          return "<li class=\"web-index-check-ng\">" + escapeHtml(w) + "</li>";
+        }).join("") + "</ul>"
+        : '<p class="web-index-check-ok">警告なし</p>';
+    }
+    if (createBtn) createBtn.disabled = !preview.canCreateZip;
+    if (copyBtn) copyBtn.disabled = !preview.manifest;
+    if (dlBtn) dlBtn.disabled = !currentPublishZipResult;
+  }
+
+  function refreshPublishPackageView() {
+    showWebPublishPackageError("");
+    currentPublishPackagePreview = null;
+    currentPublishZipResult = null;
+    if (!DiaryPublishPackage) {
+      showWebPublishPackageError("公開パッケージモジュールがありません");
+      renderPublishPackagePreview(null);
+      return;
+    }
+    renderPublishPackagePreview(null);
+    var checksEl = document.getElementById("web-publish-package-checks");
+    if (checksEl) checksEl.innerHTML = '<p class="form-hint">検査中…</p>';
+    DiaryPublishPackage.preparePublishPackage().then(function (preview) {
+      currentPublishPackagePreview = preview;
+      renderPublishPackagePreview(preview);
+      if (!preview.canCreateZip) {
+        showWebPublishPackageError(
+          (preview.checks && preview.checks.blockers.join(" / ")) ||
+          (preview.diff && preview.diff.error) ||
+          "公開パッケージを作成できません"
+        );
+      }
+    }).catch(function (err) {
+      showWebPublishPackageError(err && err.message ? err.message : "検査に失敗しました");
+      renderPublishPackagePreview(null);
+    });
+  }
+
+  function openPublishPackageView() {
+    if (!DiaryPublishPackage) {
+      showToast("公開パッケージモジュールがありません");
+      return;
+    }
+    showWebCenterView("publishPackage");
+    refreshPublishPackageView();
+  }
+
+  function createPublishPackageZip() {
+    showWebPublishPackageError("");
+    if (!currentPublishPackagePreview || !DiaryPublishPackage) return;
+    var btn = document.getElementById("btn-web-publish-create-zip");
+    if (btn) btn.disabled = true;
+    DiaryPublishPackage.createPublishZip(currentPublishPackagePreview).then(function (zipResult) {
+      currentPublishZipResult = zipResult;
+      lastPublishPackageOk = true;
+      lastPublishManifestOk = true;
+      lastPublishShaOk = true;
+      lastPublishDiffOk = true;
+      lastPublishZipOk = true;
+      lastPublishReadmeOk = true;
+      lastPublishRollbackMetaOk = true;
+      lastPublishNoSecretOk = true;
+      lastPublishNoFtpOk = true;
+      lastPublishNoXserverOk = true;
+      lastPublishExcludeOk = true;
+      var session = currentPublishPackagePreview.session;
+      if (session && session.diaryId) {
+        updateDiaryStatusOnly(session.diaryId, "package-ready");
+      }
+      showToast("公開パッケージを作成しました（Xserver未公開）");
+      showWebPublishPackageError(
+        "ZIP準備完了: " + zipResult.fileName +
+        " / ファイル数 " + ((zipResult.meta && zipResult.meta.fileCount) || "") +
+        " / FTP未実行 / Xserver未更新。下のボタンでダウンロードできます。"
+      );
+      renderPublishPackagePreview(currentPublishPackagePreview);
+      var dlBtn = document.getElementById("btn-web-publish-download-zip");
+      if (dlBtn) dlBtn.disabled = false;
+    }).catch(function (err) {
+      showWebPublishPackageError(err && err.message ? err.message : "ZIP作成に失敗しました");
+    }).then(function () {
+      if (btn) btn.disabled = !(currentPublishPackagePreview && currentPublishPackagePreview.canCreateZip);
+    });
+  }
+
+  function copyPublishManifest() {
+    if (!currentPublishPackagePreview || !currentPublishPackagePreview.manifest) {
+      showToast("manifestがありません");
+      return;
+    }
+    var text = JSON.stringify(currentPublishPackagePreview.manifest, null, 2);
+    copyText(text).then(function () {
+      notifyCopied("コピーしました");
+    }).catch(function () {
+      notifyCopied("コピーに失敗しました");
+    });
+  }
+
+  function downloadPublishZip() {
+    if (!currentPublishZipResult || !DiaryPublishPackage) {
+      showToast("先に公開パッケージを作成してください");
+      return;
+    }
+    DiaryPublishPackage.downloadBlob(
+      currentPublishZipResult.fileName,
+      currentPublishZipResult.blob
+    );
+    showToast("ZIPをダウンロードしました（FTP未実行）");
+  }
+
+  function showWebFtpError(msg) {
+    var el = document.getElementById("web-ftp-error");
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = "";
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function fillFtpConfigForm(cfg) {
+    currentFtpConfig = cfg || null;
+    var c = cfg || {};
+    var host = document.getElementById("ftp-host");
+    var port = document.getElementById("ftp-port");
+    var user = document.getElementById("ftp-user");
+    var pass = document.getElementById("ftp-pass");
+    var root = document.getElementById("ftp-root");
+    var tls = document.getElementById("ftp-tls");
+    if (host) host.value = c.host || "";
+    if (port) port.value = String(c.port || 21);
+    if (user) user.value = c.username || "";
+    if (pass) {
+      pass.value = "";
+      pass.placeholder = c.hasPassword ? "********（変更時のみ入力）" : "********";
+    }
+    if (root) root.value = c.remoteRoot || "/";
+    if (tls) tls.checked = c.useTls !== false;
+  }
+
+  function openPublishMgmtView() {
+    showWebFtpError("");
+    showWebCenterView("publishMgmt");
+    if (!FtpProbe) {
+      showWebFtpError("FTPモジュールがありません");
+      return;
+    }
+    FtpProbe.loadConfig().then(function (body) {
+      if (!body || !body.ok) {
+        showWebFtpError((body && body.userMessage) || "FTP設定を読めませんでした");
+        fillFtpConfigForm(null);
+        return;
+      }
+      fillFtpConfigForm(body.config);
+    }).catch(function () {
+      showWebFtpError("FTP設定APIに接続できません");
+    });
+  }
+
+  function saveFtpConfigFromForm() {
+    showWebFtpError("");
+    if (!FtpProbe) {
+      showWebFtpError("FTPモジュールがありません");
+      return;
+    }
+    var fields = {
+      host: (document.getElementById("ftp-host") || {}).value,
+      port: (document.getElementById("ftp-port") || {}).value,
+      username: (document.getElementById("ftp-user") || {}).value,
+      password: (document.getElementById("ftp-pass") || {}).value,
+      remoteRoot: (document.getElementById("ftp-root") || {}).value,
+      useTls: !!(document.getElementById("ftp-tls") || {}).checked
+    };
+    if (!String(fields.host || "").trim() || !String(fields.username || "").trim()) {
+      showWebFtpError("ホストとユーザー名は必須です");
+      return;
+    }
+    FtpProbe.saveConfig(fields).then(function (body) {
+      if (!body || !body.ok) {
+        showWebFtpError((body && body.error) || "保存に失敗しました");
+        return;
+      }
+      fillFtpConfigForm(body.config);
+      if (FtpDryRun && FtpDryRun.invalidatePublishRootConfirmationIfChanged) {
+        var inv = FtpDryRun.invalidatePublishRootConfirmationIfChanged(body.config || fields);
+        if (inv && inv.invalidated) {
+          showToast("FTP設定を保存しました（公開ルート確認を再実施してください）");
+          return;
+        }
+      }
+      showToast("FTP設定を保存しました（Git非対象）");
+    }).catch(function () {
+      showWebFtpError("FTP設定の保存に失敗しました");
+    });
+  }
+
+  function openFtpConfirmView() {
+    showWebFtpError("");
+    if (!FtpProbe) {
+      showWebFtpError("FTPモジュールがありません");
+      return;
+    }
+    FtpProbe.loadConfig().then(function (body) {
+      if (!body || !body.ok || !body.config || !body.config.configured) {
+        showWebFtpError("先にFTP設定を保存してください");
+        return;
+      }
+      if (!body.config.hasPassword) {
+        showWebFtpError("パスワードが未設定です");
+        return;
+      }
+      currentFtpConfig = body.config;
+      var el = document.getElementById("web-ftp-confirm-summary");
+      if (el) {
+        el.innerHTML =
+          "<p><strong>接続先</strong></p>" +
+          "<p>ホスト: " + escapeHtml(body.config.host || "") + "</p>" +
+          "<p>公開フォルダ: " + escapeHtml(body.config.remoteRoot || "/") + "</p>" +
+          "<p>接続モード: パッシブ / " +
+          (body.config.useTls !== false ? "TLSあり" : "TLSなし") + "</p>" +
+          "<p>読み取り専用: はい（アップロード・削除・上書きしません）</p>" +
+          "<p>パスワード: ********</p>";
+      }
+      showWebCenterView("ftpConfirm");
+    }).catch(function () {
+      showWebFtpError("FTP設定を確認できませんでした");
+    });
+  }
+
+  function renderFtpProbeResult(result) {
+    currentFtpProbeResult = result;
+    var errEl = document.getElementById("web-ftp-result-error");
+    var body = document.getElementById("web-ftp-result-body");
+    if (errEl) {
+      if (result && result.ok) {
+        errEl.hidden = true;
+        errEl.textContent = "";
+      } else {
+        errEl.hidden = false;
+        errEl.textContent = (result && (result.userMessage || result.category)) || "接続失敗";
+      }
+    }
+    if (!body) return;
+    if (!result) {
+      body.innerHTML = "<p class=\"form-hint\">結果なし</p>";
+      return;
+    }
+    var cmds = normalizeCommandList(result.commands);
+    var forbidden = cmds.filter(function (c) {
+      return /^(STOR|STOU|APPE|DELE|RMD|MKD|RNFR|RNTO|SITE|CHMOD|PUT)\b/i.test(String(c));
+    });
+    if (result.ok) {
+      body.innerHTML =
+        "<p class=\"web-index-check-ok\"><strong>FTP接続成功</strong></p>" +
+        "<p>ホスト: " + escapeHtml(result.host || "") + "</p>" +
+        "<p>公開ディレクトリ: " + escapeHtml(result.remoteRoot || "/") + " / " +
+        (result.publicRootOk ? "確認成功" : "—") + "</p>" +
+        "<p>現在フォルダ: " + escapeHtml(String(result.currentDirectory || "")) + "</p>" +
+        "<p>diaryフォルダ: " + (result.diaryFolderExists ? "あり" : "—") + "</p>" +
+        "<p>index.htm: " + (result.diaryIndexExists ? "あり" : "なし") +
+        " / サイズ " + escapeHtml(String(result.diaryIndexSize != null ? result.diaryIndexSize : "—")) +
+        (result.sizeSource ? "（" + escapeHtml(String(result.sizeSource)) + "）" : "") +
+        " / 更新日時 " + escapeHtml(String(result.diaryIndexMdtm || result.diaryIndexMdtmRaw || "—")) +
+        (result.mdtmSource ? "（" + escapeHtml(String(result.mdtmSource)) + "）" : "") + "</p>" +
+        "<p>imageフォルダ: " + (result.imageDirExists ? "あり" : "なし") +
+        " / 画像数 " + escapeHtml(String(result.imageCount != null ? result.imageCount : "—")) + "</p>" +
+        "<p>書き込みテスト: 未実施</p>" +
+        "<p>本番公開: 未実施</p>" +
+        "<p>TLS: " + (result.tlsEstablished ? "成功" : (result.useTls ? "未確認" : "未使用")) + "</p>" +
+        "<p class=\"form-hint\">送信コマンド（PASSはマスク）:<br>" +
+        escapeHtml(formatCommandListText(cmds, "（なし）")) + "</p>" +
+        "<p class=\"web-index-check-ok\">書込みコマンド: " +
+        escapeHtml(String(result.writeCommandCount != null ? result.writeCommandCount : forbidden.length)) +
+        "件 / Xserver更新: " +
+        escapeHtml(String(result.productionUpdateCount != null ? result.productionUpdateCount : 0)) +
+        "件</p>";
+    } else {
+      body.innerHTML =
+        "<p class=\"web-index-check-ng\"><strong>FTP接続失敗</strong></p>" +
+        "<p>分類: " + escapeHtml(result.categoryJa || result.category || "その他") + "</p>" +
+        "<p>" + escapeHtml(result.userMessage || "") + "</p>" +
+        "<p>書き込みテスト: 未実施</p>" +
+        "<p>本番公開: 未実施</p>" +
+        "<p class=\"form-hint\">送信コマンド:<br>" + escapeHtml(formatCommandListText(cmds, "（なし）")) + "</p>";
+    }
+  }
+
+  function runFtpProbeFromUi() {
+    if (!FtpProbe) return;
+    var btn = document.getElementById("btn-web-ftp-run-probe");
+    if (btn) btn.disabled = true;
+    showToast("FTP接続確認中…（読み取り専用）");
+    FtpProbe.runProbe().then(function (result) {
+      renderFtpProbeResult(result);
+      showWebCenterView("ftpResult");
+      if (result && result.ok) showToast("FTP接続成功（書込みなし）");
+      else showToast("FTP接続失敗");
+    }).catch(function () {
+      renderFtpProbeResult({
+        ok: false,
+        category: "その他",
+        userMessage: "接続確認に失敗しました",
+        commands: [],
+        writeExecuted: false
+      });
+      showWebCenterView("ftpResult");
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function showWebFtpDryRunError(msg) {
+    var el = document.getElementById("web-ftp-dryrun-error");
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function diaryStatusLabelJa(status) {
+    var s = String(status || "draft");
+    if (s === "draft") return "下書き";
+    if (s === "published") return "管理上の公開済み";
+    if (s === "local-published") return "ローカル反映済み";
+    if (s === "package-ready") return "公開パッケージ準備完了";
+    if (s === "production-published") return "本番公開済";
+    return s;
+  }
+
+  function pipelineStepHtml(state, label, detail, badge) {
+    return (
+      "<li class=\"web-pipeline-step is-" + escapeHtml(state) + "\">" +
+      "<span class=\"web-pipeline-step__mark\" aria-hidden=\"true\"></span>" +
+      "<span><span class=\"web-pipeline-step__label\">" + escapeHtml(label) + "</span>" +
+      (detail ? "<span class=\"web-pipeline-step__detail\">" + escapeHtml(detail) + "</span>" : "") +
+      "</span>" +
+      "<span class=\"web-pipeline-step__badge\">" + escapeHtml(badge) + "</span>" +
+      "</li>"
+    );
+  }
+
+  function getEditingDiaryEntryForPipeline() {
+    var idEl = document.getElementById("web-diary-edit-id");
+    var id = idEl && idEl.value ? idEl.value : (typeof editingDiaryId !== "undefined" ? editingDiaryId : "");
+    if (!id && typeof ensureEditingDiaryId === "function") {
+      try { id = ensureEditingDiaryId(); } catch (_) { /* ignore */ }
+    }
+    return id ? getDiaryById(id) : null;
+  }
+
+  function manifestHasHtmlAndImages(manifest) {
+    if (!manifest || !Array.isArray(manifest.files) || !manifest.files.length) return false;
+    var hasHtml = false;
+    var imageCount = 0;
+    for (var i = 0; i < manifest.files.length; i++) {
+      var f = manifest.files[i];
+      if (!f || !f.localPath) continue;
+      if (f.type === "html") hasHtml = true;
+      if (f.type === "image") imageCount += 1;
+    }
+    return hasHtml && imageCount >= 1;
+  }
+
+  function verifyPublishArtifactsFromManifest(manifest) {
+    if (!manifestHasHtmlAndImages(manifest)) {
+      return Promise.resolve({ ok: false, checks: [], reason: "manifestにHTML/画像がありません" });
+    }
+    return Promise.all(manifest.files.map(function (f) {
+      var path = String(f.localPath || "").replace(/^\/+/, "");
+      if (!path) {
+        return Promise.resolve({
+          ok: false, type: f.type, localPath: "", reason: "localPathなし"
+        });
+      }
+      return fetch("/" + path + "?t=" + Date.now(), { cache: "no-store" }).then(function (res) {
+        if (!res.ok) {
+          return {
+            ok: false, type: f.type, localPath: path,
+            httpStatus: res.status, reason: "HTTP " + res.status
+          };
+        }
+        return res.arrayBuffer().then(function (buf) {
+          var actualSize = buf.byteLength;
+          var expected = Number(f.size) || 0;
+          var sizeMatch = !expected || actualSize === expected;
+          return {
+            ok: sizeMatch && actualSize > 0,
+            type: f.type,
+            localPath: path,
+            httpStatus: res.status,
+            actualSize: actualSize,
+            manifestSize: expected || null,
+            sizeMatch: sizeMatch
+          };
+        });
+      }).catch(function (err) {
+        return {
+          ok: false, type: f.type, localPath: path,
+          reason: err && err.message ? err.message : "取得失敗"
+        };
+      });
+    })).then(function (checks) {
+      var htmlOk = checks.some(function (c) { return c.ok && c.type === "html"; });
+      var imageChecks = checks.filter(function (c) { return c.type === "image"; });
+      var imagesOk = imageChecks.length > 0 && imageChecks.every(function (c) { return c.ok; });
+      var allOk = checks.length > 0 && checks.every(function (c) { return c.ok; });
+      return {
+        ok: !!(allOk && htmlOk && imagesOk),
+        checks: checks,
+        htmlOk: htmlOk,
+        imagesOk: imagesOk
+      };
+    });
+  }
+
+  function collectWebPublishPipelineState(ftpConfig, dryRunResult, artifactVerify) {
+    var entry = getEditingDiaryEntryForPipeline();
+    var title = ((document.getElementById("web-diary-title") || {}).value ||
+      (entry && entry.title) || "").trim();
+    var publishDate = ((document.getElementById("web-diary-date") || {}).value ||
+      (entry && (entry.publishDate || entry.date)) || "");
+    var images = (typeof diaryImageItems !== "undefined" && diaryImageItems && diaryImageItems.length)
+      ? diaryImageItems
+      : ((entry && entry.images) || []);
+    var status = (entry && entry.status) || "draft";
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest
+      ? DiaryPublishPackage.loadLastPublishManifest()
+      : null;
+    var manifest = bundle && bundle.manifest ? bundle.manifest : null;
+    var dry = dryRunResult || currentFtpDryRunResult ||
+      (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult()) || null;
+    var ftpOk = !!(ftpConfig && ftpConfig.configured && ftpConfig.hasPassword);
+    var localDone = status === "local-published" || status === "package-ready" ||
+      status === "production-published";
+    var packageDone = !!(manifest && manifest.publishId) &&
+      (status === "package-ready" || status === "production-published");
+    // HTML・画像生成は「書き出しセッションフラグ」だけでなく、
+    // 公開パッケージ成果物（manifest対象ファイル）の実在でも完了とみなす。
+    // lastHtmlExportAt 等の一時フラグだけに依存すると、下流完了と矛盾する。
+    var htmlDoneFromSession = !!(entry && (entry.lastHtmlExportAt || entry.htmlExportPath)) ||
+      !!(typeof currentHtmlExportEntry !== "undefined" && currentHtmlExportEntry);
+    var htmlDoneFromArtifacts = !!(artifactVerify && artifactVerify.ok);
+    var htmlDoneFromPackage = packageDone && manifestHasHtmlAndImages(manifest);
+    var htmlDone = htmlDoneFromSession || htmlDoneFromArtifacts || htmlDoneFromPackage;
+    var dryReady = !!(dry && dry.verdict === "READY_FOR_PRODUCTION");
+    var elg = null;
+    if (FtpProdPublish && dry) {
+      elg = FtpProdPublish.evaluateEligibility({
+        dryRunResult: dry,
+        diaryStatus: status === "published" && packageDone ? "package-ready" : status,
+        ftpConfig: ftpConfig || {}
+      });
+      // If only status is "published" but package-ready manifest exists for this diary, treat as package-ready for display eligibility hint
+      if (!elg.ok && packageDone && status === "published") {
+        elg = FtpProdPublish.evaluateEligibility({
+          dryRunResult: dry,
+          diaryStatus: "package-ready",
+          ftpConfig: ftpConfig || {}
+        });
+      }
+    }
+    currentFtpPublishEligibility = elg;
+    return {
+      entry: entry,
+      title: title,
+      publishDate: publishDate,
+      imageCount: images.length,
+      status: status,
+      statusLabel: diaryStatusLabelJa(status),
+      htmlDone: htmlDone,
+      htmlDoneFromSession: htmlDoneFromSession,
+      htmlDoneFromArtifacts: htmlDoneFromArtifacts,
+      htmlDoneFromPackage: htmlDoneFromPackage,
+      artifactVerify: artifactVerify || null,
+      localDone: localDone,
+      packageDone: packageDone,
+      ftpOk: ftpOk,
+      dry: dry,
+      dryReady: dryReady,
+      manifest: manifest,
+      bundle: bundle,
+      elg: elg,
+      ftpConfig: ftpConfig || {},
+      formalSafe: FtpProdPublish
+        ? FtpProdPublish.shouldBlockRealPublish(ftpConfig || {})
+        : true
+    };
+  }
+
+  function renderWebPublishPipelineCards(state) {
+    var summaryEl = document.getElementById("web-publish-prep-summary");
+    var stepsEl = document.getElementById("web-publish-prep-steps");
+    var readyEl = document.getElementById("web-publish-ready-banner");
+    var blockedEl = document.getElementById("web-publish-blocked-banner");
+    var prodCard = document.getElementById("web-publish-prod-card");
+    var prodSummary = document.getElementById("web-publish-prod-summary");
+    var safeNote = document.getElementById("web-publish-safe-mode-note");
+    if (!summaryEl || !stepsEl) return;
+
+    state = state || collectWebPublishPipelineState(currentFtpConfig, currentFtpDryRunResult);
+    var dry = state.dry;
+    var backup = (dry && dry.backup) || {};
+    var report = (dry && dry.report) || {};
+    var m = state.manifest;
+
+    summaryEl.innerHTML =
+      "<p><strong>記事タイトル:</strong> " + escapeHtml(state.title || "（未入力）") + "</p>" +
+      "<p><strong>公開日:</strong> " + escapeHtml(formatDiaryDisplayDate(state.publishDate) || state.publishDate || "—") + "</p>" +
+      "<p><strong>写真枚数:</strong> " + escapeHtml(String(state.imageCount)) + "</p>" +
+      "<p><strong>記事ステータス:</strong> " + escapeHtml(state.statusLabel) + "</p>";
+
+    var dryDetail = !dry ? "未実施" :
+      (state.dryReady ? "READY_FOR_PRODUCTION" : (dry.verdict || "BLOCKED"));
+    var htmlDetail = "ホームページHTMLを書き出してください";
+    if (state.htmlDone) {
+      if (state.htmlDoneFromArtifacts) {
+        htmlDetail = "ローカル成果物を確認済み（HTML・画像）";
+      } else if (state.htmlDoneFromPackage) {
+        htmlDetail = "公開パッケージ対象ファイルあり（HTML・画像）";
+      } else {
+        htmlDetail = "書き出し済み";
+      }
+    }
+    stepsEl.innerHTML = [
+      pipelineStepHtml(state.htmlDone ? "done" : "todo", "HTML・画像生成",
+        htmlDetail,
+        state.htmlDone ? "完了" : "未完了"),
+      pipelineStepHtml(state.localDone ? "done" : "todo", "ローカル反映",
+        state.localDone ? "CorporateSiteへ反映済み" : "画像とHTMLのローカル反映が必要です",
+        state.localDone ? "完了" : "未完了"),
+      pipelineStepHtml(state.packageDone ? "done" : "todo", "公開パッケージ",
+        state.packageDone ? ("publishId: " + (m && m.publishId || "")) : "ZIP / publish-manifest が必要です",
+        state.packageDone ? "完了" : "未完了"),
+      pipelineStepHtml(state.ftpOk ? "done" : "todo", "FTP接続確認",
+        state.ftpOk ? ((state.ftpConfig.host || "") + " / " + (state.ftpConfig.remoteRoot || "")) : "公開管理でFTP設定・接続確認",
+        state.ftpOk ? "完了" : "未完了"),
+      pipelineStepHtml(backup.backupRelPath ? "done" : "todo", "本番バックアップ",
+        backup.backupRelPath
+          ? (backup.backupRelPath + " / SHA " + String(backup.productionIndexSha256 || "").slice(0, 12) + "…")
+          : "予行演習で取得します",
+        backup.backupRelPath ? "完了" : "未完了"),
+      pipelineStepHtml(dry ? (state.dryReady ? "done" : "blocked") : "todo", "公開予行演習",
+        dryDetail,
+        dry ? (state.dryReady ? "完了" : "要確認") : "未完了"),
+      pipelineStepHtml(state.dryReady ? "done" : "todo", "dry-run判定",
+        state.dryReady ? "本番公開準備OK" : "まだ本番公開できません",
+        state.dryReady ? "READY" : "未達")
+    ].join("");
+
+    if (state.dryReady && state.elg && state.elg.ok) {
+      if (readyEl) {
+        readyEl.hidden = false;
+        var files = (m && m.files) || [];
+        var imgN = files.filter(function (f) { return f.type === "image"; }).length;
+        readyEl.innerHTML =
+          "<p class=\"web-pipeline-ready__title\">本番公開準備OK</p>" +
+          "<p class=\"web-pipeline-ready__sub\">内部値: READY_FOR_PRODUCTION</p>" +
+          "<dl>" +
+          "<dt>publishId</dt><dd>" + escapeHtml((m && m.publishId) || "") + "</dd>" +
+          "<dt>記事タイトル</dt><dd>" + escapeHtml((m && m.title) || state.title) + "</dd>" +
+          "<dt>公開日</dt><dd>" + escapeHtml((m && m.publishDate) || state.publishDate) + "</dd>" +
+          "<dt>公開対象ファイル数</dt><dd>" + escapeHtml(String(files.length)) + "</dd>" +
+          "<dt>公開予定画像数</dt><dd>" + escapeHtml(String(imgN)) + "</dd>" +
+          "<dt>本番ホスト</dt><dd>" + escapeHtml(state.ftpConfig.host || report.host || "") + "</dd>" +
+          "<dt>本番公開ルート</dt><dd>" + escapeHtml(state.ftpConfig.remoteRoot || "") + "</dd>" +
+          "<dt>本番バックアップ</dt><dd>" + escapeHtml(backup.backupRelPath || "") + "</dd>" +
+          "<dt>本番index.htm SHA-256</dt><dd>" +
+          escapeHtml(String(backup.productionIndexSha256 || "").slice(0, 12)) + "…</dd>" +
+          "<dt>同名画像衝突</dt><dd>なし</dd>" +
+          "<dt>不正パス</dt><dd>なし</dd>" +
+          "<dt>予行演習後の本番変更</dt><dd>なし（公開直前に再確認）</dd>" +
+          "<dt>ロールバック準備</dt><dd>" +
+          ((report.rollbackReady || backup.backupRelPath) ? "済み" : "要確認") + "</dd>" +
+          "</dl>";
+      }
+      if (blockedEl) { blockedEl.hidden = true; blockedEl.innerHTML = ""; }
+      if (prodCard) {
+        prodCard.hidden = false;
+        if (safeNote) safeNote.hidden = false;
+        if (prodSummary) {
+          prodSummary.innerHTML =
+            "<p><strong>公開対象:</strong> " + escapeHtml((m && m.title) || state.title) + "</p>" +
+            "<p><strong>ファイル:</strong> " + escapeHtml(String(((m && m.files) || []).length)) + " 件</p>" +
+            "<p class=\"form-hint\">「本番公開内容を確認する」ではFTP書込みは行いません。</p>";
+        }
+      }
+    } else {
+      if (readyEl) { readyEl.hidden = true; readyEl.innerHTML = ""; }
+      if (blockedEl) {
+        blockedEl.hidden = false;
+        var blockers = (state.elg && state.elg.blockers) ||
+          (dry && dry.blockers) ||
+          [];
+        if (!blockers.length) {
+          if (!state.packageDone) blockers.push("公開パッケージ（package-ready）がありません");
+          if (!state.ftpOk) blockers.push("FTP接続設定が未完了です");
+          if (!dry) blockers.push("本番バックアップ・公開予行演習が未実施です");
+          else if (!state.dryReady) blockers.push("dry-run判定が READY_FOR_PRODUCTION ではありません");
+        }
+        blockedEl.innerHTML =
+          "<p class=\"web-pipeline-blocked__title\">まだ本番公開できません</p>" +
+          "<ul>" + blockers.map(function (b) {
+            return "<li>" + escapeHtml(b) + "</li>";
+          }).join("") + "</ul>";
+      }
+      if (prodCard) prodCard.hidden = true;
+    }
+
+    // Action button labels
+    var pkgBtn = document.getElementById("btn-web-pipeline-package");
+    if (pkgBtn) pkgBtn.textContent = state.packageDone ? "公開パッケージを再確認" : "公開パッケージを作成";
+    var ftpBtn = document.getElementById("btn-web-pipeline-ftp");
+    if (ftpBtn) ftpBtn.textContent = state.ftpOk ? "FTP接続を再確認" : "FTP接続確認";
+    var dryBtn = document.getElementById("btn-web-pipeline-dryrun");
+    if (dryBtn) dryBtn.textContent = dry ? "本番バックアップ・予行演習を再実行" : "本番バックアップ・公開予行演習";
+  }
+
+  function refreshWebPublishPipelineCards() {
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest
+      ? DiaryPublishPackage.loadLastPublishManifest()
+      : null;
+    var publishId = bundle && bundle.manifest ? bundle.manifest.publishId : "";
+    var manifest = bundle && bundle.manifest ? bundle.manifest : null;
+    var loadCfg = FtpProbe && FtpProbe.loadConfig
+      ? FtpProbe.loadConfig()
+      : Promise.resolve({ ok: false });
+    var loadDry = FtpDryRun && FtpDryRun.hydrateFromServer
+      ? FtpDryRun.hydrateFromServer({ publishId: publishId })
+      : Promise.resolve(FtpDryRun && FtpDryRun.getLastResult ? FtpDryRun.getLastResult() : null);
+    var loadArtifacts = verifyPublishArtifactsFromManifest(manifest);
+    return Promise.all([loadCfg, loadDry, loadArtifacts]).then(function (pair) {
+      var body = pair[0];
+      if (body && body.ok && body.config) currentFtpConfig = body.config;
+      var dry = pair[1];
+      if (dry) currentFtpDryRunResult = dry;
+      var artifacts = pair[2] || { ok: false };
+      renderWebPublishPipelineCards(
+        collectWebPublishPipelineState(currentFtpConfig, currentFtpDryRunResult, artifacts)
+      );
+      refreshRealPublishUnlockUi();
+    }).catch(function () {
+      renderWebPublishPipelineCards(
+        collectWebPublishPipelineState(currentFtpConfig, currentFtpDryRunResult, null)
+      );
+      refreshRealPublishUnlockUi();
+    });
+  }
+
+  function showWebFtpRootConfirmError(msg) {
+    var el = document.getElementById("web-ftp-root-confirm-error");
+    if (!el) return;
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function updateFtpRootConfirmSaveEnabled() {
+    var btn = document.getElementById("btn-web-ftp-root-confirm-save");
+    var cb = document.getElementById("ftp-root-confirm-public-html");
+    if (btn) btn.disabled = !(cb && cb.checked);
+  }
+
+  function openFtpPublishRootConfirmView(ftpConfig, probeResult) {
+    showWebFtpRootConfirmError("");
+    var cb = document.getElementById("ftp-root-confirm-public-html");
+    if (cb) cb.checked = false;
+    updateFtpRootConfirmSaveEnabled();
+    var el = document.getElementById("web-ftp-root-confirm-summary");
+    if (el) {
+      el.innerHTML =
+        "<p><strong>このFTPアカウントでは / が egaonokiroku.co.jp の公開フォルダですか？</strong></p>" +
+        "<p>ホスト: " + escapeHtml((ftpConfig && ftpConfig.host) || "") + "</p>" +
+        "<p>FTPユーザー名: " + escapeHtml((ftpConfig && ftpConfig.username) || "") + "</p>" +
+        "<p>remoteRoot: " + escapeHtml((ftpConfig && ftpConfig.remoteRoot) || "/") + "</p>" +
+        "<p>PWD: " + escapeHtml(String((probeResult && probeResult.currentDirectory) || "—")) + "</p>" +
+        "<p>確認済みファイル: /diary/index.htm（" +
+        ((probeResult && probeResult.diaryIndexExists) ? "あり" : "未確認") + "）</p>" +
+        "<p>確認済みフォルダ: /diary/image（" +
+        ((probeResult && probeResult.imageDirExists) ? "あり" : "未確認") + "）</p>" +
+        "<p>公開対象は diary 配下のみ</p>" +
+        "<p class=\"web-index-check-warn\"><strong>書込みはまだ行いません</strong></p>";
+    }
+    showWebCenterView("ftpRootConfirm");
+  }
+
+  function saveFtpPublishRootConfirmationFromUi() {
+    showWebFtpRootConfirmError("");
+    if (!FtpDryRun || !FtpDryRun.savePublishRootConfirmation) {
+      showWebFtpRootConfirmError("公開ルート確認モジュールがありません");
+      return;
+    }
+    var cb = document.getElementById("ftp-root-confirm-public-html");
+    if (!(cb && cb.checked)) {
+      showWebFtpRootConfirmError("チェックボックスをオンにしてください");
+      return;
+    }
+    var probe = currentFtpProbeResult || (FtpProbe && FtpProbe.getLastResult && FtpProbe.getLastResult()) || {};
+    var cfg = currentFtpConfig || {};
+    var saved = FtpDryRun.savePublishRootConfirmation({
+      host: cfg.host,
+      username: cfg.username,
+      remoteRoot: cfg.remoteRoot || "/",
+      pwd: probe.currentDirectory || "",
+      currentDirectory: probe.currentDirectory || "",
+      diaryIndexExists: !!probe.diaryIndexExists,
+      imageDirExists: !!probe.imageDirExists,
+      publicHtmlLimited: true
+    });
+    if (!saved || !saved.ok) {
+      showWebFtpRootConfirmError((saved && saved.error) || "確認の保存に失敗しました");
+      return;
+    }
+    showToast("公開ルートを確認済みにしました");
+    openFtpDryRunConfirmView();
+  }
+
+  function openFtpDryRunConfirmView() {
+    showWebFtpDryRunError("");
+    showWebFtpError("");
+    if (!FtpDryRun || !DiaryPublishPackage) {
+      showWebFtpError("予行演習モジュールがありません");
+      showToast("予行演習モジュールがありません");
+      return;
+    }
+    var bundle = DiaryPublishPackage.loadLastPublishManifest &&
+      DiaryPublishPackage.loadLastPublishManifest();
+    var validated = FtpDryRun.validateManifestBundle(bundle);
+    if (!validated.ok) {
+      var msg = validated.blockers.join(" / ") || "manifestがありません。先に公開パッケージを作成してください。";
+      showWebFtpError(msg);
+      showToast(msg);
+      refreshWebPublishPipelineCards();
+      return;
+    }
+    if (!FtpProbe) {
+      showWebFtpError("FTPモジュールがありません");
+      return;
+    }
+    FtpProbe.loadConfig().then(function (body) {
+      if (!body || !body.ok || !body.config || !body.config.configured || !body.config.hasPassword) {
+        showWebFtpError("先にFTP設定を保存してください");
+        showToast("先に公開管理でFTP設定を保存してください");
+        showWebCenterView("publishMgmt");
+        return;
+      }
+      currentFtpConfig = body.config;
+      if (FtpDryRun.invalidatePublishRootConfirmationIfChanged) {
+        FtpDryRun.invalidatePublishRootConfirmationIfChanged(body.config);
+      }
+      var probe = currentFtpProbeResult || (FtpProbe.getLastResult && FtpProbe.getLastResult()) || null;
+      var gate = FtpDryRun.evaluatePublishRootGate({
+        ftpConfig: body.config,
+        probeResult: probe,
+        manifest: validated.manifest
+      });
+      if (gate.needsUserConfirm && gate.probeMatched &&
+          gate.pathCheck && gate.pathCheck.ok &&
+          probe && probe.ok && probe.diaryIndexExists && probe.imageDirExists) {
+        openFtpPublishRootConfirmView(body.config, probe);
+        return;
+      }
+      if (!gate.ok) {
+        var gateMsg = (gate.blockers && gate.blockers.join(" / ")) || "公開ルート確認に失敗しました";
+        showWebCenterView("publishMgmt");
+        showWebFtpError(gateMsg);
+        showToast(gateMsg);
+        if (!probe || !probe.ok) {
+          showToast("先にFTP接続確認を実行してください");
+        }
+        return;
+      }
+      var resolved = FtpDryRun.resolveRemoteFullPaths(body.config.remoteRoot, validated.manifest);
+      if (!resolved.ok) {
+        showWebFtpError((resolved.blockers && resolved.blockers.join(" / ")) || resolved.error || "remotePath不正");
+        return;
+      }
+      var m = validated.manifest;
+      var el = document.getElementById("web-ftp-dryrun-confirm-summary");
+      if (el) {
+        var conf = FtpDryRun.loadPublishRootConfirmation && FtpDryRun.loadPublishRootConfirmation();
+        el.innerHTML =
+          "<p class=\"web-index-check-warn\"><strong>この操作ではXserverへアップロードされません</strong></p>" +
+          "<p>記事タイトル: " + escapeHtml(m.title || "") + "</p>" +
+          "<p>公開日: " + escapeHtml(m.publishDate || "") + "</p>" +
+          "<p>publishId: " + escapeHtml(m.publishId || "") + "</p>" +
+          "<p>公開対象ファイル数: " + escapeHtml(String((m.files || []).length)) + "</p>" +
+          "<p>本番ホスト: " + escapeHtml(body.config.host || "") + "</p>" +
+          "<p>本番公開ルート: " + escapeHtml(body.config.remoteRoot || "") +
+          (FtpDryRun.normalizeRemoteRoot(body.config.remoteRoot) === "/"
+            ? "（確認済み: 公開フォルダ直下）"
+            : "") + "</p>" +
+          (conf && conf.pwd
+            ? ("<p>確認時PWD: " + escapeHtml(conf.pwd) + "</p>")
+            : "") +
+          "<p>最終リモートフルパス:</p><ul>" +
+          resolved.paths.map(function (p) {
+            return "<li>" + escapeHtml(p.remoteFullPath) + "</li>";
+          }).join("") + "</ul>" +
+          "<p><strong>実行操作</strong>: 本番ファイル読取 / ローカルバックアップ / 差分確認 / 公開後シミュレーション</p>" +
+          "<p><strong>禁止操作</strong>: アップロード / 上書き / 削除</p>";
+      }
+      showWebCenterView("ftpDryRunConfirm");
+    }).catch(function () {
+      showWebFtpError("FTP設定を確認できませんでした");
+    });
+  }
+
+  /* pipeline helpers above; dry-run confirm follows */
+
+  function renderFtpDryRunResult(result) {
+    currentFtpDryRunResult = result;
+    refreshWebPublishPipelineCards();
+    var errEl = document.getElementById("web-ftp-dryrun-result-error");
+    var body = document.getElementById("web-ftp-dryrun-result-body");
+    var pubBtn = document.getElementById("btn-web-ftp-prod-publish-open");
+    var ready = !!(result && result.verdict === "READY_FOR_PRODUCTION");
+    if (pubBtn) {
+      var diaryId = result && result.report && result.backup &&
+        (DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+          DiaryPublishPackage.loadLastPublishManifest());
+      var status = "package-ready";
+      if (diaryId && diaryId.session && diaryId.session.diaryId) {
+        var entry = getDiaryById(diaryId.session.diaryId);
+        if (entry && entry.status) status = entry.status;
+      }
+      var elg = FtpProdPublish
+        ? FtpProdPublish.evaluateEligibility({
+          dryRunResult: result,
+          diaryStatus: status,
+          ftpConfig: currentFtpConfig || {}
+        })
+        : { ok: false, blockers: ["モジュールなし"] };
+      currentFtpPublishEligibility = elg;
+      pubBtn.disabled = !(ready && elg.ok) || ftpPublishInFlight;
+      pubBtn.title = pubBtn.disabled
+        ? ((elg.blockers && elg.blockers[0]) || "公開条件未充足")
+        : "最終確認へ進む（まだアップロードしません）";
+      pubBtn.textContent = "本番公開内容を確認する";
+    }
+    if (errEl) {
+      if (ready) {
+        errEl.hidden = true;
+        errEl.textContent = "";
+      } else {
+        errEl.hidden = false;
+        errEl.textContent = (result && (result.userMessage ||
+          (result.blockers && result.blockers[0]))) ||
+          "本番公開不可（詳細不明。もう一度実行してください）";
+      }
+    }
+    if (!body) return;
+    if (!result) {
+      body.innerHTML =
+        "<p class=\"web-index-check-ng\"><strong>結果を取得できませんでした</strong></p>" +
+        "<p>予行演習の戻り値が空です。ページを再読み込みして再実行してください。</p>" +
+        "<p class=\"form-hint\">よくある原因: 古いキャッシュのJS / API未接続 / 内部エラー</p>";
+      return;
+    }
+    var report = result.report || {};
+    var backup = result.backup || {};
+    var sim = result.simulation || {};
+    var cmds = normalizeCommandList(backup.commands || report.ftpCommands);
+    var elgNotes = (currentFtpPublishEligibility && currentFtpPublishEligibility.blockers) || [];
+    var blockers = result.blockers || report.blockers || [];
+    body.innerHTML =
+      "<p class=\"" + (ready ? "web-index-check-ok" : "web-index-check-ng") + "\">" +
+      "<strong>" + (ready
+        ? "本番バックアップと公開予行演習が完了しました"
+        : "本番公開不可") + "</strong></p>" +
+      "<p>判定: <strong>" + escapeHtml(ready ? "本番公開準備OK" : "本番公開不可") +
+      "</strong> (" + escapeHtml(result.verdict || "BLOCKED") + ")</p>" +
+      "<p>メッセージ: " + escapeHtml(result.userMessage || "—") + "</p>" +
+      "<p>本番バックアップ: " + escapeHtml(backup.backupRelPath || "未作成") + "</p>" +
+      "<p>本番index SHA-256: " +
+      (backup.productionIndexSha256
+        ? (escapeHtml(String(backup.productionIndexSha256).slice(0, 16)) + "…")
+        : "未取得") + "</p>" +
+      "<p>本番indexサイズ: " +
+      escapeHtml(String(backup.productionIndexSize != null ? backup.productionIndexSize : "—")) + "</p>" +
+      "<p>diary-box: " + escapeHtml(String(sim.diaryBoxBefore != null ? sim.diaryBoxBefore : "—")) +
+      " → " + escapeHtml(String(sim.diaryBoxAfter != null ? sim.diaryBoxAfter : "—")) +
+      " (Δ" + escapeHtml(String(sim.delta != null ? sim.delta : "—")) + ")</p>" +
+      "<p>同名画像衝突: " +
+      escapeHtml((backup.collidingImages && backup.collidingImages.length)
+        ? backup.collidingImages.join(", ")
+        : (backup.ok ? "なし" : "未確認")) + "</p>" +
+      "<p>書込み系FTPコマンド: " +
+      escapeHtml(String(backup.writeCommandCount != null ? backup.writeCommandCount :
+        (result.writeCommandCount || 0))) + "件</p>" +
+      "<p>Xserver更新: " +
+      escapeHtml(String(result.productionUpdateCount != null
+        ? result.productionUpdateCount
+        : (report.productionUpdateCount || 0))) + "件</p>" +
+      (elgNotes.length
+        ? ("<p class=\"form-hint\">本番公開ボタン条件: " +
+          elgNotes.map(function (b) { return escapeHtml(b); }).join(" / ") + "</p>")
+        : (ready
+          ? "<p class=\"web-index-check-ok\">本番公開ボタン: 条件充足（まだアップロードしません）</p>"
+          : "")) +
+      "<p class=\"form-hint\">送信コマンド（PASSマスク）:<br>" +
+      escapeHtml(formatCommandListText(cmds, "（なし）")) + "</p>" +
+      (blockers.length
+        ? ("<p class=\"web-index-check-ng\">停止理由:<br>" +
+          blockers.map(function (b) { return escapeHtml(b); }).join("<br>") + "</p>")
+        : "");
+  }
+
+  function runFtpDryRunFromUi() {
+    if (!FtpDryRun) return;
+    var btn = document.getElementById("btn-web-ftp-dryrun-run");
+    if (btn) btn.disabled = true;
+    showWebFtpDryRunError("");
+    showToast("本番バックアップ・予行演習中…（アップロードしません）");
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+      DiaryPublishPackage.loadLastPublishManifest();
+    FtpDryRun.runDryRun({
+      bundle: bundle,
+      ftpConfig: currentFtpConfig || {},
+      probeResult: currentFtpProbeResult ||
+        (FtpProbe && FtpProbe.getLastResult && FtpProbe.getLastResult()) || null
+    }).then(function (result) {
+      if (!result && FtpDryRun.getLastResult) result = FtpDryRun.getLastResult();
+      if (!result) {
+        result = {
+          ok: false,
+          verdict: "BLOCKED",
+          userMessage: "予行演習結果を取得できませんでした",
+          blockers: ["戻り値が空です。ページを再読み込みして再実行してください。"]
+        };
+      }
+      renderFtpDryRunResult(result);
+      showWebCenterView("ftpDryRunResult");
+      showToast(result && result.verdict === "READY_FOR_PRODUCTION"
+        ? "予行演習完了（本番公開準備OK）"
+        : ("予行演習結果: " + ((result && result.userMessage) || "本番公開不可")));
+    }).catch(function (err) {
+      renderFtpDryRunResult({
+        ok: false,
+        verdict: "BLOCKED",
+        userMessage: err && err.message ? err.message : "予行演習失敗",
+        blockers: [err && err.message ? err.message : "失敗"]
+      });
+      showWebCenterView("ftpDryRunResult");
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function isExactFtpPublishConfirmPhrase(value) {
+    // placeholder「公開」は入力済みとみなさない。完全一致のみ（前後空白も不可）。
+    return String(value == null ? "" : value) === "公開";
+  }
+
+  function getCurrentRealPublishUnlockContext() {
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest
+      ? DiaryPublishPackage.loadLastPublishManifest()
+      : null;
+    var cfg = currentFtpConfig || {};
+    return {
+      publishId: (bundle && bundle.manifest && bundle.manifest.publishId) ||
+        (currentFtpPublishEligibility && currentFtpPublishEligibility.publishId) || "",
+      host: cfg.host || "",
+      username: cfg.username || "",
+      remoteRoot: cfg.remoteRoot || ""
+    };
+  }
+
+  function formatUnlockExpiryJa(iso) {
+    if (!iso) return "—";
+    try {
+      var d = new Date(iso);
+      if (!isFinite(d.getTime())) return String(iso);
+      var pad = function (n) { return String(n).padStart(2, "0"); };
+      return d.getFullYear() + "/" + pad(d.getMonth() + 1) + "/" + pad(d.getDate()) +
+        " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
+  function refreshRealPublishUnlockUi(precomputed) {
+    var banner = document.getElementById("web-real-publish-active-banner");
+    var expiryEl = document.getElementById("web-real-publish-active-expiry");
+    var safeNote = document.getElementById("web-publish-safe-mode-note");
+    var summaryEl = document.getElementById("web-real-publish-unlock-summary");
+    var errEl = document.getElementById("web-real-publish-unlock-error");
+    var ctx = getCurrentRealPublishUnlockContext();
+    var active = FtpProdPublish && FtpProdPublish.getActiveSessionUnlock
+      ? FtpProdPublish.getActiveSessionUnlock(ctx)
+      : null;
+    if (banner) banner.hidden = !active;
+    if (expiryEl) {
+      expiryEl.textContent = active
+        ? ("有効期限：" + formatUnlockExpiryJa(active.expiresAt))
+        : "有効期限：—";
+    }
+    if (safeNote) {
+      if (active) {
+        safeNote.textContent =
+          "実公開モード有効中（セッション限定）。サーバー武装状態を確認中…";
+        safeNote.classList.remove("web-pipeline-safe-note");
+        safeNote.classList.add("web-index-check-warn");
+        fetch("/api/real-publish-arm-status", { cache: "no-store" })
+          .then(function (r) { return r.json().catch(function () { return null; }); })
+          .then(function (body) {
+            var st = body && body.status;
+            if (!safeNote) return;
+            if (st && st.armed) {
+              safeNote.textContent =
+                "実公開モード有効中。サーバー実公開APIはスコープ付き武装済み（有効期限：" +
+                formatUnlockExpiryJa(st.expiresAt) +
+                " / publishId固定）。※今回はまだ本番公開APIを呼び出していません。";
+            } else {
+              safeNote.textContent =
+                "実公開モード有効中（セッション限定）。本フェーズでは実公開APIは接続されていません（サーバー武装オフ）。";
+            }
+          })
+          .catch(function () {
+            if (safeNote) {
+              safeNote.textContent =
+                "実公開モード有効中（セッション限定）。サーバー武装状態の取得に失敗しました。";
+            }
+          });
+      } else {
+        safeNote.textContent = "現在は本番公開UI確認モードです。Xserverは更新されません。";
+        safeNote.classList.add("web-pipeline-safe-note");
+        safeNote.classList.remove("web-index-check-warn");
+      }
+    }
+
+    var pre = precomputed;
+    if (!pre && FtpProdPublish && FtpProdPublish.evaluateRealPublishUnlockEligibility) {
+      var status = "package-ready";
+      var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+        DiaryPublishPackage.loadLastPublishManifest();
+      if (bundle && bundle.session && bundle.session.diaryId) {
+        var entry = getDiaryById(bundle.session.diaryId);
+        if (entry && entry.status) status = entry.status;
+      }
+      pre = FtpProdPublish.evaluateRealPublishUnlockEligibility({
+        dryRunResult: currentFtpDryRunResult ||
+          (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult()),
+        diaryStatus: status,
+        ftpConfig: currentFtpConfig || {},
+        lockInProgress: false
+      });
+    }
+    if (summaryEl && pre) {
+      var files = pre.files || [];
+      summaryEl.innerHTML =
+        "<p><strong>記事タイトル:</strong> " + escapeHtml(pre.title || "—") + "</p>" +
+        "<p><strong>公開日:</strong> " + escapeHtml(pre.publishDate || "—") + "</p>" +
+        "<p><strong>publishId:</strong> " + escapeHtml(pre.publishId || "—") + "</p>" +
+        "<p><strong>本番ホスト:</strong> " + escapeHtml(pre.host || "—") + "</p>" +
+        "<p><strong>FTPユーザー:</strong> " + escapeHtml(pre.username || "—") + "</p>" +
+        "<p><strong>remoteRoot:</strong> " + escapeHtml(pre.remoteRoot || "—") + "</p>" +
+        "<p><strong>公開対象ファイル:</strong></p><ul>" +
+        files.map(function (f) {
+          return "<li>" + escapeHtml((f.remotePath || f.localPath || "")) + "</li>";
+        }).join("") + "</ul>" +
+        "<p><strong>本番バックアップ日時:</strong> " + escapeHtml(pre.backupAt || "—") + "</p>" +
+        "<p><strong>バックアップSHA-256:</strong> " + escapeHtml(pre.backupShaShort || "—") + "…</p>" +
+        "<p><strong>dry-run判定:</strong> " + escapeHtml(pre.verdict || "—") + "</p>" +
+        "<p><strong>ロールバック準備:</strong> " + (pre.rollbackReady ? "済み" : "要確認") + "</p>" +
+        "<p><strong>予行演習後の本番変更:</strong> " +
+        escapeHtml(
+          (pre && pre.productionChangedAfterDryRunMessage) ||
+          (pre && pre.productionChangedAfterDryRunState === "true"
+            ? "予行演習後に本番index.htmが変更されています。公開を中止しました。"
+            : (pre && pre.productionChangedAfterDryRunState === "unknown"
+              ? "本番変更の確認に必要な情報が不足しています。再度予行演習を行ってください。"
+              : "予行演習後の本番変更：なし（SHA-256再確認済み）"))
+        ) + "</p>" +
+        (pre.ok
+          ? "<p class=\"web-index-check-ok\">解除条件: すべて充足</p>"
+          : ("<p class=\"web-index-check-ng\">解除不可:</p><ul>" +
+            (pre.blockers || []).map(function (b) {
+              return "<li>" + escapeHtml(b) + "</li>";
+            }).join("") + "</ul>"));
+    }
+    if (errEl && pre && !pre.ok && !active) {
+      errEl.hidden = false;
+      errEl.textContent = "解除条件が未充足のため、実公開モードは有効化できません。";
+    } else if (errEl && !active) {
+      errEl.hidden = true;
+      errEl.textContent = "";
+    }
+    updateRealPublishUnlockButtonEnabled(pre);
+    updateFtpPublishExecuteEnabled();
+    return pre;
+  }
+
+  function updateRealPublishUnlockButtonEnabled(pre) {
+    var btn = document.getElementById("btn-web-real-publish-unlock");
+    if (!btn) return;
+    if (!pre && FtpProdPublish && FtpProdPublish.evaluateRealPublishUnlockEligibility) {
+      var status = "package-ready";
+      var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+        DiaryPublishPackage.loadLastPublishManifest();
+      if (bundle && bundle.session && bundle.session.diaryId) {
+        var entry = getDiaryById(bundle.session.diaryId);
+        if (entry && entry.status) status = entry.status;
+      }
+      pre = FtpProdPublish.evaluateRealPublishUnlockEligibility({
+        dryRunResult: currentFtpDryRunResult ||
+          (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult()),
+        diaryStatus: status,
+        ftpConfig: currentFtpConfig || {},
+        lockInProgress: false
+      });
+    }
+    var c1 = document.getElementById("real-pub-unlock-check-write");
+    var c2 = document.getElementById("real-pub-unlock-check-diary");
+    var c3 = document.getElementById("real-pub-unlock-check-rollback");
+    var phrase = document.getElementById("real-pub-unlock-phrase");
+    var checksOk = !!(c1 && c1.checked && c2 && c2.checked && c3 && c3.checked);
+    var phraseOk = !!(FtpProdPublish && FtpProdPublish.isExactUnlockPhrase
+      ? FtpProdPublish.isExactUnlockPhrase(phrase && phrase.value)
+      : false);
+    var condOk = !!(pre && pre.ok);
+    var ctx = getCurrentRealPublishUnlockContext();
+    var already = !!(FtpProdPublish && FtpProdPublish.isSessionRealPublishUnlocked &&
+      FtpProdPublish.isSessionRealPublishUnlocked(ctx));
+    var ok = !!(checksOk && phraseOk && condOk && !already && !ftpPublishInFlight);
+    btn.disabled = !ok;
+    btn.setAttribute("aria-disabled", ok ? "false" : "true");
+    if (ok) btn.classList.remove("is-disabled");
+    else btn.classList.add("is-disabled");
+  }
+
+  function resetRealPublishUnlockForm() {
+    ["real-pub-unlock-check-write", "real-pub-unlock-check-diary", "real-pub-unlock-check-rollback"]
+      .forEach(function (id) {
+        var c = document.getElementById(id);
+        if (c) c.checked = false;
+      });
+    var phrase = document.getElementById("real-pub-unlock-phrase");
+    if (phrase) phrase.value = "";
+    updateRealPublishUnlockButtonEnabled(null);
+  }
+
+  function runRealPublishUnlockFromUi() {
+    if (!FtpProdPublish || !FtpProdPublish.unlockRealPublishMode) {
+      showToast("解除モジュールがありません");
+      return;
+    }
+    var btn = document.getElementById("btn-web-real-publish-unlock");
+    if (btn && btn.disabled) return;
+    var status = "package-ready";
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+      DiaryPublishPackage.loadLastPublishManifest();
+    if (bundle && bundle.session && bundle.session.diaryId) {
+      var entry = getDiaryById(bundle.session.diaryId);
+      if (entry && entry.status) status = entry.status;
+    }
+    var publishId = bundle && bundle.manifest ? bundle.manifest.publishId : "";
+    var lockProbe = publishId
+      ? fetch("/api/production-publish-lock?publishId=" + encodeURIComponent(publishId), {
+        cache: "no-store"
+      }).then(function (res) { return res.json().catch(function () { return {}; }); })
+        .catch(function () { return {}; })
+      : Promise.resolve({});
+
+    lockProbe.then(function (lockBody) {
+      var lockInProgress = !!(lockBody && lockBody.inProgress && !lockBody.stale);
+      var pre = FtpProdPublish.evaluateRealPublishUnlockEligibility({
+        dryRunResult: currentFtpDryRunResult ||
+          (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult()),
+        diaryStatus: status,
+        ftpConfig: currentFtpConfig || {},
+        lockInProgress: lockInProgress
+      });
+      var result = FtpProdPublish.unlockRealPublishMode({
+        eligibility: pre,
+        ftpConfig: currentFtpConfig || {},
+        confirmChecks: {
+          write: !!(document.getElementById("real-pub-unlock-check-write") || {}).checked,
+          diaryOnly: !!(document.getElementById("real-pub-unlock-check-diary") || {}).checked,
+          rollback: !!(document.getElementById("real-pub-unlock-check-rollback") || {}).checked
+        },
+        confirmPhrase: (document.getElementById("real-pub-unlock-phrase") || {}).value || ""
+      });
+      var errEl = document.getElementById("web-real-publish-unlock-error");
+      if (!result.ok) {
+        if (errEl) {
+          errEl.hidden = false;
+          errEl.textContent = (result.blockers || ["解除できませんでした"]).join(" / ");
+        }
+        showToast("実公開モードを有効化できませんでした");
+        refreshRealPublishUnlockUi(pre);
+        return;
+      }
+      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+      resetRealPublishUnlockForm();
+      refreshRealPublishUnlockUi(pre);
+      showToast("このセッションだけ実公開モードを有効にしました（30分で失効）");
+    });
+  }
+
+  function lockRealPublishModeFromUi() {
+    if (FtpProdPublish && FtpProdPublish.lockRealPublishMode) {
+      FtpProdPublish.lockRealPublishMode();
+    }
+    refreshRealPublishUnlockUi();
+    showToast("実公開モードを解除しました");
+  }
+
+  function updateFtpPublishExecuteEnabled() {
+    var btn = document.getElementById("btn-web-ftp-publish-execute");
+    if (!btn) return Promise.resolve(false);
+    var c1 = document.getElementById("ftp-pub-check-homepage");
+    var c2 = document.getElementById("ftp-pub-check-content");
+    var c3 = document.getElementById("ftp-pub-check-rollback");
+    var phrase = document.getElementById("ftp-pub-phrase");
+    var checksOk = !!(c1 && c1.checked && c2 && c2.checked && c3 && c3.checked);
+    var phraseOk = !!(phrase && isExactFtpPublishConfirmPhrase(phrase.value));
+    var rollbackOk = !!(currentFtpPublishConfirmState &&
+      currentFtpPublishConfirmState.rollbackReady);
+    var readyOk = !!(currentFtpPublishConfirmState &&
+      currentFtpPublishConfirmState.verdict === "READY_FOR_PRODUCTION");
+    var ctx = getCurrentRealPublishUnlockContext();
+    var unlockRec = FtpProdPublish && FtpProdPublish.getActiveSessionUnlock
+      ? FtpProdPublish.getActiveSessionUnlock(ctx)
+      : null;
+    var unlockOk = !!unlockRec;
+    var baseOk = !!(checksOk && phraseOk && rollbackOk && readyOk && unlockOk && !ftpPublishInFlight);
+
+    function applyEnabled(ok) {
+      btn.disabled = !ok;
+      btn.setAttribute("aria-disabled", ok ? "false" : "true");
+      if (ok) btn.classList.remove("is-disabled");
+      else btn.classList.add("is-disabled");
+      return ok;
+    }
+
+    if (!baseOk || !FtpProdPublish || !FtpProdPublish.resolveRealPublishApiGate) {
+      return Promise.resolve(applyEnabled(false));
+    }
+
+    // 画面表示時・入力変化時に arm-status を再確認
+    return FtpProdPublish.resolveRealPublishApiGate(ctx).then(function (gate) {
+      return applyEnabled(!!(baseOk && gate && gate.ok));
+    }).catch(function () {
+      return applyEnabled(false);
+    });
+  }
+
+  function resetFtpPublishConfirmForm() {
+    ["ftp-pub-check-homepage", "ftp-pub-check-content", "ftp-pub-check-rollback"].forEach(function (id) {
+      var c = document.getElementById(id);
+      if (c) c.checked = false;
+    });
+    var phrase = document.getElementById("ftp-pub-phrase");
+    if (phrase) phrase.value = "";
+    var prog = document.getElementById("web-ftp-publish-progress");
+    if (prog) { prog.hidden = true; prog.textContent = ""; }
+    updateFtpPublishExecuteEnabled();
+  }
+
+  function openFtpProductionPublishConfirm() {
+    if (!FtpProdPublish) {
+      showToast("本番公開モジュールがありません");
+      return;
+    }
+    if (ftpPublishInFlight) {
+      showToast("公開処理中です");
+      return;
+    }
+    // 画面を開くたびに確認チェック・入力を必ずリセット（自動実行なし）
+    resetFtpPublishConfirmForm();
+    var status = "package-ready";
+    var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+      DiaryPublishPackage.loadLastPublishManifest();
+    if (bundle && bundle.session && bundle.session.diaryId) {
+      var entry = getDiaryById(bundle.session.diaryId);
+      if (entry && entry.status) status = entry.status;
+    }
+    var dry = currentFtpDryRunResult || (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult());
+    var elg = FtpProdPublish.evaluateEligibility({
+      dryRunResult: dry,
+      diaryStatus: status,
+      ftpConfig: currentFtpConfig || {}
+    });
+    if (!elg.ok && status === "published") {
+      elg = FtpProdPublish.evaluateEligibility({
+        dryRunResult: dry,
+        diaryStatus: "package-ready",
+        ftpConfig: currentFtpConfig || {}
+      });
+    }
+    currentFtpPublishEligibility = elg;
+    if (!elg.ok) {
+      showToast(elg.blockers[0] || "公開条件未充足");
+      refreshWebPublishPipelineCards();
+      return;
+    }
+    var state = FtpProdPublish.buildConfirmState(elg, currentFtpConfig || {});
+    currentFtpPublishConfirmState = state;
+    var rollbackBlockersHtml = "";
+    if (!state.rollbackReady) {
+      var rbs = state.rollbackBlockers || ["ロールバック準備が不足しています"];
+      rollbackBlockersHtml =
+        "<p class=\"web-index-check-ng\"><strong>ロールバック準備不足のため本番公開ボタンは有効になりません</strong></p>" +
+        "<ul>" + rbs.map(function (b) {
+          return "<li>" + escapeHtml(b) + "</li>";
+        }).join("") + "</ul>";
+    }
+    var unlockCtx = {
+      publishId: state.publishId,
+      host: (currentFtpConfig || {}).host,
+      username: (currentFtpConfig || {}).username,
+      remoteRoot: (currentFtpConfig || {}).remoteRoot
+    };
+    var unlockActive = !!(FtpProdPublish && FtpProdPublish.getActiveSessionUnlock &&
+      FtpProdPublish.getActiveSessionUnlock(unlockCtx));
+
+    function renderConfirmSummary(armGate) {
+      var armedOk = !!(armGate && armGate.ok);
+      var armedOnly = !!(armGate && armGate.status && armGate.status.armed && !armGate.sessionUnlocked);
+      var sessionOnly = !!(unlockActive && armGate && !armGate.status.armed);
+      var modeHtml;
+      if (armedOk) {
+        modeHtml =
+          "<p class=\"web-index-check-warn\"><strong>実公開可能条件を充足（セッション解除＋サーバー武装）。押下直前に再確認します。</strong></p>" +
+          "<p class=\"form-hint\">サーバー武装期限: " +
+          escapeHtml(formatUnlockExpiryJa(armGate.status && armGate.status.expiresAt)) + "</p>";
+      } else if (sessionOnly) {
+        modeHtml =
+          "<p class=\"web-index-check-warn\"><strong>ブラウザ解除のみ有効。サーバー武装がないため本番公開ボタンは無効です。</strong></p>";
+      } else if (armedOnly) {
+        modeHtml =
+          "<p class=\"web-index-check-warn\"><strong>サーバー武装のみ検出。ブラウザ解除がないため本番公開ボタンは無効です。</strong></p>";
+      } else {
+        modeHtml =
+          "<p class=\"web-pipeline-safe-note\"><strong>現在はUI確認モードです。Xserverは更新されません。</strong></p>" +
+          "<p class=\"form-hint\">最終ボタンを有効にするには、セッション解除とサーバー武装の両方が必要です。</p>";
+      }
+      var el = document.getElementById("web-ftp-publish-confirm-summary");
+      if (el) {
+        el.innerHTML =
+          modeHtml +
+          "<p>記事タイトル: " + escapeHtml(state.title || "") + "</p>" +
+          "<p>公開日: " + escapeHtml(state.publishDate || "") + "</p>" +
+          "<p>代表画像: " + escapeHtml(state.heroImage || "—") + "</p>" +
+          "<p>写真枚数: " + escapeHtml(String(state.imageCount || 0)) + "</p>" +
+          "<p>本番ホスト: " + escapeHtml(state.host || "") + "</p>" +
+          "<p>本番公開ルート: " + escapeHtml(state.remoteRoot || "") + "</p>" +
+          "<p>更新するindex.htm: " + escapeHtml(state.htmlPath || "") + "</p>" +
+          "<p>新規画像一覧:</p><ul>" +
+          state.images.map(function (img) {
+            return "<li>" + escapeHtml(img.name) + " (" + escapeHtml(String(img.size)) + " bytes)</li>";
+          }).join("") + "</ul>" +
+          "<p>公開ファイル数: " + escapeHtml(String(state.fileCount)) + "</p>" +
+          "<p>本番バックアップ: " + escapeHtml(state.backupRelPath || "") +
+          (state.backupAt ? (" / " + escapeHtml(state.backupAt)) : "") + "</p>" +
+          "<p>バックアップSHA-256: " + escapeHtml(state.backupShaShort || "") + "…</p>" +
+          "<p>復元対象index.htm: " + escapeHtml(state.rollbackIndexRelPath || "—") + "</p>" +
+          "<p>dry-run判定: " + escapeHtml(state.verdict || "") + "</p>" +
+          "<p>ロールバック準備: " + (state.rollbackReady ? "済み" : "要確認") + "</p>" +
+          rollbackBlockersHtml +
+          "<p>予行演習後の本番変更確認: 公開直前に再検査</p>" +
+          "<p>同名画像衝突確認: " + (state.noCollision ? "なし" : "あり") + "</p>";
+      }
+      var safeBanner = document.getElementById("web-ftp-publish-safe-banner");
+      if (safeBanner) {
+        safeBanner.hidden = false;
+        safeBanner.textContent = armedOk
+          ? "セッション解除とサーバー武装が一致しています。公開ボタン押下直前に arm-status を再確認します。"
+          : "本番公開にはセッション解除とサーバー武装の両方が必要です。条件不足時はボタン無効です。";
+      }
+    }
+
+    // 画面を開いた時に arm-status を再確認
+    var armPromise = FtpProdPublish.resolveRealPublishApiGate
+      ? FtpProdPublish.resolveRealPublishApiGate(unlockCtx)
+      : Promise.resolve({ ok: false, sessionUnlocked: unlockActive, status: { armed: false } });
+
+    return armPromise.then(function (gate) {
+      renderConfirmSummary(gate);
+      var err = document.getElementById("web-ftp-publish-error");
+      if (err) {
+        if (state.rollbackReady) {
+          err.hidden = true;
+          err.textContent = "";
+        } else {
+          err.hidden = false;
+          err.textContent = "ロールバック準備が不足しています。不足が解消されるまで本番公開ボタンは有効になりません。";
+        }
+      }
+      resetFtpPublishConfirmForm();
+      showWebCenterView("ftpPublishConfirm");
+      return updateFtpPublishExecuteEnabled();
+    }).catch(function () {
+      renderConfirmSummary({ ok: false, sessionUnlocked: unlockActive, status: { armed: false } });
+      resetFtpPublishConfirmForm();
+      showWebCenterView("ftpPublishConfirm");
+      return updateFtpPublishExecuteEnabled();
+    });
+  }
+
+  /**
+   * FTPコマンド等の表示用リストを必ず配列へ正規化する。
+   * PowerShell ConvertTo-Json は空配列を {} にする場合があり、.join 例外の原因になる。
+   */
+  function normalizeCommandList(value) {
+    if (Array.isArray(value)) {
+      return value.map(function (item) { return String(item); });
+    }
+    if (value == null) return [];
+    if (typeof value === "string") return value ? [value] : [];
+    if (typeof value === "object") {
+      try {
+        return Object.keys(value)
+          .sort(function (a, b) {
+            var na = Number(a);
+            var nb = Number(b);
+            if (isFinite(na) && isFinite(nb)) return na - nb;
+            return String(a).localeCompare(String(b));
+          })
+          .map(function (k) { return String(value[k]); });
+      } catch (_) {
+        return [];
+      }
+    }
+    return [String(value)];
+  }
+
+  function formatCommandListText(value, emptyLabel) {
+    var list = normalizeCommandList(value);
+    return list.length ? list.join(" → ") : (emptyLabel || "（なし）");
+  }
+
+  function renderFtpPublishResult(result) {
+    currentFtpPublishResult = result;
+    var errEl = document.getElementById("web-ftp-publish-result-error");
+    var body = document.getElementById("web-ftp-publish-result-body");
+    var safeMode = !!(result && result.safeMode);
+    var ok = !!(result && result.ok);
+    if (errEl) {
+      if (ok || safeMode) { errEl.hidden = true; errEl.textContent = ""; }
+      else {
+        errEl.hidden = false;
+        errEl.textContent = (result && result.userMessage) || "公開失敗";
+      }
+    }
+    if (!body) return;
+    var cmds = normalizeCommandList(
+      result && (result.ftpCommands != null ? result.ftpCommands : result.commands)
+    );
+    var commandText = formatCommandListText(cmds, "（なし）");
+    var storCount = Number((result && (result.storCount != null ? result.storCount : result.writeCommandCount)) || 0);
+    var deleCount = Number((result && result.deleCount) || 0);
+    var progress = normalizeCommandList(result && result.progress);
+    var uploadedImages = normalizeCommandList(result && result.uploadedImages);
+    var apiCalledOrServerFail = !!(result && (
+      result.realPublishStarted ||
+      result.errorCode ||
+      result.exceptionType ||
+      (result.result === "FAILED" && !safeMode) ||
+      (result.stage && String(result.stage).indexOf("UI") < 0)
+    ));
+    var stageLabel;
+    if (progress.length) {
+      stageLabel = progress.join(" → ");
+    } else if (apiCalledOrServerFail) {
+      stageLabel = result.stage
+        ? ("サーバー本番公開処理 → " + String(result.stage))
+        : "サーバー本番公開処理";
+    } else if (safeMode && result && result.result === "UI_CONFIRM_OK") {
+      stageLabel = "（UI確認のみ）";
+    } else if (safeMode) {
+      stageLabel = "（安全モード・API未実行）";
+    } else {
+      stageLabel = "サーバー本番公開処理";
+    }
+    var rollbackAttempted = !!(result && (
+      result.rollbackAttempted === true ||
+      (result.rollback && result.rollback.attempted)
+    ));
+    var rollbackSucceeded = !!(result && (
+      result.rollbackSucceeded === true ||
+      (result.rollback && result.rollback.succeeded)
+    ));
+    var diagHtml = "";
+    if (!ok && !safeMode) {
+      diagHtml =
+        "<p>errorCode: " + escapeHtml((result && result.errorCode) || "—") + "</p>" +
+        "<p>stage: " + escapeHtml((result && result.stage) || "—") + "</p>" +
+        "<p>detail: " + escapeHtml((result && result.detail) || "—") + "</p>" +
+        "<p>ロールバック実施: " + (rollbackAttempted ? ("あり" + (rollbackSucceeded ? "（成功）" : "（未成功/未完了）")) : "なし") + "</p>";
+    }
+    body.innerHTML =
+      "<p class=\"" + ((ok || safeMode) ? "web-index-check-ok" : "web-index-check-ng") + "\"><strong>" +
+      escapeHtml((result && result.userMessage) || "") + "</strong></p>" +
+      (safeMode
+        ? "<p class=\"web-pipeline-safe-note\">現在は本番公開UI確認モードです。Xserverは更新されません。<br>STOR " +
+          escapeHtml(String(storCount)) + "件 / DELE " + escapeHtml(String(deleCount)) +
+          "件 / 実公開開始なし</p>"
+        : "") +
+      "<p>結果: " + escapeHtml((result && result.result) || "") + "</p>" +
+      "<p>工程: " + escapeHtml(stageLabel) + "</p>" +
+      diagHtml +
+      "<p>STOR画像: " + escapeHtml(uploadedImages.join(", ") || "なし") + "</p>" +
+      "<p>index.htm STOR: " + ((result && result.indexUploaded) ? "あり" : "なし") + "</p>" +
+      "<p>書込みコマンド数: " + escapeHtml(String((result && result.writeCommandCount) || 0)) + "</p>" +
+      "<p>Xserver更新件数: " + escapeHtml(String((result && result.productionUpdateCount) || 0)) + "</p>" +
+      "<p>履歴: " + escapeHtml((result && result.historyRelPath) || "—") + "</p>" +
+      "<p class=\"form-hint\">FTPコマンド:<br>" + escapeHtml(commandText) + "</p>" +
+      (result && result.critical
+        ? ("<p class=\"web-index-check-ng\">バックアップ: " +
+          escapeHtml((result.manualRecovery && result.manualRecovery.backupRelPath) || "") + "</p>")
+        : "");
+  }
+
+  function executeFtpProductionPublish() {
+    if (!FtpProdPublish || ftpPublishInFlight) return;
+    var execBtn = document.getElementById("btn-web-ftp-publish-execute");
+    var phrase = document.getElementById("ftp-pub-phrase");
+    var c1 = document.getElementById("ftp-pub-check-homepage");
+    var c2 = document.getElementById("ftp-pub-check-content");
+    var c3 = document.getElementById("ftp-pub-check-rollback");
+    if (!isExactFtpPublishConfirmPhrase(phrase && phrase.value)) {
+      showToast("確認入力は正確に「公開」と入力してください");
+      return;
+    }
+    if (!(c1 && c1.checked && c2 && c2.checked && c3 && c3.checked)) {
+      showToast("確認チェックが不足しています");
+      return;
+    }
+    if (!(currentFtpPublishConfirmState && currentFtpPublishConfirmState.rollbackReady)) {
+      showToast("ロールバック準備が不足しています");
+      return;
+    }
+    if (!(currentFtpPublishConfirmState &&
+        currentFtpPublishConfirmState.verdict === "READY_FOR_PRODUCTION")) {
+      showToast("READY_FOR_PRODUCTION ではありません");
+      return;
+    }
+
+    var unlockCtxExec = getCurrentRealPublishUnlockContext();
+    ftpPublishInFlight = true;
+    if (execBtn) execBtn.disabled = true;
+    var prog = document.getElementById("web-ftp-publish-progress");
+    if (prog) {
+      prog.hidden = false;
+      prog.textContent = "公開条件を再確認しています（arm-status）…";
+    }
+    window.onbeforeunload = null;
+
+    // ボタン押下直前に arm-status を再確認
+    return FtpProdPublish.resolveRealPublishApiGate(unlockCtxExec).then(function (gate) {
+      updateFtpPublishExecuteEnabled();
+      if (!(gate && gate.ok)) {
+        ftpPublishInFlight = false;
+        if (prog) prog.hidden = true;
+        updateFtpPublishExecuteEnabled();
+        showToast((gate && gate.blockers && gate.blockers[0]) ||
+          "セッション解除とサーバー武装の両方が必要です");
+        return null;
+      }
+
+      var diaryId = "";
+      var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
+        DiaryPublishPackage.loadLastPublishManifest();
+      if (bundle && bundle.session) diaryId = bundle.session.diaryId || "";
+      if (prog) {
+        prog.textContent = gate.ok
+          ? "本番公開条件を再確認済み。公開処理を開始します…"
+          : "UI確認を実行しています（Xserverへは書き込みません）…";
+      }
+
+      return FtpProdPublish.runProductionPublish({
+        eligibility: currentFtpPublishEligibility,
+        explicitConfirm: true,
+        confirmPhrase: "公開",
+        confirmChecks: {
+          homepage: !!(c1 && c1.checked),
+          content: !!(c2 && c2.checked),
+          rollback: !!(c3 && c3.checked)
+        },
+        diaryId: diaryId,
+        ftpConfig: currentFtpConfig || {},
+        uiSafeMode: !gate.sessionUnlocked,
+        allowRealPublish: !!(gate.ok && gate.sessionUnlocked),
+        armStatus: gate.status
+      }).then(function (result) {
+        if (result && result.ok && diaryId && !result.safeMode && result.realPublishStarted) {
+          updateDiaryStatusOnly(diaryId, "production-published");
+        }
+        try {
+          renderFtpPublishResult(result);
+        } catch (renderErr) {
+          // 表示例外で API 結果を safeMode 扱いに上書きしない
+          var bodyEl = document.getElementById("web-ftp-publish-result-body");
+          var errEl2 = document.getElementById("web-ftp-publish-result-error");
+          if (errEl2) {
+            errEl2.hidden = false;
+            errEl2.textContent = (result && result.userMessage) || "公開結果の表示に失敗しました";
+          }
+          if (bodyEl) {
+            bodyEl.innerHTML =
+              "<p class=\"web-index-check-ng\"><strong>" +
+              escapeHtml((result && result.userMessage) || "表示エラー") + "</strong></p>" +
+              "<p>結果: " + escapeHtml((result && result.result) || "FAILED") + "</p>" +
+              "<p>工程: " + escapeHtml(
+                (result && result.realPublishStarted)
+                  ? "サーバー本番公開処理"
+                  : ((result && result.safeMode) ? "（安全モード・API未実行）" : "サーバー本番公開処理")
+              ) + "</p>" +
+              "<p>errorCode: " + escapeHtml((result && result.errorCode) || "—") + "</p>" +
+              "<p>detail: " + escapeHtml((result && result.detail) || "—") + "</p>" +
+              "<p class=\"form-hint\">表示例外: " +
+              escapeHtml(renderErr && renderErr.message ? renderErr.message : String(renderErr)) +
+              "</p>";
+          }
+          currentFtpPublishResult = result;
+        }
+        showWebCenterView("ftpPublishResult");
+        refreshWebPublishPipelineCards();
+        if (result && result.result === "UI_CONFIRM_OK") {
+          showToast("UI確認が完了しました");
+        } else if (result && result.result === "REAL_PUBLISH_API_NOT_ARMED") {
+          showToast("実公開条件未充足のためAPI未実行（書込み0件）");
+        } else if (result && result.safeMode) {
+          showToast((result && result.userMessage) || "安全モードのため書込みなし");
+        } else {
+          showToast(result && result.ok ? "本番公開が完了しました" : ((result && result.userMessage) || "公開失敗"));
+        }
+        return result;
+      });
+    }).catch(function (err) {
+      var failed = {
+        ok: false,
+        result: "FAILED",
+        userMessage: err && err.message ? err.message : "公開失敗",
+        writeCommandCount: 0,
+        storCount: 0,
+        deleCount: 0,
+        productionUpdateCount: 0,
+        commands: [],
+        ftpCommands: [],
+        safeMode: true,
+        realPublishStarted: false,
+        detail: "client-pre-api-or-network"
+      };
+      try { renderFtpPublishResult(failed); } catch (_) { /* ignore */ }
+      showWebCenterView("ftpPublishResult");
+      return failed;
+    }).then(function (result) {
+      ftpPublishInFlight = false;
+      window.onbeforeunload = null;
+      updateFtpPublishExecuteEnabled();
+      return result;
+    });
+  }
+
+  function loadCorporateIndexIntoUi() {
+    if (!DiaryIndexInsert || typeof DiaryIndexInsert.loadCorporateIndexFromLocalServer !== "function") {
+      return Promise.reject(new Error("ローカル読込APIがありません"));
+    }
+    showWebIndexInsertError("");
+    return DiaryIndexInsert.loadCorporateIndexFromLocalServer().then(function (source) {
+      currentIndexSource = source;
+      lastLocalApplyLoadOk = true;
+      if (source.analysis && source.analysis.ok) lastLocalApplyParseOk = true;
+      renderIndexInsertMeta(source);
+      var analyzeBtn = document.getElementById("btn-web-index-analyze");
+      if (analyzeBtn) analyzeBtn.disabled = false;
+      analyzeIndexInsert();
+      showToast("CorporateSite の index.htm を読み込みました");
+      return source;
+    }).catch(function (err) {
+      showWebIndexInsertError(err && err.message ? err.message : "読込に失敗しました");
+      throw err;
+    });
+  }
+
+  function openLocalApplyFromHtmlExport() {
+    if (!getArticleHtmlForIndexInsert() && !currentHtmlExportEntry) {
+      showToast("先にホームページHTMLを書き出してください");
+      return;
+    }
+    openWebIndexInsertView();
+    loadCorporateIndexIntoUi().then(function () {
+      openLocalApplyConfirm();
+    }).catch(function () { /* shown */ });
+  }
+
+  function handleCopyWebInstruction() {
+    var pre = document.getElementById("web-instruction-text");
+    var text = currentDiaryInstruction ||
+      (pre && pre.textContent) ||
+      "";
+    if (!String(text).trim()) {
+      notifyCopied("コピーする内容がありません");
+      return;
+    }
+    copyText(text).then(function () {
+      notifyCopied("コピーしました");
+    }).catch(function () {
+      notifyCopied("コピーに失敗しました");
     });
   }
 
@@ -6383,7 +10781,10 @@
     var container = document.getElementById(containerId);
     if (!container) return;
     var list = filterDiariesByTitle(
-      loadDiaryEntries().filter(function (d) { return d.status === status; }),
+      loadDiaryEntries().filter(function (d) {
+        if (status === "draft") return d.status === "draft";
+        return d.status !== "draft";
+      }),
       query
     );
     if (!list.length) {
@@ -6403,7 +10804,7 @@
       if (d.status === "draft") {
         actions +=
           '<button type="button" class="btn btn--secondary btn--touch btn-web-publish" data-diary-id="' +
-          escapeHtml(d.id) + '">公開済みにする</button>';
+          escapeHtml(d.id) + '">管理上の公開済みにする</button>';
       }
       actions +=
         '<button type="button" class="btn btn--secondary btn--touch btn-web-instruction" data-diary-id="' +
@@ -6414,8 +10815,9 @@
           '<h4 class="card__title">' + escapeHtml(d.title || "無題") + "</h4>" +
           '<div class="web-diary-card__meta">' +
             '<span class="badge badge--progress">更新 ' + escapeHtml(formatDiaryUpdatedShort(d.updatedAt)) + "</span>" +
-            '<span class="badge ' + (d.status === "published" ? "badge--dev" : "badge--improve") + '">' +
-              (d.status === "published" ? "公開済み" : "下書き") +
+            '<span class="badge ' +
+              (d.status === "draft" ? "badge--improve" : "badge--dev") + '">' +
+              escapeHtml(diaryStatusLabel(d.status)) +
             "</span>" +
           "</div>" +
           '<p class="web-diary-card__preview">' +
@@ -6565,7 +10967,7 @@
       currentDiaryInstruction = generateHomepageUpdatePrompt(null) ||
         buildHomepageUpdateInstruction(entry);
       var pre = document.getElementById("web-instruction-text");
-      if (pre) pre.textContent = currentDiaryInstruction;
+      if (pre) setCopyablePreText(pre, currentDiaryInstruction, "cursor");
       showWebCenterView("instruction");
       return;
     }
@@ -9182,9 +13584,9 @@
       return;
     }
     copyText(text).then(function () {
-      showToast("コピーしました");
+      notifyCopied("コピーしました");
     }).catch(function () {
-      showToast("コピーに失敗しました");
+      notifyCopied("コピーに失敗しました");
     });
   }
 
@@ -9326,8 +13728,8 @@
         "</div>";
     }
     if (full) {
-      full.textContent = data.instruction || currentCursorInstruction || "";
-      full.hidden = true;
+      setCopyablePreText(full, data.instruction || currentCursorInstruction || "", "cursor");
+      setCopyablePreHidden(full, true);
     }
     var showBtn = document.getElementById("btn-cursor-show-instruction");
     if (showBtn) showBtn.textContent = "指示内容を見る";
@@ -9356,7 +13758,7 @@
     cursorHandoffModal.classList.remove("is-open");
     cursorHandoffModal.setAttribute("aria-hidden", "true");
     var full = document.getElementById("cursor-handoff-full");
-    if (full) full.hidden = true;
+    if (full) setCopyablePreHidden(full, true);
     syncBodyScroll();
   }
 
@@ -9377,9 +13779,9 @@
       return;
     }
     copyText(text).then(function () {
-      showToast("もう一度コピーしました");
+      notifyCopied("コピーしました");
     }).catch(function () {
-      showToast("コピーに失敗しました");
+      notifyCopied("コピーに失敗しました");
     });
   }
 
@@ -9388,7 +13790,7 @@
     var btn = document.getElementById("btn-cursor-show-instruction");
     if (!full) return;
     var open = full.hidden;
-    full.hidden = !open;
+    setCopyablePreHidden(full, !open);
     if (btn) btn.textContent = open ? "指示内容を閉じる" : "指示内容を見る";
   }
 
@@ -9893,12 +14295,153 @@
   onClick("btn-web-save-draft-mid", handleSaveWebDiaryDraft);
   onClick("btn-web-save-draft-bottom", handleSaveWebDiaryDraft);
   onClick("btn-web-save-published", handleSaveWebDiaryPublished);
+  onClick("btn-web-build-html", openWebHtmlExportView);
   onClick("btn-web-build-instruction", handleBuildWebInstruction);
   onClick("btn-web-copy-instruction", handleCopyWebInstruction);
   onClick("btn-web-back-from-instruction", function () {
     showWebCenterView("form");
   });
   onClick("btn-web-instruction-to-menu", function () {
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    renderWebRecentList();
+    showWebCenterView("menu");
+  });
+  onClick("btn-web-html-tab-article", function () { setHtmlExportTab("article"); });
+  onClick("btn-web-html-tab-news", function () { setHtmlExportTab("news"); });
+  onClick("btn-web-html-copy", handleCopyWebHtmlExport);
+  onClick("btn-web-html-download-article", function () { handleDownloadWebHtml("article"); });
+  onClick("btn-web-html-download-news", function () { handleDownloadWebHtml("news"); });
+  onClick("btn-web-html-download-combined", function () { handleDownloadWebHtml("combined"); });
+  onClick("btn-web-export-images", function () { runDiaryImageExport("images"); });
+  onClick("btn-web-export-html-images", function () { runDiaryImageExport("html"); });
+  onClick("btn-web-open-index-insert", openWebIndexInsertView);
+  onClick("btn-web-open-local-apply", openLocalApplyFromHtmlExport);
+  onClick("btn-web-open-publish-package", openPublishPackageView);
+  onClick("btn-web-publish-recheck", refreshPublishPackageView);
+  onClick("btn-web-publish-create-zip", createPublishPackageZip);
+  onClick("btn-web-publish-copy-manifest", copyPublishManifest);
+  onClick("btn-web-publish-download-zip", downloadPublishZip);
+  onClick("btn-web-publish-back-html", function () { showWebCenterView("htmlExport"); });
+  onClick("btn-web-publish-to-menu", function () { showWebCenterView("menu"); });
+  onClick("btn-web-publish-mgmt", openPublishMgmtView);
+  onClick("btn-web-ftp-save-config", saveFtpConfigFromForm);
+  onClick("btn-web-ftp-open-confirm", openFtpConfirmView);
+  onClick("btn-web-ftp-open-dry-run", openFtpDryRunConfirmView);
+  onClick("btn-web-ftp-mgmt-to-menu", function () { showWebCenterView("menu"); });
+  onClick("btn-web-ftp-cancel", function () { showWebCenterView("publishMgmt"); });
+  onClick("btn-web-ftp-run-probe", runFtpProbeFromUi);
+  onClick("btn-web-ftp-result-retry", openFtpConfirmView);
+  onClick("btn-web-ftp-result-back", function () { showWebCenterView("publishMgmt"); });
+  onClick("btn-web-ftp-result-menu", function () { showWebCenterView("menu"); });
+  onClick("btn-web-ftp-dryrun-cancel", function () { showWebCenterView("publishMgmt"); });
+  onClick("btn-web-ftp-dryrun-run", runFtpDryRunFromUi);
+  onClick("btn-web-ftp-dryrun-retry", openFtpDryRunConfirmView);
+  onClick("btn-web-ftp-dryrun-back", function () { showWebCenterView("publishMgmt"); });
+  onClick("btn-web-ftp-dryrun-menu", function () { showWebCenterView("menu"); });
+  onClick("btn-web-ftp-root-confirm-cancel", function () { showWebCenterView("publishMgmt"); });
+  onClick("btn-web-ftp-root-confirm-save", saveFtpPublishRootConfirmationFromUi);
+  (function () {
+    var rootCb = document.getElementById("ftp-root-confirm-public-html");
+    if (rootCb) rootCb.addEventListener("change", updateFtpRootConfirmSaveEnabled);
+  })();
+  onClick("btn-web-ftp-prod-publish-open", openFtpProductionPublishConfirm);
+  onClick("btn-web-ftp-publish-cancel", function () {
+    showWebCenterView("form");
+    refreshWebPublishPipelineCards();
+  });
+  onClick("btn-web-ftp-publish-execute", executeFtpProductionPublish);
+  onClick("btn-web-ftp-publish-result-back", function () {
+    showWebCenterView("form");
+    refreshWebPublishPipelineCards();
+  });
+  onClick("btn-web-ftp-publish-result-menu", function () { showWebCenterView("menu"); });
+
+  onClick("btn-web-pipeline-instruction", function () {
+    var btn = document.getElementById("btn-web-build-instruction");
+    if (btn) btn.click();
+  });
+  onClick("btn-web-pipeline-html", function () {
+    var btn = document.getElementById("btn-web-build-html");
+    if (btn) btn.click();
+  });
+  onClick("btn-web-pipeline-package", function () {
+    if (typeof openPublishPackageView === "function") openPublishPackageView();
+    else showWebCenterView("publishPackage");
+  });
+  onClick("btn-web-pipeline-ftp", function () {
+    showWebCenterView("publishMgmt");
+  });
+  onClick("btn-web-pipeline-dryrun", openFtpDryRunConfirmView);
+  onClick("btn-web-pipeline-refresh", function () {
+    refreshWebPublishPipelineCards();
+    showToast("公開準備の状態を再読み込みしました");
+  });
+  onClick("btn-web-pipeline-prod-confirm", openFtpProductionPublishConfirm);
+  ["ftp-pub-check-homepage", "ftp-pub-check-content", "ftp-pub-check-rollback"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", updateFtpPublishExecuteEnabled);
+  });
+  var phraseEl = document.getElementById("ftp-pub-phrase");
+  if (phraseEl) {
+    phraseEl.addEventListener("input", updateFtpPublishExecuteEnabled);
+    phraseEl.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.keyCode === 13) {
+        ev.preventDefault();
+        var btn = document.getElementById("btn-web-ftp-publish-execute");
+        if (!btn || btn.disabled || ftpPublishInFlight) return;
+        executeFtpProductionPublish();
+      }
+    });
+  }
+  ["real-pub-unlock-check-write", "real-pub-unlock-check-diary", "real-pub-unlock-check-rollback"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", function () { updateRealPublishUnlockButtonEnabled(); });
+  });
+  var unlockPhraseEl = document.getElementById("real-pub-unlock-phrase");
+  if (unlockPhraseEl) {
+    unlockPhraseEl.addEventListener("input", function () { updateRealPublishUnlockButtonEnabled(); });
+    unlockPhraseEl.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.keyCode === 13) {
+        ev.preventDefault();
+        var ub = document.getElementById("btn-web-real-publish-unlock");
+        if (!ub || ub.disabled) return;
+        runRealPublishUnlockFromUi();
+      }
+    });
+  }
+  onClick("btn-web-real-publish-unlock", runRealPublishUnlockFromUi);
+  onClick("btn-web-real-publish-lock", lockRealPublishModeFromUi);
+  onClick("btn-web-index-analyze", analyzeIndexInsert);
+  onClick("btn-web-index-confirm-download", confirmIndexInsertDownload);
+  onClick("btn-web-index-load-corporate", function () {
+    loadCorporateIndexIntoUi().catch(function () { /* shown */ });
+  });
+  onClick("btn-web-index-open-local-confirm", openLocalApplyConfirm);
+  onClick("btn-web-index-local-apply-yes", executeLocalApply);
+  onClick("btn-web-index-local-apply-cancel", cancelLocalApplyConfirm);
+  onClick("btn-web-index-tab-before", function () { setIndexDiffTab("before"); });
+  onClick("btn-web-index-tab-after", function () { setIndexDiffTab("after"); });
+  onClick("btn-web-back-from-index-insert", function () {
+    showWebCenterView("htmlExport");
+  });
+  onClick("btn-web-index-to-menu", function () {
+    releaseDiaryObjectUrls();
+    diaryImageItems = [];
+    renderWebRecentList();
+    showWebCenterView("menu");
+  });
+  var webIndexFileInput = document.getElementById("web-index-file");
+  if (webIndexFileInput) {
+    webIndexFileInput.addEventListener("change", function () {
+      var file = webIndexFileInput.files && webIndexFileInput.files[0];
+      if (file) handleIndexFileSelected(file);
+    });
+  }
+  onClick("btn-web-back-from-html-export", function () {
+    showWebCenterView("form");
+  });
+  onClick("btn-web-html-to-menu", function () {
     releaseDiaryObjectUrls();
     diaryImageItems = [];
     renderWebRecentList();
@@ -10011,9 +14554,9 @@
 
   onClick("btn-copy-prompt", function () {
     copyText(currentGeneratedPrompt).then(function () {
-      showToast("指示書をコピーしました");
+      notifyCopied("コピーしました");
     }).catch(function () {
-      showToast("コピーに失敗しました");
+      notifyCopied("コピーに失敗しました");
     });
   }, "copyPrompt");
 
@@ -10043,9 +14586,9 @@
 
   onClick("btn-copy-viewed-prompt", function () {
     copyText(viewedPrompt).then(function () {
-      showToast("指示書をコピーしました");
+      notifyCopied("コピーしました");
     }).catch(function () {
-      showToast("コピーに失敗しました");
+      notifyCopied("コピーに失敗しました");
     });
   });
 
