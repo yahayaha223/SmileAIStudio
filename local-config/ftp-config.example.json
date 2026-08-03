@@ -1,0 +1,10 @@
+{
+  "host": "ftp.example.xserver.jp",
+  "port": 21,
+  "username": "your-ftp-username",
+  "password": "YOUR_PASSWORD_HERE",
+  "remoteRoot": "/your-domain.jp/public_html",
+  "useTls": true,
+  "passive": true,
+  "timeoutMs": 25000
+}
