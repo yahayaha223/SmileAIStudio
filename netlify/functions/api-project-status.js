@@ -1,12 +1,10 @@
 "use strict";
 
 var http = require("./shared/http");
-var kv = require("./shared/kv-store");
 var projectStore = require("./shared/project-store");
+var protectApi = require("./shared/auth/protect-api");
 
-exports.handler = async function (event) {
-  kv.connectFromLambdaEvent(event);
-  if (event.httpMethod === "OPTIONS") return http.options();
+async function handler(event) {
   if (event.httpMethod !== "GET") {
     return http.json(405, { ok: false, error: "method_not_allowed" });
   }
@@ -21,4 +19,6 @@ exports.handler = async function (event) {
   } catch (e) {
     return http.json(500, { ok: false, error: "unavailable" });
   }
-};
+}
+
+exports.handler = protectApi.wrapApi(handler, "api-project-status:GET");

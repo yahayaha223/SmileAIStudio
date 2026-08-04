@@ -10133,12 +10133,28 @@
       ? DiaryPublishPackage.loadLastPublishManifest()
       : null;
     var cfg = currentFtpConfig || {};
+    var dry = currentFtpDryRunResult ||
+      (FtpDryRun && FtpDryRun.getLastResult && FtpDryRun.getLastResult()) || null;
+    var files = (bundle && bundle.manifest && bundle.manifest.files) || [];
+    var paths = FtpProdPublish && FtpProdPublish.extractAllowedRemotePaths
+      ? FtpProdPublish.extractAllowedRemotePaths(files)
+      : files.map(function (f) { return String((f && f.remotePath) || ""); }).filter(Boolean);
+    var backupRelPath = "";
+    if (dry && dry.backup && dry.backup.backupRelPath) {
+      backupRelPath = String(dry.backup.backupRelPath);
+    } else if (dry && dry.report && dry.report.productionBackupLocation) {
+      backupRelPath = String(dry.report.productionBackupLocation);
+    }
     return {
       publishId: (bundle && bundle.manifest && bundle.manifest.publishId) ||
         (currentFtpPublishEligibility && currentFtpPublishEligibility.publishId) || "",
       host: cfg.host || "",
       username: cfg.username || "",
-      remoteRoot: cfg.remoteRoot || ""
+      remoteRoot: cfg.remoteRoot || "",
+      allowedRemotePaths: paths,
+      backupRelPath: backupRelPath,
+      dryRunVerdict: dry ? String(dry.verdict || "") : "",
+      sessionUnlockExpiresAt: ""
     };
   }
 
@@ -10162,6 +10178,11 @@
     var summaryEl = document.getElementById("web-real-publish-unlock-summary");
     var errEl = document.getElementById("web-real-publish-unlock-error");
     var ctx = getCurrentRealPublishUnlockContext();
+    if (FtpProdPublish && FtpProdPublish.syncRealPublishSafetyState && isLocalFtpRuntime()) {
+      FtpProdPublish.syncRealPublishSafetyState(ctx).then(function () {
+        updateFtpPublishExecuteEnabled();
+      }).catch(function () { /* ignore */ });
+    }
     var active = FtpProdPublish && FtpProdPublish.getActiveSessionUnlock
       ? FtpProdPublish.getActiveSessionUnlock(ctx)
       : null;
@@ -10174,28 +10195,31 @@
     if (safeNote) {
       if (active) {
         safeNote.textContent =
-          "実公開モード有効中（セッション限定）。サーバー武装状態を確認中…";
+          "実公開モード有効中。サーバー武装を確認しています…";
         safeNote.classList.remove("web-pipeline-safe-note");
         safeNote.classList.add("web-index-check-warn");
-        fetch("/api/real-publish-arm-status", { cache: "no-store" })
-          .then(function (r) { return r.json().catch(function () { return null; }); })
-          .then(function (body) {
-            var st = body && body.status;
+        var armStatusPromise = FtpProdPublish && FtpProdPublish.fetchRealPublishArmStatus
+          ? FtpProdPublish.fetchRealPublishArmStatus()
+          : fetch("/api/real-publish-arm-status", { cache: "no-store" })
+            .then(function (r) { return r.json().catch(function () { return null; }); })
+            .then(function (body) { return (body && body.status) || { armed: false }; });
+        armStatusPromise
+          .then(function (st) {
             if (!safeNote) return;
             if (st && st.armed) {
               safeNote.textContent =
-                "実公開モード有効中。サーバー実公開APIはスコープ付き武装済み（有効期限：" +
+                "実公開モード有効・サーバー武装済み（有効期限：" +
                 formatUnlockExpiryJa(st.expiresAt) +
-                " / publishId固定）。※今回はまだ本番公開APIを呼び出していません。";
+                "）。※本番公開APIはまだ呼び出していません。";
             } else {
               safeNote.textContent =
-                "実公開モード有効中（セッション限定）。本フェーズでは実公開APIは接続されていません（サーバー武装オフ）。";
+                "ブラウザ解除のみ有効です。サーバー武装がないため最終公開はできません。";
             }
           })
           .catch(function () {
             if (safeNote) {
               safeNote.textContent =
-                "実公開モード有効中（セッション限定）。サーバー武装状態の取得に失敗しました。";
+                "実公開モード有効中。サーバー武装状態の取得に失敗しました。";
             }
           });
       } else {
@@ -10324,12 +10348,16 @@
 
   function runRealPublishUnlockFromUi() {
     if (!guardLocalFtpOrExplain()) return;
-    if (!FtpProdPublish || !FtpProdPublish.unlockRealPublishMode) {
+    if (!FtpProdPublish || !FtpProdPublish.enableRealPublishModeWithServerArm) {
       showToast("解除モジュールがありません");
       return;
     }
     var btn = document.getElementById("btn-web-real-publish-unlock");
     if (btn && btn.disabled) return;
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+    }
     var status = "package-ready";
     var bundle = DiaryPublishPackage && DiaryPublishPackage.loadLastPublishManifest &&
       DiaryPublishPackage.loadLastPublishManifest();
@@ -10354,7 +10382,7 @@
         ftpConfig: currentFtpConfig || {},
         lockInProgress: lockInProgress
       });
-      var result = FtpProdPublish.unlockRealPublishMode({
+      return FtpProdPublish.enableRealPublishModeWithServerArm({
         eligibility: pre,
         ftpConfig: currentFtpConfig || {},
         confirmChecks: {
@@ -10363,30 +10391,65 @@
           rollback: !!(document.getElementById("real-pub-unlock-check-rollback") || {}).checked
         },
         confirmPhrase: (document.getElementById("real-pub-unlock-phrase") || {}).value || ""
-      });
-      var errEl = document.getElementById("web-real-publish-unlock-error");
-      if (!result.ok) {
-        if (errEl) {
-          errEl.hidden = false;
-          errEl.textContent = (result.blockers || ["解除できませんでした"]).join(" / ");
+      }).then(function (result) {
+        var errEl = document.getElementById("web-real-publish-unlock-error");
+        if (!result || !result.ok) {
+          if (errEl) {
+            errEl.hidden = false;
+            errEl.textContent = (result && result.userMessage) || "サーバー武装に失敗しました";
+            if (result && result.blockers && result.blockers.length) {
+              errEl.textContent += "（" + result.blockers.join(" / ") + "）";
+            }
+          }
+          showToast("サーバー武装に失敗しました");
+          refreshRealPublishUnlockUi(pre);
+          updateFtpPublishExecuteEnabled();
+          return;
         }
-        showToast("実公開モードを有効化できませんでした");
+        if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
+        resetRealPublishUnlockForm();
         refreshRealPublishUnlockUi(pre);
-        return;
+        updateFtpPublishExecuteEnabled();
+        var remain = "";
+        if (result.expiresAt) {
+          remain = "（有効期限：" + formatUnlockExpiryJa(result.expiresAt) + "）";
+        }
+        showToast("実公開モード有効・サーバー武装済み" + remain);
+      });
+    }).catch(function (err) {
+      var errEl = document.getElementById("web-real-publish-unlock-error");
+      if (errEl) {
+        errEl.hidden = false;
+        errEl.textContent = "サーバー武装に失敗しました";
       }
-      if (errEl) { errEl.hidden = true; errEl.textContent = ""; }
-      resetRealPublishUnlockForm();
-      refreshRealPublishUnlockUi(pre);
-      showToast("このセッションだけ実公開モードを有効にしました（30分で失効）");
+      showToast("サーバー武装に失敗しました");
+      if (FtpProdPublish.lockRealPublishModeAsync) {
+        FtpProdPublish.lockRealPublishModeAsync().then(function () {
+          refreshRealPublishUnlockUi();
+        });
+      } else if (FtpProdPublish.lockRealPublishMode) {
+        FtpProdPublish.lockRealPublishMode();
+        refreshRealPublishUnlockUi();
+      }
+    }).then(function () {
+      updateRealPublishUnlockButtonEnabled(null);
     });
   }
 
   function lockRealPublishModeFromUi() {
+    var done = function () {
+      refreshRealPublishUnlockUi();
+      updateFtpPublishExecuteEnabled();
+      showToast("実公開モードを解除しました");
+    };
+    if (FtpProdPublish && FtpProdPublish.lockRealPublishModeAsync) {
+      FtpProdPublish.lockRealPublishModeAsync().then(done).catch(done);
+      return;
+    }
     if (FtpProdPublish && FtpProdPublish.lockRealPublishMode) {
       FtpProdPublish.lockRealPublishMode();
     }
-    refreshRealPublishUnlockUi();
-    showToast("実公開モードを解除しました");
+    done();
   }
 
   function updateFtpPublishExecuteEnabled() {
@@ -10663,21 +10726,33 @@
     } else {
       stageLabel = "サーバー本番公開処理";
     }
+    var rollbackNotRequired = !!(result && (
+      result.rollbackNotRequired === true ||
+      (result.rollback && result.rollback.rollbackNotRequired)
+    ));
     var rollbackAttempted = !!(result && (
       result.rollbackAttempted === true ||
       (result.rollback && result.rollback.attempted)
     ));
     var rollbackSucceeded = !!(result && (
       result.rollbackSucceeded === true ||
-      (result.rollback && result.rollback.succeeded)
+      (result.rollback && (result.rollback.succeeded || result.rollback.ok))
     ));
     var diagHtml = "";
     if (!ok && !safeMode) {
+      var rollbackLabel;
+      if (rollbackNotRequired) {
+        rollbackLabel = "不要（本番変更なし・復元不要）";
+      } else if (rollbackAttempted) {
+        rollbackLabel = "あり" + (rollbackSucceeded ? "（成功）" : "（未成功/未完了）");
+      } else {
+        rollbackLabel = "なし";
+      }
       diagHtml =
         "<p>errorCode: " + escapeHtml((result && result.errorCode) || "—") + "</p>" +
         "<p>stage: " + escapeHtml((result && result.stage) || "—") + "</p>" +
         "<p>detail: " + escapeHtml((result && result.detail) || "—") + "</p>" +
-        "<p>ロールバック実施: " + (rollbackAttempted ? ("あり" + (rollbackSucceeded ? "（成功）" : "（未成功/未完了）")) : "なし") + "</p>";
+        "<p>ロールバック実施: " + escapeHtml(rollbackLabel) + "</p>";
     }
     body.innerHTML =
       "<p class=\"" + ((ok || safeMode) ? "web-index-check-ok" : "web-index-check-ng") + "\"><strong>" +
@@ -10840,8 +10915,19 @@
     }).then(function (result) {
       ftpPublishInFlight = false;
       window.onbeforeunload = null;
-      updateFtpPublishExecuteEnabled();
-      return result;
+      var finish = function () {
+        refreshRealPublishUnlockUi();
+        updateFtpPublishExecuteEnabled();
+        return result;
+      };
+      // 本番公開完了・失敗のいずれでも必ず session + server を解除
+      if (FtpProdPublish && FtpProdPublish.lockRealPublishModeAsync) {
+        return FtpProdPublish.lockRealPublishModeAsync().then(finish).catch(finish);
+      }
+      if (FtpProdPublish && FtpProdPublish.lockRealPublishMode) {
+        FtpProdPublish.lockRealPublishMode();
+      }
+      return finish();
     });
   }
 
@@ -11387,10 +11473,20 @@
     if (ctrl) {
       timer = setTimeout(function () { try { ctrl.abort(); } catch (e) { /* ignore */ } }, 8000);
     }
+    var headers = options.headers || { Accept: "application/json" };
+    try {
+      if (typeof document !== "undefined" && options.method && String(options.method).toUpperCase() !== "GET") {
+        var csrfMatch = String(document.cookie || "").match(/(?:^|; )smile_studio_csrf=([^;]*)/);
+        if (csrfMatch && csrfMatch[1]) {
+          headers = Object.assign({}, headers, { "X-CSRF-Token": decodeURIComponent(csrfMatch[1]) });
+        }
+      }
+    } catch (eCsrf) { /* ignore */ }
     return fetch(url, {
       method: options.method || "GET",
-      headers: options.headers || { Accept: "application/json" },
+      headers: headers,
       body: options.body || undefined,
+      credentials: "include",
       cache: "no-store",
       signal: ctrl ? ctrl.signal : undefined
     }).then(function (res) {

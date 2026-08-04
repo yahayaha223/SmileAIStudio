@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Smile AI Studio ログイン（ローカル試作）">
+  <meta name="theme-color" content="#4f6ef7">
+  <title>ログイン — Smile AI Studio</title>
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="login" id="login-root">
+    <header class="login__brand">
+      <div class="login__logo" aria-hidden="true">
+        <span class="login__logo-mark">S</span>
+      </div>
+      <p class="login__product">Smile AI Studio</p>
+      <p class="login__org">株式会社えがおのきろく 専用システム</p>
+    </header>
+
+    <h1 class="login__title">Smile AI Studioへログイン</h1>
+    <p class="login__lead">
+      顔認証・指紋・Windows Hello はお使いの端末が行います。
+      Smile AI Studio が顔写真や生体情報を保存することはありません（パスキー方式）。
+    </p>
+    <p class="login__lead login__lead--staging" id="staging-passkey-note">
+      ステージング（auth-staging）で登録するパスキーは試験用です。
+      本番（studio.egaonokiroku.co.jp）切替時は再登録してください。本番用パスキーをここに登録しないでください。
+    </p>
+
+    <section class="login__panel" aria-labelledby="passkey-heading">
+      <h2 id="passkey-heading" class="visually-hidden">パスキーログイン</h2>
+      <button type="button" class="btn btn--primary" id="btn-passkey-login">
+        顔認証・パスキーでログイン
+      </button>
+      <p class="login__hint" id="passkey-capability" aria-live="polite">対応状況を確認しています…</p>
+    </section>
+
+    <section class="login__alt" aria-labelledby="alt-heading">
+      <h2 id="alt-heading" class="login__section-title">その他の方法</h2>
+      <button type="button" class="btn btn--secondary" id="btn-email-login">
+        メールでログイン（代替）
+      </button>
+      <button type="button" class="btn btn--ghost" id="btn-register-passkey">
+        初回パスキー登録
+      </button>
+      <a class="login__link" href="#recover" id="link-recover">ログインできない場合（安全な回復）</a>
+    </section>
+
+    <section class="login__recover" id="recover" hidden>
+      <h2 class="login__section-title">回復について</h2>
+      <p class="login__recover-text">
+        回復は管理者（owner）による確認後、メールワンタイムまたは回復コードで行います。
+        この試作画面では本番への送信は行いません。
+      </p>
+      <label class="login__field">
+        <span>登録メール（試作）</span>
+        <input type="email" id="recover-email" autocomplete="username" placeholder="name@example.com" inputmode="email">
+      </label>
+      <button type="button" class="btn btn--secondary" id="btn-recover-submit">回復手続きを開始（試作）</button>
+    </section>
+
+    <div class="login__status" id="login-status" role="status" aria-live="polite"></div>
+
+    <footer class="login__footer">
+      <p>ローカル試作 — 本番認証・公開・ユーザー本登録は未接続</p>
+      <p class="login__footer-note">エラー表示はアカウントの有無を特定しない共通表現を使用します</p>
+    </footer>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>
