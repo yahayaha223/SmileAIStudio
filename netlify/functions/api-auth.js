@@ -389,14 +389,35 @@ async function handleStepUpVerify(event) {
 
 async function handleLogout(event) {
   var loaded = await middleware.loadSessionFromEvent(event);
+  var ipHash = audit.ipHashForEvent(event);
   if (loaded && loaded.session) {
+    // Always require CSRF for authenticated logout (do not rely on enforcement mode).
+    var csrf = middleware.enforceCsrf(event, loaded.session);
+    if (!csrf.ok) {
+      await audit.recordAudit({
+        event: "logout",
+        success: false,
+        reasonCode: csrf.reasonCode || "csrf_failed",
+        actorUserId: loaded.session.userId,
+        role: loaded.session.roleSnapshot,
+        ipHash: ipHash
+      });
+      return http.json(403, { ok: false, error: "csrf_failed" }, event);
+    }
     await sessions.revokeSession(loaded.session.sessionHash, "logout");
     await audit.recordAudit({
       event: "logout",
       success: true,
       actorUserId: loaded.session.userId,
       role: loaded.session.roleSnapshot,
-      ipHash: audit.ipHashForEvent(event)
+      ipHash: ipHash
+    });
+  } else {
+    await audit.recordAudit({
+      event: "logout",
+      success: true,
+      reasonCode: "no_session",
+      ipHash: ipHash
     });
   }
   return http.jsonWithCookies(200, { ok: true }, event, [

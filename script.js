@@ -14083,6 +14083,7 @@
   }, "scrollToProjects");
   onClick("btn-nav-more", function () {
     showAppView("more");
+    refreshAccountUi();
   }, "showMoreView");
   onClick("btn-back-home-from-projects", function () {
     showAppView("home");
@@ -14090,6 +14091,33 @@
   onClick("btn-back-home-from-more", function () {
     showAppView("home");
   });
+  onClick("btn-account-logout", function () {
+    performStudioLogout();
+  });
+  onClick("btn-account-menu-logout", function () {
+    closeAccountMenu();
+    performStudioLogout();
+  });
+  onClick("btn-account-menu", function () {
+    var drop = document.getElementById("account-menu-dropdown");
+    var btn = document.getElementById("btn-account-menu");
+    if (!drop || !btn) return;
+    var open = drop.hidden;
+    drop.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.addEventListener("click", function (e) {
+    var menu = document.getElementById("account-menu");
+    if (!menu || menu.hidden) return;
+    if (menu.contains(e.target)) return;
+    closeAccountMenu();
+  });
+  function closeAccountMenu() {
+    var drop = document.getElementById("account-menu-dropdown");
+    var btn = document.getElementById("btn-account-menu");
+    if (drop) drop.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  }
   var familyPhotoInput = document.getElementById("home-family-photo-input");
   if (familyPhotoInput) {
     familyPhotoInput.addEventListener("change", handleFamilyPhotoChange);
@@ -15005,30 +15033,222 @@
     recentRequestsEl.addEventListener("click", handleRecentClick);
   }
 
+  /* ========== Auth session / logout ========== */
+
+  var AUTH_LOGIN_URL = "/auth-local/login.html";
+  var AUTH_API_BASE = "/api/auth";
+  var studioAuthBusy = false;
+  var studioAuthSession = null;
+
+  function authRoleLabelJa(role) {
+    var map = { owner: "オーナー", admin: "管理者", staff: "スタッフ" };
+    return map[role] || (role ? String(role) : "未ログイン");
+  }
+
+  function readCsrfCookie() {
+    try {
+      var m = String(document.cookie || "").match(/(?:^|; )smile_studio_csrf=([^;]*)/);
+      return m && m[1] ? decodeURIComponent(m[1]) : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function setAccountLogoutStatus(message, kind) {
+    var el = document.getElementById("account-logout-status");
+    if (!el) return;
+    el.textContent = message || "";
+    el.classList.remove("is-error", "is-info");
+    if (kind) el.classList.add(kind);
+  }
+
+  function setLogoutButtonsBusy(on) {
+    ["btn-account-logout", "btn-account-menu-logout"].forEach(function (id) {
+      var btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = !!on;
+      if (on) btn.classList.add("is-disabled");
+      else btn.classList.remove("is-disabled");
+      btn.setAttribute("aria-disabled", on ? "true" : "false");
+    });
+  }
+
+  function renderAccountUi(session) {
+    var roleText = session && session.authenticated
+      ? authRoleLabelJa(session.role)
+      : "未ログイン";
+    var roleEl = document.getElementById("account-role");
+    var metaEl = document.getElementById("account-meta");
+    var menu = document.getElementById("account-menu");
+    var menuRole = document.getElementById("account-menu-role");
+    var menuLabel = document.getElementById("account-menu-label");
+    if (roleEl) roleEl.textContent = roleText;
+    if (menuRole) menuRole.textContent = roleText;
+    if (menuLabel) menuLabel.textContent = roleText;
+    if (metaEl) {
+      if (session && session.authenticated && session.emailMasked) {
+        metaEl.hidden = false;
+        metaEl.textContent = session.emailMasked;
+      } else {
+        metaEl.hidden = true;
+        metaEl.textContent = "";
+      }
+    }
+    if (menu) {
+      if (session && session.authenticated) menu.hidden = false;
+      else menu.hidden = true;
+    }
+  }
+
+  function fetchAuthSession() {
+    return fetch(AUTH_API_BASE + "/session", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+      cache: "no-store"
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, authenticated: false, _httpStatus: res.status };
+      });
+    }).then(function (data) {
+      data = data || {};
+      studioAuthSession = data;
+      window.__SMILE_AUTH_SESSION__ = data;
+      return data;
+    });
+  }
+
+  function refreshAccountUi() {
+    return fetchAuthSession().then(function (data) {
+      renderAccountUi(data);
+      return data;
+    }).catch(function () {
+      renderAccountUi(null);
+      return null;
+    });
+  }
+
+  function redirectToLogin() {
+    try {
+      location.replace(AUTH_LOGIN_URL);
+    } catch (e) {
+      location.href = AUTH_LOGIN_URL;
+    }
+  }
+
+  /**
+   * Gate Studio shell: unauthenticated users go to login.
+   * Skip file:// local opens. On network errors, keep shell (avoid lockout).
+   */
+  function ensureStudioAuthGate() {
+    if (location.protocol === "file:") {
+      return Promise.resolve(true);
+    }
+    return fetchAuthSession().then(function (data) {
+      renderAccountUi(data);
+      if (data && data.authenticated) return true;
+      redirectToLogin();
+      return false;
+    }).catch(function () {
+      return true;
+    });
+  }
+
+  function performStudioLogout() {
+    if (studioAuthBusy) return;
+    if (!window.confirm("この端末からログアウトしますか？")) return;
+    studioAuthBusy = true;
+    setLogoutButtonsBusy(true);
+    setAccountLogoutStatus("ログアウトしています…", "is-info");
+
+    var csrf = (studioAuthSession && studioAuthSession.csrfToken) || readCsrfCookie();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+
+    fetch(AUTH_API_BASE + "/logout", {
+      method: "POST",
+      headers: headers,
+      body: "{}",
+      credentials: "include",
+      cache: "no-store"
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, _httpStatus: res.status };
+      }).then(function (data) {
+        data = data || {};
+        data._httpStatus = res.status;
+        data._okHttp = res.ok;
+        return data;
+      });
+    }).then(function (data) {
+      if (!data || !data.ok || !data._okHttp) {
+        throw new Error("logout_failed");
+      }
+      return fetchAuthSession().then(function (session) {
+        if (session && session.authenticated) {
+          throw new Error("session_still_active");
+        }
+        setAccountLogoutStatus("ログイン画面へ戻す", "is-info");
+        redirectToLogin();
+      });
+    }).catch(function () {
+      setAccountLogoutStatus(
+        "ログアウトできませんでした。通信状況を確認して、もう一度お試しください。",
+        "is-error"
+      );
+      studioAuthBusy = false;
+      setLogoutButtonsBusy(false);
+      refreshAccountUi();
+    });
+  }
+
+  window.addEventListener("pageshow", function () {
+    if (location.protocol === "file:") return;
+    fetchAuthSession().then(function (data) {
+      renderAccountUi(data);
+      if (!data || !data.authenticated) redirectToLogin();
+    }).catch(function () { /* ignore network blip on bfcache restore */ });
+  });
+
   /* ========== Init ========== */
   try {
-    updateHomeGreeting();
-    renderHomePurpose();
-    renderDailyWord();
-    renderHomeSchedule();
-    renderTopPriority();
-    renderHomeGoals();
-    loadFamilyPhoto();
-    showAppView("home");
-    loadProjects();
-    renderTodayTodos();
-    renderPriorityTasks();
-    renderCurrentFocus();
-    renderReleaseHome();
-    renderDevStatusPanel();
-    renderProjectCards();
-    populateProjectSelect();
-    renderStaff();
-    renderRecentRequests();
-    renderIphoneSettings();
-    renderUpcomingPanel();
-    window.smileAIStudioStatus.initialized = true;
-    window.smileAIStudioStatus.initializedAt = new Date().toISOString();
+    ensureStudioAuthGate().then(function (ok) {
+      if (!ok) return;
+      updateHomeGreeting();
+      renderHomePurpose();
+      renderDailyWord();
+      renderHomeSchedule();
+      renderTopPriority();
+      renderHomeGoals();
+      loadFamilyPhoto();
+      showAppView("home");
+      loadProjects();
+      renderTodayTodos();
+      renderPriorityTasks();
+      renderCurrentFocus();
+      renderReleaseHome();
+      renderDevStatusPanel();
+      renderProjectCards();
+      populateProjectSelect();
+      renderStaff();
+      renderRecentRequests();
+      renderIphoneSettings();
+      renderUpcomingPanel();
+      window.smileAIStudioStatus.initialized = true;
+      window.smileAIStudioStatus.initializedAt = new Date().toISOString();
+    }).catch(function (e) {
+      window.smileAIStudioStatus.initialized = false;
+      recordRuntimeError({
+        message: e && e.message ? e.message : String(e),
+        source: "script.js:auth-init",
+        line: 0,
+        column: 0,
+        type: "error"
+      });
+    });
   } catch (e) {
     window.smileAIStudioStatus.initialized = false;
     recordRuntimeError({

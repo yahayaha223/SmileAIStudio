@@ -266,12 +266,32 @@ async function run() {
       method: "POST",
       path: "/api/auth/logout",
       headers: {
-        cookie: config.COOKIE_SESSION + "=" + encodeURIComponent(created.rawId)
+        cookie: [
+          config.COOKIE_SESSION + "=" + encodeURIComponent(created.rawId),
+          config.COOKIE_CSRF + "=" + encodeURIComponent(created.session.csrfToken)
+        ].join("; "),
+        "x-csrf-token": created.session.csrfToken
       }
     }));
     assert.strictEqual(res.statusCode, 200);
     var again = await sessions.getSessionByRawId(created.rawId);
     assert.ok(again.revokedAt);
+  });
+
+  await test("logout rejects missing CSRF and keeps session", async function () {
+    await reset();
+    var u = await users.createUser({ email: "csrf-out@example.com", role: "staff", status: "active" });
+    var created = await sessions.createSession(u.user, { purpose: "full" });
+    var res = await apiAuth.handler(fakeEvent({
+      method: "POST",
+      path: "/api/auth/logout",
+      headers: {
+        cookie: config.COOKIE_SESSION + "=" + encodeURIComponent(created.rawId)
+      }
+    }));
+    assert.strictEqual(res.statusCode, 403);
+    var again = await sessions.getSessionByRawId(created.rawId);
+    assert.ok(!again.revokedAt);
   });
 
   await test("devices list + force logout", async function () {
