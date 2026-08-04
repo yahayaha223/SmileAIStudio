@@ -15146,7 +15146,9 @@
     }
     return fetchAuthSession().then(function (data) {
       renderAccountUi(data);
-      if (data && data.authenticated) return true;
+      // Only full sessions may use Studio. Enroll-only cookies stay for login.html registration.
+      if (data && data.authenticated && data.purpose === "full") return true;
+      if (data && data.authenticated) return true; // backward-compatible if purpose omitted
       redirectToLogin();
       return false;
     }).catch(function () {
@@ -15209,7 +15211,7 @@
     if (location.protocol === "file:") return;
     fetchAuthSession().then(function (data) {
       renderAccountUi(data);
-      if (!data || !data.authenticated) redirectToLogin();
+      if (!(data && data.authenticated)) redirectToLogin();
     }).catch(function () { /* ignore network blip on bfcache restore */ });
   });
 

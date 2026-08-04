@@ -173,10 +173,12 @@ async function handleEmailVerify(event) {
     ipHash: audit.ipHashForEvent(event)
   });
   var cfg = config.getAuthConfig();
-  var maxAge = Math.floor(cfg.absoluteSessionMs / 1000);
+  var maxAge = Math.floor((cfg.enrollSessionMs || (15 * 60 * 1000)) / 1000);
   return http.jsonWithCookies(200, {
     ok: true,
     enrollRequired: true,
+    canRegisterPasskey: true,
+    purpose: "passkey_enroll",
     role: user.role,
     emailMasked: maskEmail(user.emailNormalized)
   }, event, [
@@ -196,36 +198,122 @@ function maskEmail(email) {
 async function handleRegisterOptions(event) {
   var origin = http.requestOrigin(event);
   if (!config.isOriginAllowed(origin)) {
-    return http.json(403, { ok: false, error: "forbidden" }, event);
+    return http.json(403, { ok: false, error: "forbidden", reasonCode: "origin_denied" }, event);
   }
   var loaded = await middleware.loadSessionFromEvent(event);
   if (!loaded || !loaded.session) {
-    return http.json(401, { ok: false, error: "unauthorized" }, event);
+    await audit.recordAudit({
+      event: "passkey_register_options",
+      success: false,
+      reasonCode: "session_missing",
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, { ok: false, error: "unauthorized", reasonCode: "session_missing" }, event);
   }
   var active = sessions.isSessionActive(loaded.session);
-  if (!active.ok) return http.json(401, { ok: false, error: "unauthorized" }, event);
+  if (!active.ok) {
+    await audit.recordAudit({
+      event: "passkey_register_options",
+      success: false,
+      reasonCode: active.code || "session_inactive",
+      actorUserId: loaded.session.userId,
+      role: loaded.session.roleSnapshot,
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, {
+      ok: false,
+      error: "unauthorized",
+      reasonCode: active.code || "session_inactive"
+    }, event);
+  }
+  var purpose = loaded.session.purpose || "full";
+  // Allow email enrollment session OR full logged-in session (add another device/passkey).
+  if (purpose !== "passkey_enroll" && purpose !== "full") {
+    await audit.recordAudit({
+      event: "passkey_register_options",
+      success: false,
+      reasonCode: "session_purpose_denied",
+      actorUserId: loaded.session.userId,
+      role: loaded.session.roleSnapshot,
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, {
+      ok: false,
+      error: "unauthorized",
+      reasonCode: "session_purpose_denied"
+    }, event);
+  }
   var user = await users.getUser(loaded.session.userId);
-  if (!user) return http.json(401, { ok: false, error: "unauthorized" }, event);
+  if (!user || user.status === "disabled") {
+    await audit.recordAudit({
+      event: "passkey_register_options",
+      success: false,
+      reasonCode: "user_unavailable",
+      actorUserId: loaded.session.userId,
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, { ok: false, error: "unauthorized", reasonCode: "user_unavailable" }, event);
+  }
   var result = await webauthn.registrationOptions(user, origin);
-  if (!result.ok) return http.json(400, { ok: false, error: result.reasonCode }, event);
+  if (!result.ok) return http.json(400, { ok: false, error: result.reasonCode, reasonCode: result.reasonCode }, event);
+  // Options may be fetched more than once (retry). Challenges are one-time at verify only.
+  await sessions.touchSession(loaded.session);
   return http.json(200, { ok: true, options: result.options }, event);
 }
 
 async function handleRegisterVerify(event) {
   var origin = http.requestOrigin(event);
   if (!config.isOriginAllowed(origin)) {
-    return http.json(403, { ok: false, error: "forbidden" }, event);
+    return http.json(403, { ok: false, error: "forbidden", reasonCode: "origin_denied" }, event);
   }
   var body = parseBody(event);
   if (!body || !body.credential) {
-    return http.json(400, { ok: false, error: "invalid_json" }, event);
+    return http.json(400, { ok: false, error: "invalid_json", reasonCode: "invalid_json" }, event);
   }
   var loaded = await middleware.loadSessionFromEvent(event);
   if (!loaded || !loaded.session) {
-    return http.json(401, { ok: false, error: "unauthorized" }, event);
+    await audit.recordAudit({
+      event: "passkey_register",
+      success: false,
+      reasonCode: "session_missing",
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, { ok: false, error: "unauthorized", reasonCode: "session_missing" }, event);
+  }
+  var active = sessions.isSessionActive(loaded.session);
+  if (!active.ok) {
+    await audit.recordAudit({
+      event: "passkey_register",
+      success: false,
+      reasonCode: active.code || "session_inactive",
+      actorUserId: loaded.session.userId,
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, {
+      ok: false,
+      error: "unauthorized",
+      reasonCode: active.code || "session_inactive"
+    }, event);
+  }
+  var purpose = loaded.session.purpose || "full";
+  if (purpose !== "passkey_enroll" && purpose !== "full") {
+    await audit.recordAudit({
+      event: "passkey_register",
+      success: false,
+      reasonCode: "session_purpose_denied",
+      actorUserId: loaded.session.userId,
+      ipHash: audit.ipHashForEvent(event)
+    });
+    return http.json(401, {
+      ok: false,
+      error: "unauthorized",
+      reasonCode: "session_purpose_denied"
+    }, event);
   }
   var user = await users.getUser(loaded.session.userId);
-  if (!user) return http.json(401, { ok: false, error: "unauthorized" }, event);
+  if (!user || user.status === "disabled") {
+    return http.json(401, { ok: false, error: "unauthorized", reasonCode: "user_unavailable" }, event);
+  }
   var verified = await webauthn.verifyRegistration(user, body.credential, origin);
   if (!verified.ok) {
     await audit.recordAudit({
@@ -235,11 +323,15 @@ async function handleRegisterVerify(event) {
       actorUserId: user.id,
       ipHash: audit.ipHashForEvent(event)
     });
-    return http.json(400, { ok: false, error: config.genericLoginFail() }, event);
+    return http.json(400, {
+      ok: false,
+      error: config.genericLoginFail(),
+      reasonCode: verified.reasonCode
+    }, event);
   }
   user.status = "active";
   await users.saveUser(user);
-  // Upgrade to full session (regenerate id)
+  // Upgrade to full session (regenerate id). Existing credentials on other devices remain.
   await sessions.revokeSession(loaded.session.sessionHash, "enroll_complete");
   var created = await sessions.createSession(user, {
     purpose: "full",
@@ -429,11 +521,16 @@ async function handleLogout(event) {
 async function handleSessionGet(event) {
   var loaded = await middleware.loadSessionFromEvent(event);
   if (!loaded || !loaded.session) {
-    return http.json(200, { ok: true, authenticated: false }, event);
+    return http.json(200, { ok: true, authenticated: false, canRegisterPasskey: false }, event);
   }
   var active = sessions.isSessionActive(loaded.session);
   if (!active.ok) {
-    return http.json(200, { ok: true, authenticated: false, reason: active.code }, event);
+    return http.json(200, {
+      ok: true,
+      authenticated: false,
+      canRegisterPasskey: false,
+      reason: active.code
+    }, event);
   }
   var user = await users.getUser(loaded.session.userId);
   var now = Date.now();
@@ -443,11 +540,17 @@ async function handleSessionGet(event) {
   }
   await sessions.touchSession(loaded.session, now);
   var cfg = config.getAuthConfig();
+  var purpose = loaded.session.purpose || "full";
+  var isFull = purpose === "full";
+  var isEnroll = purpose === "passkey_enroll";
   return http.json(200, {
     ok: true,
-    authenticated: true,
+    // Studio shell must treat only full sessions as logged-in.
+    authenticated: isFull,
+    enrollRequired: isEnroll,
+    canRegisterPasskey: isFull || isEnroll,
     role: loaded.session.roleSnapshot,
-    purpose: loaded.session.purpose,
+    purpose: purpose,
     displayName: user ? user.displayName : null,
     emailMasked: user ? maskEmail(user.emailNormalized) : null,
     deviceName: loaded.session.deviceName,

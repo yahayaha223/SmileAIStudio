@@ -143,6 +143,8 @@ function getAuthConfig() {
     cookieSecure: cookieSecureDefault(),
     emailTtlMs: 10 * 60 * 1000,
     challengeTtlMs: 5 * 60 * 1000,
+    // Short-lived cookie/session for email → passkey enrollment (2nd device included)
+    enrollSessionMs: 15 * 60 * 1000,
     stepUpTtlMs: 5 * 60 * 1000,
     idleTimeoutMs: {
       owner: 30 * 60 * 1000,

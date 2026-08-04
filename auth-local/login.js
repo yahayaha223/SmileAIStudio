@@ -228,7 +228,10 @@
       return false;
     }
     await refreshSession();
-    setStatus("メールを確認しました。初回パスキー登録へ進んでください。", "is-info");
+    setStatus("メールを確認しました。続けてパスキーを登録（または追加）してください。", "is-info");
+    if (el.registerBtn) {
+      el.registerBtn.focus();
+    }
     return true;
   }
 
@@ -237,10 +240,25 @@
     setBusy(true);
     setStatus("パスキー登録を準備しています…", "is-info");
     try {
-      await refreshSession();
+      var session = await refreshSession();
+      var canRegister = !!(session && (
+        session.canRegisterPasskey ||
+        session.enrollRequired ||
+        session.purpose === "passkey_enroll" ||
+        (session.authenticated && session.purpose === "full")
+      ));
+      if (!canRegister) {
+        setStatus("先にメールで本人確認してください。確認後にこの端末へパスキーを登録できます。", "is-error");
+        return;
+      }
+      // Calling options more than once is allowed (retry). Challenge is consumed only at verify.
       var opt = await api("passkey/register/options", { method: "POST", body: {} });
       if (!opt.ok || !opt.options) {
-        setStatus("先にメールログイン（初回登録）を完了してください。", "is-error");
+        if (opt && opt._httpStatus === 401) {
+          setStatus("登録用セッションが切れました。もう一度メール確認からやり直してください。", "is-error");
+        } else {
+          setStatus("先にメールで本人確認してください。確認後にパスキーを登録できます。", "is-error");
+        }
         return;
       }
       var cred = await navigator.credentials.create({
@@ -252,13 +270,26 @@
         body: { credential: credentialToJson(cred), deviceName: navigator.platform || "Passkey" }
       });
       if (!verified.ok) {
-        setStatus(GENERIC_FAIL, "is-error");
+        if (verified && verified.reasonCode === "credential_duplicate") {
+          setStatus("同じパスキーは既に登録済みです。別の端末用として追加する場合は、その端末でメール確認から登録してください。", "is-error");
+        } else {
+          setStatus(GENERIC_FAIL, "is-error");
+        }
         return;
       }
       await refreshSession();
-      setStatus("パスキーを登録しました。", "is-info");
+      setStatus("パスキーを登録しました。Studio へ移動できます。", "is-info");
+      setTimeout(function () { location.href = "/index.html"; }, 700);
     } catch (e) {
-      setStatus(GENERIC_FAIL, "is-error");
+      var name = e && e.name ? String(e.name) : "";
+      var msg = e && e.message ? String(e.message) : "";
+      if (name === "InvalidStateError" || /already registered/i.test(msg)) {
+        setStatus("この端末には既に使えるパスキーがある可能性があります。「顔認証・パスキーでログイン」を試してください。", "is-info");
+      } else if (name === "NotAllowedError") {
+        setStatus("パスキー登録がキャンセルされたか、Windows Hello を開始できませんでした。もう一度お試しください。", "is-info");
+      } else {
+        setStatus(GENERIC_FAIL, "is-error");
+      }
     } finally {
       setBusy(false);
     }

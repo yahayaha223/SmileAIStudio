@@ -252,10 +252,80 @@ async function run() {
       body: { token: issued.raw, deviceName: "Test" }
     }));
     assert.strictEqual(res.statusCode, 200);
+    var body = JSON.parse(res.body);
+    assert.strictEqual(body.enrollRequired, true);
+    assert.strictEqual(body.canRegisterPasskey, true);
     var setCookie = (res.multiValueHeaders && res.multiValueHeaders["Set-Cookie"]) || [];
     assert.ok(setCookie.some(function (c) { return c.indexOf("smile_studio_session=") === 0 && c.indexOf("HttpOnly") !== -1; }));
     assert.ok(setCookie.some(function (c) { return c.indexOf("SameSite=Lax") !== -1; }));
     assert.ok(setCookie.every(function (c) { return c.indexOf("Secure") === -1; })); // AUTH_COOKIE_SECURE=0
+    // Enroll cookies must be short-lived (15m), not full 12h absolute session.
+    assert.ok(setCookie.some(function (c) { return /Max-Age=900\b/.test(c); }));
+  });
+
+  await test("enroll session can retry register/options without 401", async function () {
+    await reset();
+    var u = await users.createUser({ email: "second@example.com", role: "owner", status: "active" });
+    var enroll = await sessions.createSession(u.user, { purpose: "passkey_enroll", deviceName: "PC" });
+    var cookie = config.COOKIE_SESSION + "=" + encodeURIComponent(enroll.rawId);
+    var sessionRes = await apiAuth.handler(fakeEvent({
+      method: "GET",
+      path: "/api/auth/session",
+      headers: { cookie: cookie }
+    }));
+    var sessionBody = JSON.parse(sessionRes.body);
+    assert.strictEqual(sessionBody.authenticated, false);
+    assert.strictEqual(sessionBody.enrollRequired, true);
+    assert.strictEqual(sessionBody.canRegisterPasskey, true);
+    assert.ok(sessionBody.csrfToken);
+
+    var opt1 = await apiAuth.handler(fakeEvent({
+      method: "POST",
+      path: "/api/auth/passkey/register/options",
+      headers: { cookie: cookie, origin: "http://127.0.0.1:8888" },
+      body: {}
+    }));
+    assert.strictEqual(opt1.statusCode, 200);
+    assert.ok(JSON.parse(opt1.body).options);
+
+    var opt2 = await apiAuth.handler(fakeEvent({
+      method: "POST",
+      path: "/api/auth/passkey/register/options",
+      headers: { cookie: cookie, origin: "http://127.0.0.1:8888" },
+      body: {}
+    }));
+    assert.strictEqual(opt2.statusCode, 200);
+    assert.ok(JSON.parse(opt2.body).options);
+  });
+
+  await test("register/options 401 includes reasonCode when session missing", async function () {
+    await reset();
+    var res = await apiAuth.handler(fakeEvent({
+      method: "POST",
+      path: "/api/auth/passkey/register/options",
+      headers: { origin: "http://127.0.0.1:8888" },
+      body: {}
+    }));
+    assert.strictEqual(res.statusCode, 401);
+    var body = JSON.parse(res.body);
+    assert.strictEqual(body.reasonCode, "session_missing");
+  });
+
+  await test("full session can request register/options for additional passkey", async function () {
+    await reset();
+    var u = await users.createUser({ email: "add@example.com", role: "owner", status: "active" });
+    var full = await sessions.createSession(u.user, { purpose: "full", deviceName: "Phone" });
+    var res = await apiAuth.handler(fakeEvent({
+      method: "POST",
+      path: "/api/auth/passkey/register/options",
+      headers: {
+        cookie: config.COOKIE_SESSION + "=" + encodeURIComponent(full.rawId),
+        origin: "http://127.0.0.1:8888"
+      },
+      body: {}
+    }));
+    assert.strictEqual(res.statusCode, 200);
+    assert.ok(JSON.parse(res.body).options);
   });
 
   await test("logout revokes server session", async function () {
@@ -400,6 +470,8 @@ async function run() {
     }));
     var body = JSON.parse(res.body);
     assert.strictEqual(body.authenticated, true);
+    assert.strictEqual(body.canRegisterPasskey, true);
+    assert.strictEqual(body.purpose, "full");
     assert.strictEqual(body.role, "admin");
     assert.ok(!body.sessionRaw);
     assert.ok(!JSON.stringify(body).toLowerCase().includes("password"));

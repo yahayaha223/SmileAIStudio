@@ -14,19 +14,29 @@ async function createSession(user, opts) {
   var now = Date.now();
   var rawId = cryptoUtil.randomToken(32); // 256-bit
   var sessionHash = cryptoUtil.hashToken(rawId);
+  var purpose = opts.purpose || "full"; // full | passkey_enroll
   var idle = cfg.idleTimeoutMs[user.role] || cfg.idleTimeoutMs.staff;
+  var absoluteMs = cfg.absoluteSessionMs;
+  var expiresAt = now + idle;
+  if (purpose === "passkey_enroll") {
+    // Enrollment must stay short-lived and must not inherit 12h full-session cookies.
+    absoluteMs = opts.absoluteMs || cfg.enrollSessionMs || (15 * 60 * 1000);
+    expiresAt = now + absoluteMs;
+  } else if (opts.absoluteMs) {
+    absoluteMs = opts.absoluteMs;
+  }
   var row = {
     sessionHash: sessionHash,
     userId: user.id,
     roleSnapshot: user.role,
     createdAt: now,
     lastSeenAt: now,
-    expiresAt: now + idle,
-    absoluteExpiresAt: now + cfg.absoluteSessionMs,
+    expiresAt: expiresAt,
+    absoluteExpiresAt: now + absoluteMs,
     stepUpUntil: null,
     revokedAt: null,
     deviceName: opts.deviceName || "Unknown device",
-    purpose: opts.purpose || "full", // full | passkey_enroll
+    purpose: purpose,
     csrfToken: cryptoUtil.randomToken(24),
     uaBrief: opts.uaBrief || null,
     ipHash: opts.ipHash || null
@@ -57,9 +67,14 @@ function isSessionActive(session, now) {
 async function touchSession(session, now) {
   now = typeof now === "number" ? now : Date.now();
   var cfg = config.getAuthConfig();
-  var idle = cfg.idleTimeoutMs[session.roleSnapshot] || cfg.idleTimeoutMs.staff;
   session.lastSeenAt = now;
-  session.expiresAt = Math.min(now + idle, session.absoluteExpiresAt);
+  if (session.purpose === "passkey_enroll") {
+    // Do not extend enroll beyond absoluteExpiresAt (no idle refresh past enroll window).
+    session.expiresAt = session.absoluteExpiresAt;
+  } else {
+    var idle = cfg.idleTimeoutMs[session.roleSnapshot] || cfg.idleTimeoutMs.staff;
+    session.expiresAt = Math.min(now + idle, session.absoluteExpiresAt);
+  }
   await authKv.authSet(sessionKey(session.sessionHash), session);
   return session;
 }
