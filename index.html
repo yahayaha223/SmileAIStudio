@@ -11,6 +11,20 @@
 </head>
 <body>
   <div class="app app--secretary-first">
+    <!-- PC用アカウントメニュー（その他画面のログアウトが主導線） -->
+    <div class="account-menu" id="account-menu" hidden>
+      <button type="button" class="account-menu__trigger" id="btn-account-menu" aria-expanded="false" aria-haspopup="true" aria-controls="account-menu-dropdown">
+        <span class="account-menu__icon" aria-hidden="true">👤</span>
+        <span class="account-menu__label" id="account-menu-label">アカウント</span>
+      </button>
+      <div class="account-menu__dropdown" id="account-menu-dropdown" hidden role="menu">
+        <p class="account-menu__role-label">ログイン中の役割</p>
+        <p class="account-menu__role" id="account-menu-role">—</p>
+        <p class="account-menu__hint">この端末からログアウト</p>
+        <button type="button" class="account-menu__logout" id="btn-account-menu-logout" role="menuitem">ログアウト</button>
+      </div>
+    </div>
+
     <!-- ホーム：AI秘書ファースト -->
     <main class="main">
       <section class="view view--home is-active" id="view-home" aria-label="ホーム">
@@ -179,6 +193,23 @@
           <button type="button" class="view__back" id="btn-back-home-from-more" aria-label="ホームへ">‹ ホーム</button>
           <h2 class="view__title">その他</h2>
         </div>
+
+        <section class="account-panel" id="account-panel" aria-labelledby="account-heading">
+          <h3 id="account-heading" class="section__title section__title--sm">
+            <span class="section__icon" aria-hidden="true">👤</span>
+            アカウント
+          </h3>
+          <div class="account-card">
+            <p class="account-card__role-label">ログイン中の役割</p>
+            <p class="account-card__role" id="account-role">確認中…</p>
+            <p class="account-card__meta" id="account-meta" hidden></p>
+            <p class="account-card__hint">この端末からログアウト</p>
+            <p class="account-card__status" id="account-logout-status" role="status" aria-live="polite"></p>
+            <button type="button" class="btn btn--danger btn--touch account-card__logout" id="btn-account-logout">
+              ログアウト
+            </button>
+          </div>
+        </section>
 
         <div class="more-menu">
           <button type="button" class="more-menu__btn" id="btn-company-brain">

@@ -1,8 +1,8 @@
 "use strict";
 
 var http = require("./shared/http");
-var kv = require("./shared/kv-store");
 var knowledgeStore = require("./shared/knowledge-store");
+var protectApi = require("./shared/auth/protect-api");
 
 function parseBody(event) {
   try {
@@ -12,10 +12,7 @@ function parseBody(event) {
   }
 }
 
-exports.handler = async function (event) {
-  kv.connectFromLambdaEvent(event);
-  if (event.httpMethod === "OPTIONS") return http.options();
-
+async function knowledgeHandler(event) {
   var qs = event.queryStringParameters || {};
   var action = String(qs.action || "").trim();
 
@@ -109,4 +106,6 @@ exports.handler = async function (event) {
     }));
     return http.json(500, { ok: false, error: "unavailable" });
   }
-};
+}
+
+exports.handler = protectApi.wrapApi(knowledgeHandler, protectApi.knowledgePermissionKey);

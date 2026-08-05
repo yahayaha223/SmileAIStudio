@@ -2,18 +2,29 @@
 
 var env = require("./shared/env");
 var http = require("./shared/http");
-var kv = require("./shared/kv-store");
 var lineClient = require("./shared/line-client");
 var messages = require("./shared/message-builder");
 var projectStore = require("./shared/project-store");
+var protectApi = require("./shared/auth/protect-api");
+var authConfig = require("./shared/auth/config");
 
 var lastSentAt = 0;
 
-exports.handler = async function (event) {
-  kv.connectFromLambdaEvent(event);
-  if (event.httpMethod === "OPTIONS") return http.options();
+async function handler(event) {
   if (event.httpMethod !== "POST") {
     return http.json(405, { ok: false, error: "method_not_allowed" });
+  }
+
+  var authCfg = authConfig.getAuthConfig();
+  // Staging/local: block LINE production pushes unless explicitly enabled for staging tests.
+  if (!authCfg.isProductionEnvironment) {
+    if (!(authCfg.isStagingEnvironment && authCfg.stagingLineTestEnabled)) {
+      return http.json(403, {
+        ok: false,
+        error: "forbidden",
+        reason: "line_send_disabled_outside_production"
+      });
+    }
   }
 
   var now = Date.now();
@@ -35,9 +46,6 @@ exports.handler = async function (event) {
     );
     if (!result.ok) {
       console.log("[line-send-test] LINE push failed");
-      console.log("[openai-error] status=", result.status != null ? result.status : "");
-      console.log("[openai-error] message=", result.body || result.reason || "send_failed");
-      console.log("[openai-error] stack=", "");
       return http.json(502, { ok: false, error: "send_failed" });
     }
     lastSentAt = now;
@@ -45,9 +53,8 @@ exports.handler = async function (event) {
     return http.json(200, { ok: true });
   } catch (e) {
     console.log("[line-send-test] exception");
-    console.log("[openai-error] status=", e && e.status != null ? e.status : "");
-    console.log("[openai-error] message=", e && e.message ? e.message : String(e));
-    console.log("[openai-error] stack=", e && e.stack ? e.stack : "");
     return http.json(502, { ok: false, error: "send_failed" });
   }
-};
+}
+
+exports.handler = protectApi.wrapApi(handler, "line-send-test:POST");

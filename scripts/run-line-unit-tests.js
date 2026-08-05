@@ -272,6 +272,7 @@ test("knowledge: load all md files", function () {
 
     openaiClient.createResponse = async function (apiKey, options) {
       var lastUser = (options.input || []).filter(function (m) { return m.role === "user"; }).pop();
+      assert.ok(lastUser, "should include a user turn");
       assert.ok((options.input || []).length >= 2, "should include prior memory");
       return {
         ok: true,
@@ -281,7 +282,11 @@ test("knowledge: load all md files", function () {
         usage: null
       };
     };
-    var hot = await router.routeIncomingText(userId, "今日は暑くて頭が回らない");
+    // Avoid taskParser.detectTaskCandidate traps:
+    // - date cues like 「今日」
+    // - action substrings like 「して」(matches inside 「しづらい」)
+    var hot = await router.routeIncomingText(userId, "最近どう？気分はどう？");
+    assert.strictEqual(hot.source, "ai-secretary");
     assert.ok(hot.text.indexOf("暑い") !== -1 || hot.text.indexOf("無理") !== -1);
     var count = await memoryStore.getChatMemoryCount(userId);
     assert.ok(count >= 2);

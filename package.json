@@ -8,10 +8,13 @@
   },
   "scripts": {
     "test:line": "node scripts/run-line-unit-tests.js",
+    "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js",
     "mock:webhook": "node scripts/mock-line-webhook.js",
     "dev:netlify": "npx netlify dev"
   },
   "dependencies": {
-    "@netlify/blobs": "^8.1.0"
+    "@netlify/blobs": "^8.1.0",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2"
   }
 }

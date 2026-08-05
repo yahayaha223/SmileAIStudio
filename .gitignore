@@ -5,12 +5,26 @@
 *.pem
 *.key
 
+# Local FTP credentials (never commit)
+local-config/ftp-config.json
+.data/ftp-config.json
+
+# Production FTP backups (never commit)
+production-backups/
+
+# Publish locks / history (never commit)
+.data/publish-locks/
+.data/publish-history/
+
 # Local LINE / Netlify data
 .data/
 .netlify/
 
 # Dependencies
 node_modules/
+
+# Local toolchain (portable Node, etc.)
+.tools/
 
 # OS / editor
 .DS_Store

@@ -1,19 +1,19 @@
 "use strict";
 
 var http = require("./shared/http");
-var kv = require("./shared/kv-store");
 var historyStore = require("./shared/command-history-store");
+var protectApi = require("./shared/auth/protect-api");
 
-exports.handler = async function (event) {
-  kv.connectFromLambdaEvent(event);
-  if (event.httpMethod === "OPTIONS") return http.options();
+async function handler(event) {
   if (event.httpMethod !== "GET") {
     return http.json(405, { ok: false, error: "method_not_allowed" });
   }
   try {
-    var history = await historyStore.listCommandHistory(20);
+    var history = await historyStore.listHistory(50);
     return http.json(200, { ok: true, history: history });
   } catch (e) {
     return http.json(500, { ok: false, error: "unavailable" });
   }
-};
+}
+
+exports.handler = protectApi.wrapApi(handler, "api-command-history:GET");

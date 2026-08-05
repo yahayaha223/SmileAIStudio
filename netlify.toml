@@ -5,16 +5,39 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@netlify/blobs"]
+  external_node_modules = ["@netlify/blobs", "@simplewebauthn/server", "@simplewebauthn/browser"]
   included_files = ["netlify/functions/shared/**", "knowledge/**"]
 
 # Japan 08:00 = UTC 23:00 previous day
 [functions."line-send-morning"]
   schedule = "0 23 * * *"
 
+# Evening task check (DISABLED until LINE_EVENING_TASKS_ENABLED=1)
+# Japan 19:00 = UTC 10:00 — enable schedule only after morning is stable
+# [functions."line-send-evening"]
+#   schedule = "0 10 * * *"
+
+# Pretty auth API paths → function router
+[[redirects]]
+  from = "/api/auth/*"
+  to = "/.netlify/functions/api-auth/:splat"
+  status = 200
+  force = true
+
+# Static security headers (CSP starts conservative for existing SPA)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Content-Security-Policy = "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://studio.egaonokiroku.co.jp https://*.netlify.app http://127.0.0.1:* http://localhost:*; font-src 'self' data:"
+
+# Functions: do NOT set Access-Control-Allow-Origin=*
+# CORS is applied per-request by shared/http.js (exact origin allowlist)
 [[headers]]
   for = "/.netlify/functions/*"
   [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "Content-Type"
-    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Cache-Control = "no-store"

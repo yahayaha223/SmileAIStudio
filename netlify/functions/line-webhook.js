@@ -33,15 +33,18 @@ async function rememberSeenUser(userId, sourceType) {
 
 exports.handler = async function (event) {
   kv.connectFromLambdaEvent(event);
-  if (event.httpMethod === "OPTIONS") return http.options();
+  // LINE webhook: no browser CORS / no studio session auth
+  if (event.httpMethod === "OPTIONS") {
+    return http.jsonNoCors(204, { ok: true });
+  }
   if (event.httpMethod !== "POST") {
-    return http.json(405, { ok: false, error: "method_not_allowed" });
+    return http.jsonNoCors(405, { ok: false, error: "method_not_allowed" });
   }
 
   var config = env.getLineConfig();
   var webhookMissing = env.assertWebhookReady(config);
   if (webhookMissing.length) {
-    return http.json(503, { ok: false, error: "line_not_configured" });
+    return http.jsonNoCors(503, { ok: false, error: "line_not_configured" });
   }
 
   var bootstrapMode = env.isAdminBootstrapMode(config);
@@ -53,14 +56,14 @@ exports.handler = async function (event) {
     (event.headers && (event.headers["x-line-signature"] || event.headers["X-Line-Signature"])) || "";
 
   if (!signature.verifyLineSignature(rawBody, headerSig, config.channelSecret)) {
-    return http.text(401, "invalid signature");
+    return http.jsonNoCors(401, { ok: false, error: "invalid_signature" });
   }
 
   var payload;
   try {
     payload = JSON.parse(rawBody);
   } catch (e) {
-    return http.json(400, { ok: false, error: "invalid_json" });
+    return http.jsonNoCors(400, { ok: false, error: "invalid_json" });
   }
 
   await projectStore.patchLineMeta({ lastWebhookAt: new Date().toISOString() });
@@ -163,7 +166,7 @@ exports.handler = async function (event) {
     }
   }
 
-  return http.json(200, {
+  return http.jsonNoCors(200, {
     ok: true,
     bootstrapMode: bootstrapMode
   });
