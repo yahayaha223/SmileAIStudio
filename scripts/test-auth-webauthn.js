@@ -489,6 +489,49 @@ async function run() {
     process.env.AUTH_ENVIRONMENT = "local";
   });
 
+  await test("github issue create stays owner-only even when enforcement is off", async function () {
+    var prevMode = process.env.AUTH_ENFORCEMENT_MODE;
+    try {
+      process.env.AUTH_ENFORCEMENT_MODE = "off";
+      var denied = await middleware.enforceAccess(fakeEvent({ method: "POST" }), {
+        permissionKey: "api-github-issues:POST:create"
+      });
+      assert.strictEqual(denied.ok, false);
+      assert.strictEqual(denied.response.statusCode, 401);
+
+      await reset();
+      var u = await users.createUser({ email: "staff@example.com", role: "staff", status: "active" });
+      var staff = await sessions.createSession(u.user, { purpose: "full", deviceName: "Staff" });
+      var staffDenied = await middleware.enforceAccess(fakeEvent({
+        method: "POST",
+        headers: {
+          cookie: config.COOKIE_SESSION + "=" + encodeURIComponent(staff.rawId) + "; " +
+            config.COOKIE_CSRF + "=" + encodeURIComponent(staff.session.csrfToken),
+          "x-csrf-token": staff.session.csrfToken
+        }
+      }), { permissionKey: "api-github-issues:POST:create" });
+      assert.strictEqual(staffDenied.ok, false);
+      assert.strictEqual(staffDenied.response.statusCode, 403);
+
+      await reset();
+      var ownerUser = await users.createUser({ email: "owner2@example.com", role: "owner", status: "active" });
+      var owner = await sessions.createSession(ownerUser.user, { purpose: "full", deviceName: "Owner" });
+      var ownerOk = await middleware.enforceAccess(fakeEvent({
+        method: "POST",
+        headers: {
+          cookie: config.COOKIE_SESSION + "=" + encodeURIComponent(owner.rawId) + "; " +
+            config.COOKIE_CSRF + "=" + encodeURIComponent(owner.session.csrfToken),
+          "x-csrf-token": owner.session.csrfToken
+        }
+      }), { permissionKey: "api-github-issues:POST:create" });
+      assert.strictEqual(ownerOk.ok, true);
+      assert.strictEqual(ownerOk.bypass, false);
+      assert.strictEqual(ownerOk.session.roleSnapshot, "owner");
+    } finally {
+      process.env.AUTH_ENFORCEMENT_MODE = prevMode || "enforce";
+    }
+  });
+
   await test("staging hard-denies production-only APIs even in off mode", async function () {
     process.env.AUTH_ENVIRONMENT = "staging";
     process.env.AUTH_ENFORCEMENT_MODE = "off";

@@ -84,6 +84,22 @@ async function run() {
     assert.strictEqual(github.assertRepoAllowed(cfg, "other", "repo").ok, false);
   });
 
+  await test("GITHUB_REPOSITORY plus token is enough to configure", function () {
+    var keys = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OWNER", "GITHUB_REPO", "GITHUB_REPOSITORY"];
+    var prev = snapshotEnv(keys);
+    keys.forEach(function (k) { delete process.env[k]; });
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_REPOSITORY = "yahayaha223/SmileAIStudio";
+    try {
+      assert.strictEqual(github.isConfigured(), true);
+      var cfg = github.getGithubConfig();
+      assert.strictEqual(cfg.owner, "yahayaha223");
+      assert.strictEqual(cfg.repo, "SmileAIStudio");
+    } finally {
+      restoreEnv(prev);
+    }
+  });
+
   await test("isConfigured false without env", function () {
     var keys = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OWNER", "GITHUB_REPO", "GITHUB_REPOSITORY"];
     var prev = snapshotEnv(keys);

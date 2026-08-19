@@ -81,6 +81,16 @@ function isProductionOnlyPermission(permissionKey) {
 }
 
 /**
+ * GitHub Issue mutations can start a Cursor Automation.
+ * Always require a real owner session + CSRF, even if AUTH_ENFORCEMENT_MODE is off/observe.
+ */
+function isAlwaysEnforcedPermission(permissionKey) {
+  var key = String(permissionKey || "");
+  return key === "api-github-issues:POST:create" ||
+    key === "api-github-issues:POST:update-agent-status";
+}
+
+/**
  * Exact-match allowlist only. Never endsWith / partial.
  */
 function getAllowedOrigins() {
@@ -190,6 +200,7 @@ module.exports = {
   isStagingEnvironment: isStagingEnvironment,
   getAuthDataPrefix: getAuthDataPrefix,
   isProductionOnlyPermission: isProductionOnlyPermission,
+  isAlwaysEnforcedPermission: isAlwaysEnforcedPermission,
   getAllowedOrigins: getAllowedOrigins,
   isOriginAllowed: isOriginAllowed,
   getAuthConfig: getAuthConfig,
