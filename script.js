@@ -571,6 +571,10 @@
   }
 
   function anyModalOpen() {
+    function isOpen(id) {
+      var el = document.getElementById(id);
+      return !!(el && el.classList.contains("is-open"));
+    }
     return (
       (modal && modal.classList.contains("is-open")) ||
       (promptViewModal && promptViewModal.classList.contains("is-open")) ||
@@ -584,7 +588,10 @@
       (cursorHandoffModal && cursorHandoffModal.classList.contains("is-open")) ||
       (systemCheckModal && systemCheckModal.classList.contains("is-open")) ||
       (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) ||
-      (vaultPickerModal && vaultPickerModal.classList.contains("is-open"))
+      (vaultPickerModal && vaultPickerModal.classList.contains("is-open")) ||
+      isOpen("simple-diary-modal") ||
+      isOpen("ai-job-modal") ||
+      isOpen("hp-edit-modal")
     );
   }
 
@@ -6251,7 +6258,7 @@
 
     var navMap = {
       home: "btn-nav-home",
-      projects: "btn-nav-projects",
+      projects: "btn-nav-more",
       more: "btn-nav-more"
     };
     Object.keys(navMap).forEach(function (key) {
@@ -14078,9 +14085,12 @@
   onClick("btn-nav-home", function () {
     showAppView("home");
   }, "showHomeView");
-  onClick("btn-nav-projects", function () {
-    showAppView("projects");
-  }, "scrollToProjects");
+  onClick("btn-nav-diary", function () {
+    openSimpleDiary();
+  });
+  onClick("btn-nav-ai", function () {
+    openAiJobModal();
+  });
   onClick("btn-nav-more", function () {
     showAppView("more");
     refreshAccountUi();
@@ -14090,6 +14100,17 @@
   });
   onClick("btn-back-home-from-more", function () {
     showAppView("home");
+  });
+  onClick("btn-home-write-diary", function () { openSimpleDiary(); });
+  onClick("btn-more-write-diary", function () { openSimpleDiary(); });
+  onClick("btn-home-edit-hp", function () { openHpEditModal(); });
+  onClick("btn-home-ask-ai", function () { openAiJobModal(); });
+  onClick("btn-more-ask-ai", function () { openAiJobModal(); });
+  onClick("btn-home-see-progress", function () {
+    openAiJobModal();
+  });
+  onClick("btn-manage-projects-more", function () {
+    showAppView("projects");
   });
   onClick("btn-account-logout", function () {
     performStudioLogout();
@@ -15032,6 +15053,600 @@
   if (recentRequestsEl) {
     recentRequestsEl.addEventListener("click", handleRecentClick);
   }
+
+  /* ========== Simple Instagram-style diary + AI jobs + HP edit ========== */
+
+  var simpleDiaryBusy = false;
+  var simpleDiaryPendingConfirm = false;
+  var DevJobs = window.SmileDevJobs || null;
+  var SimpleDiaryPublish = window.SmileSimpleDiaryPublish || null;
+
+  function setModalOpen(id, open) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (open) {
+      el.classList.add("is-open");
+      el.setAttribute("aria-hidden", "false");
+    } else {
+      el.classList.remove("is-open");
+      el.setAttribute("aria-hidden", "true");
+    }
+    syncBodyScroll();
+  }
+
+  function autoDiaryTitle(bodyText) {
+    var dateLabel = formatDiaryDisplayDate(todayInputDate()) || "本日";
+    var body = String(bodyText || "").trim().replace(/\s+/g, " ");
+    if (!body) return "活動日記（" + dateLabel + "）";
+    var short = body.slice(0, 28);
+    if (body.length > 28) short += "…";
+    return short;
+  }
+
+  function syncSimpleDiaryPreview() {
+    var box = document.getElementById("simple-diary-preview");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!diaryImageItems.length) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    diaryImageItems.slice(0, 6).forEach(function (item) {
+      var img = document.createElement("img");
+      img.alt = item.altText || item.fileName || "写真";
+      img.src = item.objectUrl || "";
+      box.appendChild(img);
+    });
+  }
+
+  function setSimpleDiaryStatus(msg, kind) {
+    var el = document.getElementById("simple-diary-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.remove("is-error", "is-ok", "is-info");
+    if (kind) el.classList.add(kind);
+  }
+
+  function openSimpleDiary() {
+    resetWebDiaryForm();
+    ensureEditingDiaryId();
+    initMediaDbAvailability();
+    var body = document.getElementById("simple-diary-body");
+    if (body) body.value = "";
+    var result = document.getElementById("simple-diary-result");
+    if (result) result.hidden = true;
+    var confirmBox = document.getElementById("simple-diary-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    simpleDiaryPendingConfirm = false;
+    setSimpleDiaryStatus("");
+    syncSimpleDiaryPreview();
+    var pubBtn = document.getElementById("btn-simple-diary-publish");
+    if (pubBtn) pubBtn.hidden = false;
+    setModalOpen("simple-diary-modal", true);
+    setTimeout(function () {
+      if (body) body.focus();
+    }, 40);
+  }
+
+  function closeSimpleDiary() {
+    setModalOpen("simple-diary-modal", false);
+    simpleDiaryPendingConfirm = false;
+  }
+
+  function showSimpleDiaryResult(ok, message, opts) {
+    opts = opts || {};
+    var box = document.getElementById("simple-diary-result");
+    var msg = document.getElementById("simple-diary-result-msg");
+    var link = document.getElementById("simple-diary-open-page");
+    var retry = document.getElementById("btn-simple-diary-retry");
+    var details = document.getElementById("simple-diary-details");
+    var logEl = document.getElementById("simple-diary-details-log");
+    var adv = document.getElementById("simple-diary-open-advanced");
+    var confirmBox = document.getElementById("simple-diary-confirm");
+    var pubBtn = document.getElementById("btn-simple-diary-publish");
+    if (confirmBox) confirmBox.hidden = true;
+    if (!box || !msg) return;
+    box.hidden = false;
+    box.classList.toggle("is-error", !ok);
+    msg.textContent = message || "";
+    if (link) {
+      link.hidden = !opts.showPage;
+      if (opts.pageUrl) link.href = opts.pageUrl;
+    }
+    if (retry) retry.hidden = !opts.showRetry;
+    if (details) {
+      details.hidden = !opts.showDetails;
+      if (logEl) {
+        logEl.textContent = opts.detailsLog || "";
+      }
+    }
+    if (adv) adv.hidden = !opts.showAdvanced;
+    if (pubBtn) pubBtn.hidden = !!ok;
+  }
+
+  function formatSimpleDiaryLog(result) {
+    if (!result) return "";
+    var lines = [];
+    if (result.code) lines.push("code: " + result.code);
+    if (result.message) lines.push(result.message);
+    if (result.log && result.log.length) {
+      result.log.forEach(function (row) {
+        lines.push((row.at || "") + " " + (row.message || ""));
+      });
+    }
+    return lines.join("\n");
+  }
+
+  function beginSimpleDiaryConfirm() {
+    if (simpleDiaryBusy) return;
+    var bodyEl = document.getElementById("simple-diary-body");
+    var body = bodyEl ? String(bodyEl.value || "").trim() : "";
+    if (!body && !diaryImageItems.length) {
+      setSimpleDiaryStatus("写真か文章のどちらかを入れてください。", "is-error");
+      return;
+    }
+    if (!body) {
+      setSimpleDiaryStatus("ひとこと文章を書いてください。", "is-error");
+      return;
+    }
+    var result = document.getElementById("simple-diary-result");
+    if (result) result.hidden = true;
+    var confirmBox = document.getElementById("simple-diary-confirm");
+    if (confirmBox) confirmBox.hidden = false;
+    simpleDiaryPendingConfirm = true;
+    setSimpleDiaryStatus("本番へ公開します。よろしければ「公開する」を押してください。", "is-info");
+  }
+
+  function cancelSimpleDiaryConfirm() {
+    simpleDiaryPendingConfirm = false;
+    var confirmBox = document.getElementById("simple-diary-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    setSimpleDiaryStatus("");
+  }
+
+  function publishSimpleDiary() {
+    if (simpleDiaryBusy) return;
+    if (!simpleDiaryPendingConfirm) {
+      beginSimpleDiaryConfirm();
+      return;
+    }
+
+    var bodyEl = document.getElementById("simple-diary-body");
+    var body = bodyEl ? String(bodyEl.value || "").trim() : "";
+    if (!body) {
+      setSimpleDiaryStatus("ひとこと文章を書いてください。", "is-error");
+      simpleDiaryPendingConfirm = false;
+      return;
+    }
+
+    simpleDiaryBusy = true;
+    var pubBtn = document.getElementById("btn-simple-diary-publish");
+    var yesBtn = document.getElementById("btn-simple-diary-confirm-yes");
+    if (pubBtn) {
+      pubBtn.disabled = true;
+      pubBtn.classList.add("is-disabled");
+    }
+    if (yesBtn) yesBtn.disabled = true;
+    var confirmBox = document.getElementById("simple-diary-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    setSimpleDiaryStatus("公開準備をしています…", "is-info");
+
+    var title = autoDiaryTitle(body);
+    var titleEl = document.getElementById("web-diary-title");
+    var webBody = document.getElementById("web-diary-body");
+    var dateEl = document.getElementById("web-diary-date");
+    if (titleEl) titleEl.value = title;
+    if (webBody) webBody.value = body;
+    if (dateEl && !dateEl.value) dateEl.value = todayInputDate();
+
+    var entry = null;
+    try {
+      entry = saveWebDiary("published");
+    } catch (eSave) {
+      entry = null;
+    }
+
+    if (!entry) {
+      simpleDiaryBusy = false;
+      simpleDiaryPendingConfirm = false;
+      if (pubBtn) {
+        pubBtn.disabled = false;
+        pubBtn.classList.remove("is-disabled");
+      }
+      if (yesBtn) yesBtn.disabled = false;
+      setSimpleDiaryStatus("公開できませんでした。元のホームページは変更されていません。", "is-error");
+      showSimpleDiaryResult(false, "❌ 公開できませんでした\n元のホームページは変更されていません。", {
+        showPage: false,
+        showRetry: true,
+        showDetails: true,
+        detailsLog: "save_failed"
+      });
+      return;
+    }
+
+    if (typeof updateDiaryStatusOnly === "function") {
+      updateDiaryStatusOnly(entry.id, "published");
+    }
+
+    var run = SimpleDiaryPublish && typeof SimpleDiaryPublish.runOneButtonPublish === "function"
+      ? SimpleDiaryPublish.runOneButtonPublish({
+        entry: entry,
+        memoryItems: diaryImageItems || [],
+        otherEntries: loadDiaryEntries().filter(function (d) { return d.id !== entry.id; }),
+        userConfirmed: true,
+        loadIndex: function () {
+          setSimpleDiaryStatus("ホームページ用の文章を作っています…", "is-info");
+          return loadCorporateIndexIntoUi();
+        },
+        onProgress: function (p) {
+          if (p && p.message) setSimpleDiaryStatus(p.message, "is-info");
+        }
+      })
+      : Promise.resolve({
+        ok: false,
+        code: "modules_missing",
+        message: "公開モジュールを読み込めませんでした",
+        productionUntouched: true,
+        diarySaved: true
+      });
+
+    run.then(function (result) {
+      simpleDiaryPendingConfirm = false;
+      if (result && result.ok) {
+        if (entry && entry.id && typeof updateDiaryStatusOnly === "function") {
+          updateDiaryStatusOnly(entry.id, "production-published");
+        }
+        setSimpleDiaryStatus("✅ 日記を公開しました", "is-ok");
+        showSimpleDiaryResult(true, "✅ 日記を公開しました", {
+          showPage: true,
+          showRetry: false,
+          showDetails: true,
+          showAdvanced: false,
+          pageUrl: (result && result.pageUrl) || "https://www.egaonokiroku.co.jp/diary/index.htm",
+          detailsLog: formatSimpleDiaryLog(result)
+        });
+        showToast("日記を公開しました");
+        return;
+      }
+
+      var untouched = !(result && result.productionUntouched === false);
+      setSimpleDiaryStatus(
+        untouched
+          ? "公開できませんでした。元のホームページは変更されていません。"
+          : "公開できませんでした。",
+        "is-error"
+      );
+      showSimpleDiaryResult(false,
+        "❌ 公開できませんでした\n" +
+        (untouched ? "元のホームページは変更されていません。" : ""),
+        {
+          showPage: false,
+          showRetry: true,
+          showDetails: true,
+          showAdvanced: true,
+          detailsLog: formatSimpleDiaryLog(result)
+        }
+      );
+    }).catch(function (err) {
+      simpleDiaryPendingConfirm = false;
+      setSimpleDiaryStatus("公開できませんでした。元のホームページは変更されていません。", "is-error");
+      showSimpleDiaryResult(false, "❌ 公開できませんでした\n元のホームページは変更されていません。", {
+        showPage: false,
+        showRetry: true,
+        showDetails: true,
+        showAdvanced: true,
+        detailsLog: (err && err.message) || "pipeline_error"
+      });
+    }).finally(function () {
+      simpleDiaryBusy = false;
+      if (pubBtn) {
+        pubBtn.disabled = false;
+        pubBtn.classList.remove("is-disabled");
+        pubBtn.hidden = false;
+      }
+      if (yesBtn) yesBtn.disabled = false;
+    });
+  }
+
+  function openAiJobModal() {
+    setModalOpen("ai-job-modal", true);
+    renderAiJobsList();
+    startAiJobsSyncLoop();
+    var ta = document.getElementById("ai-job-request");
+    if (ta) setTimeout(function () { ta.focus(); }, 40);
+  }
+
+  function closeAiJobModal() {
+    stopAiJobsSyncLoop();
+    setModalOpen("ai-job-modal", false);
+  }
+
+  function renderAiJobsList() {
+    var box = document.getElementById("ai-jobs-list");
+    if (!box || !DevJobs) return;
+    var list = DevJobs.load().slice(0, 8);
+    if (!list.length) {
+      box.innerHTML = "<p class=\"form-hint\">まだ依頼はありません。</p>";
+      return;
+    }
+    box.innerHTML = list.map(function (job) {
+      if (typeof DevJobs.renderProgressHtml === "function") {
+        return DevJobs.renderProgressHtml(job, escapeHtml);
+      }
+      return "<div class=\"ai-job-card\"><strong>" + escapeHtml(job.title) + "</strong><br>" +
+        "<span>" + escapeHtml(DevJobs.statusLabel(job.status)) + "</span></div>";
+    }).join("");
+  }
+
+  function getStudioCsrfToken() {
+    return (studioAuthSession && studioAuthSession.csrfToken) ||
+      (typeof readCsrfCookie === "function" ? readCsrfCookie() : "");
+  }
+
+  var aiJobsSyncTimer = null;
+  var aiJobsSyncInFlight = false;
+
+  function stopAiJobsSyncLoop() {
+    if (aiJobsSyncTimer) {
+      clearInterval(aiJobsSyncTimer);
+      aiJobsSyncTimer = null;
+    }
+  }
+
+  function startAiJobsSyncLoop() {
+    stopAiJobsSyncLoop();
+    syncAiJobsFromGithub();
+    aiJobsSyncTimer = setInterval(function () {
+      var modal = document.getElementById("ai-job-modal");
+      if (!modal || modal.getAttribute("aria-hidden") === "true") {
+        stopAiJobsSyncLoop();
+        return;
+      }
+      syncAiJobsFromGithub();
+    }, 20000);
+  }
+
+  function syncAiJobsFromGithub() {
+    if (!DevJobs || aiJobsSyncInFlight) return Promise.resolve();
+    var jobs = typeof DevJobs.jobsNeedingSync === "function"
+      ? DevJobs.jobsNeedingSync()
+      : [];
+    if (!jobs.length) return Promise.resolve();
+    var numbers = jobs.map(function (j) { return j.githubIssueNumber; }).filter(Boolean);
+    if (!numbers.length) return Promise.resolve();
+
+    aiJobsSyncInFlight = true;
+    var csrf = getStudioCsrfToken();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return fetch("/.netlify/functions/api-github-issues", {
+      method: "POST",
+      headers: headers,
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        action: "sync-batch",
+        issueNumbers: numbers
+      })
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false };
+      });
+    }).then(function (data) {
+      if (!data || !data.ok || !Array.isArray(data.syncs)) return;
+      var changed = false;
+      data.syncs.forEach(function (sync) {
+        if (!sync || sync.error) return;
+        var before = DevJobs.getById && jobs.find(function (j) {
+          return Number(j.githubIssueNumber) === Number(sync.githubIssueNumber);
+        });
+        var updated = DevJobs.applySyncPayload(sync);
+        if (updated && before && before.status !== updated.status) changed = true;
+        else if (updated) changed = true;
+      });
+      if (changed) renderAiJobsList();
+    }).catch(function () { /* ignore transient */ }).finally(function () {
+      aiJobsSyncInFlight = false;
+    });
+  }
+
+  function createGithubIssueForJob(job) {
+    var csrf = getStudioCsrfToken();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return fetch("/.netlify/functions/api-github-issues", {
+      method: "POST",
+      headers: headers,
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        action: "create",
+        jobId: job.id,
+        title: job.title,
+        body: DevJobs.toIssueMarkdown(job),
+        agentStatus: job.agentStatus || "READY_FOR_AGENT"
+      })
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, error: "invalid_json", _httpStatus: res.status };
+      }).then(function (data) {
+        data = data || {};
+        data._httpStatus = res.status;
+        data._okHttp = res.ok;
+        return data;
+      });
+    });
+  }
+
+  function submitAiJob(retryJobId) {
+    var status = document.getElementById("ai-job-status");
+    var preview = document.getElementById("ai-job-preview");
+    var project = document.getElementById("ai-job-project");
+    var request = document.getElementById("ai-job-request");
+    if (!DevJobs) {
+      if (status) status.textContent = "開発ジョブ基盤を読み込めませんでした。";
+      return;
+    }
+
+    var job = null;
+    if (retryJobId) {
+      job = DevJobs.getById(retryJobId);
+      if (!job) {
+        if (status) status.textContent = "再送信する依頼が見つかりません。";
+        return;
+      }
+    } else {
+      var text = request ? String(request.value || "").trim() : "";
+      if (!text) {
+        if (status) status.textContent = "やりたいことを書いてください。";
+        return;
+      }
+      job = DevJobs.buildTaskFromRequest({
+        projectId: project ? project.value : "smile-ai-studio",
+        userRequest: text
+      });
+      job.status = "ready_for_issue";
+      DevJobs.upsert(job);
+    }
+
+    if (status) status.textContent = "開発依頼を作成しています…";
+    if (preview) {
+      preview.hidden = false;
+      preview.textContent = DevJobs.toIssueMarkdown(job);
+    }
+    renderAiJobsList();
+
+    createGithubIssueForJob(job).then(function (data) {
+      if (data && data.ok && data.issue) {
+        DevJobs.applyGithubIssueResult(job, data.issue);
+        if (status) {
+          status.textContent =
+            "✅ 開発依頼を作成しました / ✅ GitHubへ送信しました / ⏳ AIプログラマー待機中";
+        }
+        if (request && !retryJobId) request.value = "";
+        showToast("GitHub Issue を作成しました");
+        startAiJobsSyncLoop();
+      } else {
+        var msg = (data && (data.userMessage || data.error)) || "GitHubへ送信できませんでした";
+        if (data && data.error === "unauthorized") {
+          msg = "ログイン（オーナー）が必要です";
+        } else if (data && data.error === "forbidden") {
+          msg = "オーナー権限が必要です";
+        } else if (data && data.error === "github_not_configured") {
+          msg = "GitHub接続設定が必要です";
+        }
+        DevJobs.markGithubFailure(job, { userMessage: msg, error: data && data.error });
+        if (status) status.textContent = "依頼票は保存しました。" + msg + "（再送信できます）";
+        showToast(msg);
+      }
+      renderAiJobsList();
+    }).catch(function () {
+      DevJobs.markGithubFailure(job, { userMessage: "通信に失敗しました" });
+      if (status) status.textContent = "依頼票は保存しました。通信に失敗しました（再送信できます）";
+      renderAiJobsList();
+    });
+  }
+
+  function openHpEditModal() {
+    setModalOpen("hp-edit-modal", true);
+    var ta = document.getElementById("hp-edit-request");
+    if (ta) setTimeout(function () { ta.focus(); }, 40);
+  }
+
+  function closeHpEditModal() {
+    setModalOpen("hp-edit-modal", false);
+  }
+
+  function submitHpEditRequest() {
+    var status = document.getElementById("hp-edit-status");
+    var request = document.getElementById("hp-edit-request");
+    var text = request ? String(request.value || "").trim() : "";
+    if (!text) {
+      if (status) status.textContent = "変えたい内容を書いてください。";
+      return;
+    }
+    if (DevJobs) {
+      var job = DevJobs.buildTaskFromRequest({
+        projectId: "corporate-site",
+        userRequest: "ホームページ編集: " + text
+      });
+      job.status = "planning";
+      job.riskLevel = "high";
+      job.approvalRequired = true;
+      DevJobs.upsert(job);
+    }
+    if (status) {
+      status.textContent = "変更案の依頼を保存しました。本番反映は必ず確認後です。";
+    }
+    showToast("HP変更の依頼を保存しました");
+  }
+
+  onClick("simple-diary-close", closeSimpleDiary);
+  onClick("btn-simple-diary-cancel", closeSimpleDiary);
+  onClick("btn-simple-diary-publish", publishSimpleDiary);
+  onClick("btn-simple-diary-confirm-yes", publishSimpleDiary);
+  onClick("btn-simple-diary-confirm-no", cancelSimpleDiaryConfirm);
+  onClick("btn-simple-diary-retry", function () {
+    var result = document.getElementById("simple-diary-result");
+    if (result) result.hidden = true;
+    simpleDiaryPendingConfirm = false;
+    beginSimpleDiaryConfirm();
+  });
+  onClick("simple-diary-open-advanced", function () {
+    closeSimpleDiary();
+    openWebCenter();
+    openWebDiaryForm(loadDiaryEntries().find(function (d) { return d.id === editingDiaryId; }) || null);
+  });
+  onClick("ai-job-close", closeAiJobModal);
+  onClick("btn-ai-job-cancel", closeAiJobModal);
+  onClick("btn-ai-job-submit", function () { submitAiJob(); });
+  onClick("hp-edit-close", closeHpEditModal);
+  onClick("btn-hp-edit-cancel", closeHpEditModal);
+  onClick("btn-hp-edit-submit", submitHpEditRequest);
+  onClick("btn-hp-edit-open-web", function () {
+    closeHpEditModal();
+    openWebCenter();
+  });
+
+  var aiJobsListEl = document.getElementById("ai-jobs-list");
+  if (aiJobsListEl) {
+    aiJobsListEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("btn-ai-job-retry")) return;
+      var id = t.getAttribute("data-job-id");
+      if (id) submitAiJob(id);
+    });
+  }
+
+  var simpleDiaryImages = document.getElementById("simple-diary-images");
+  if (simpleDiaryImages) {
+    simpleDiaryImages.addEventListener("change", function () {
+      handleDiaryImageSelection(simpleDiaryImages.files);
+      syncSimpleDiaryPreview();
+      simpleDiaryImages.value = "";
+    });
+  }
+  var simpleDiaryCamera = document.getElementById("simple-diary-camera");
+  if (simpleDiaryCamera) {
+    simpleDiaryCamera.addEventListener("change", function () {
+      handleDiaryImageSelection(simpleDiaryCamera.files);
+      syncSimpleDiaryPreview();
+      simpleDiaryCamera.value = "";
+    });
+  }
+
+  var _origRenderDiaryImageList = renderDiaryImageList;
+  renderDiaryImageList = function () {
+    _origRenderDiaryImageList();
+    syncSimpleDiaryPreview();
+  };
 
   /* ========== Auth session / logout ========== */
 

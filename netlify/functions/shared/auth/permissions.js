@@ -32,7 +32,12 @@ var API_PERMISSIONS = {
   "ftp-upload:POST": { roles: ["owner"], stepUp: true },
   "user-admin:POST": { roles: ["owner"], stepUp: true },
   "secrets:POST": { roles: ["owner"], stepUp: true },
-  "backup-restore:POST": { roles: ["owner"], stepUp: true }
+  "backup-restore:POST": { roles: ["owner"], stepUp: true },
+
+  // AI development jobs → GitHub Issues (token server-side only)
+  "api-github-issues:POST:create": { roles: ["owner"], stepUp: false },
+  "api-github-issues:POST:sync": { roles: ["owner", "admin"], stepUp: false },
+  "api-github-issues:POST:update-agent-status": { roles: ["owner"], stepUp: false }
 };
 
 function roleAtLeast(role, minimum) {

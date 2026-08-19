@@ -73,6 +73,9 @@ async function enforceAccess(event, opts) {
   opts = opts || {};
   var mode = config.getEnforcementMode();
   var permKey = opts.permissionKey || "";
+  if (permKey && config.isAlwaysEnforcedPermission(permKey)) {
+    mode = "enforce";
+  }
   var perm = permKey ? permissions.resolvePermission(permKey) : null;
   var requiredRoles = opts.roles || (perm && perm.roles) || null;
   var needStepUp = opts.stepUp != null ? opts.stepUp : !!(perm && perm.stepUp);
