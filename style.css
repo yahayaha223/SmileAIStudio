@@ -290,6 +290,12 @@ body::before {
   border-bottom: 0;
 }
 
+.ai-job-card__attention {
+  margin: 6px 0;
+  font-weight: 700;
+  color: #b45309;
+}
+
 @media (min-width: 640px) {
   .home-actions {
     grid-template-columns: 1fr 1fr;

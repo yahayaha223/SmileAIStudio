@@ -2,7 +2,7 @@
 
 /**
  * developmentJobs — local store for AI development tasks.
- * GitHub Issue creation goes through Netlify Function (token never in browser).
+ * GitHub Issue creation / sync goes through Netlify Function (token never in browser).
  */
 (function (global) {
   var KEY = "smileAIStudio_developmentJobs";
@@ -29,9 +29,21 @@
   var AGENT_STATUS = {
     READY_FOR_AGENT: "READY_FOR_AGENT",
     AGENT_WORKING: "AGENT_WORKING",
+    TESTING: "TESTING",
+    FIXING: "FIXING",
     READY_FOR_REVIEW: "READY_FOR_REVIEW",
     FAILED: "FAILED",
     COMPLETED: "COMPLETED"
+  };
+
+  var AGENT_TO_JOB = {
+    READY_FOR_AGENT: "waiting_for_agent",
+    AGENT_WORKING: "agent_working",
+    TESTING: "testing",
+    FIXING: "fixing",
+    READY_FOR_REVIEW: "waiting_for_review",
+    FAILED: "failed",
+    COMPLETED: "completed"
   };
 
   function load() {
@@ -77,6 +89,7 @@
       testSummary: null,
       failureReason: null,
       lastGithubError: null,
+      lastSyncedAt: null,
       goal: req,
       background: "ユーザーからの自然文依頼",
       acceptanceCriteria: [
@@ -117,12 +130,20 @@
     return STATUS_JA[status] || "進行中";
   }
 
+  function jobsNeedingSync() {
+    return load().filter(function (j) {
+      if (!j || !j.githubIssueNumber) return false;
+      if (j.status === "completed" || j.status === "cancelled") return false;
+      return true;
+    }).slice(0, 12);
+  }
+
   function applyGithubIssueResult(job, issue) {
     if (!job) return null;
     job.githubIssueNumber = issue && issue.number != null ? issue.number : job.githubIssueNumber;
     job.githubIssueUrl = (issue && issue.url) || job.githubIssueUrl;
-    job.status = "issue_created";
-    job.agentStatus = AGENT_STATUS.READY_FOR_AGENT;
+    job.agentStatus = (issue && issue.agentStatus) || AGENT_STATUS.READY_FOR_AGENT;
+    job.status = (issue && issue.jobStatus) || "waiting_for_agent";
     job.lastGithubError = null;
     return upsert(job);
   }
@@ -130,7 +151,6 @@
   function markGithubFailure(job, err) {
     if (!job) return null;
     job.lastGithubError = (err && (err.userMessage || err.message || err.error)) || "送信失敗";
-    // Keep job; allow retry. Do not delete.
     if (job.status === "issue_created" || job.status === "waiting_for_agent") {
       /* leave status */
     } else {
@@ -141,7 +161,6 @@
 
   /**
    * Map GitHub Issue / PR / Agent signals into developmentJob status.
-   * Designed for future Cursor Agent / Automation webhooks.
    */
   function applyExternalUpdate(job, update) {
     if (!job || !update) return job;
@@ -157,22 +176,31 @@
     if (update.previewUrl) job.previewUrl = update.previewUrl;
     if (update.testSummary) job.testSummary = update.testSummary;
     if (update.failureReason) job.failureReason = update.failureReason;
+    job.lastSyncedAt = new Date().toISOString();
 
     if (update.status && STATUS_JA[update.status] != null) {
       job.status = update.status;
-    } else if (update.agentStatus === AGENT_STATUS.AGENT_WORKING) {
-      job.status = "agent_working";
-    } else if (update.agentStatus === AGENT_STATUS.READY_FOR_REVIEW) {
-      job.status = update.githubPrNumber ? "waiting_for_review" : "pr_ready";
-    } else if (update.agentStatus === AGENT_STATUS.COMPLETED) {
-      job.status = "completed";
-    } else if (update.agentStatus === AGENT_STATUS.FAILED) {
-      job.status = "failed";
+    } else if (update.agentStatus && AGENT_TO_JOB[update.agentStatus]) {
+      job.status = AGENT_TO_JOB[update.agentStatus];
+      if (update.agentStatus === AGENT_STATUS.READY_FOR_REVIEW && update.githubPrNumber) {
+        job.status = "waiting_for_review";
+      }
     } else if (update.githubPrNumber && !update.status) {
       job.status = "waiting_for_review";
       job.agentStatus = AGENT_STATUS.READY_FOR_REVIEW;
     }
     return upsert(job);
+  }
+
+  function applySyncPayload(sync) {
+    if (!sync || !sync.githubIssueNumber) return null;
+    var list = load();
+    var job = list.find(function (j) {
+      return Number(j.githubIssueNumber) === Number(sync.githubIssueNumber) ||
+        (sync.jobId && j.id === sync.jobId);
+    });
+    if (!job) return null;
+    return applyExternalUpdate(job, sync);
   }
 
   function toIssueMarkdown(job) {
@@ -204,8 +232,21 @@
       "## Job Id",
       job.id || "",
       "",
+      "## Branch",
+      job.branchName || "(agent will set)",
+      "",
+      "## Pull Request",
+      job.githubPrNumber ? ("#" + job.githubPrNumber) : "(none yet)",
+      "",
       "## Agent Status",
       job.agentStatus || AGENT_STATUS.READY_FOR_AGENT,
+      "",
+      "## Agent Instructions",
+      "1. On start: set Agent Status to AGENT_WORKING",
+      "2. While verifying: TESTING",
+      "3. While fixing failures: FIXING",
+      "4. When PR is ready: READY_FOR_REVIEW and fill Pull Request + Branch",
+      "5. Never merge to main / never Production Deploy / never real FTP publish",
       ""
     ].join("\n");
   }
@@ -217,30 +258,47 @@
         .replace(/"/g, "&quot;");
     };
     var lines = [];
+    var label = statusLabel(job.status);
     lines.push("<div class=\"ai-job-card\" data-job-id=\"" + esc(job.id) + "\">");
     lines.push("<strong>" + esc(job.title) + "</strong>");
-    if (job.status === "issue_created" || job.status === "waiting_for_agent" ||
-        job.githubIssueNumber) {
-      lines.push("<p>✅ 開発依頼を作成しました</p>");
-      if (job.githubIssueNumber) {
-        lines.push("<p>✅ GitHubへ送信しました</p>");
-        lines.push("<p>⏳ AIプログラマー待機中</p>");
-        lines.push("<p>GitHub Issue #" + esc(String(job.githubIssueNumber)) + "</p>");
-        if (job.githubIssueUrl) {
-          lines.push(
-            "<p><a class=\"btn btn--secondary btn--touch\" href=\"" +
-            esc(job.githubIssueUrl) +
-            "\" target=\"_blank\" rel=\"noopener\">Issueを見る</a></p>"
-          );
-        }
-      }
-    } else if (job.status === "ready_for_issue" && job.lastGithubError) {
+
+    if (job.status === "ready_for_issue" && job.lastGithubError) {
       lines.push("<p>依頼票は保存済みです</p>");
       lines.push("<p>" + esc(job.lastGithubError) + "</p>");
       lines.push("<p><button type=\"button\" class=\"btn btn--secondary btn--touch btn-ai-job-retry\" data-job-id=\"" +
         esc(job.id) + "\">再送信</button></p>");
+    } else if (job.githubIssueNumber &&
+      (job.status === "issue_created" || job.status === "waiting_for_agent")) {
+      lines.push("<p>✅ 開発依頼を作成しました</p>");
+      lines.push("<p>✅ GitHubへ送信しました</p>");
+      lines.push("<p>⏳ AIプログラマー待機中</p>");
+      lines.push("<p>GitHub Issue #" + esc(String(job.githubIssueNumber)) + "</p>");
+    } else if (job.status === "waiting_for_review" || job.status === "pr_ready") {
+      lines.push("<p class=\"ai-job-card__attention\">確認してください</p>");
+      lines.push("<p>" + esc(label) + "</p>");
+      if (job.githubPrNumber) {
+        lines.push("<p>Pull Request #" + esc(String(job.githubPrNumber)) + "</p>");
+      }
     } else {
-      lines.push("<p>" + esc(statusLabel(job.status)) + "</p>");
+      lines.push("<p>" + esc(label) + "</p>");
+      if (job.githubIssueNumber) {
+        lines.push("<p>GitHub Issue #" + esc(String(job.githubIssueNumber)) + "</p>");
+      }
+    }
+
+    if (job.githubIssueUrl) {
+      lines.push(
+        "<p><a class=\"btn btn--secondary btn--touch\" href=\"" +
+        esc(job.githubIssueUrl) +
+        "\" target=\"_blank\" rel=\"noopener\">Issueを見る</a></p>"
+      );
+    }
+    if (job.githubPrUrl) {
+      lines.push(
+        "<p><a class=\"btn btn--primary btn--touch\" href=\"" +
+        esc(job.githubPrUrl) +
+        "\" target=\"_blank\" rel=\"noopener\">PRを確認</a></p>"
+      );
     }
     lines.push("</div>");
     return lines.join("");
@@ -252,14 +310,17 @@
     save: save,
     upsert: upsert,
     getById: getById,
+    jobsNeedingSync: jobsNeedingSync,
     buildTaskFromRequest: buildTaskFromRequest,
     statusLabel: statusLabel,
     toIssueMarkdown: toIssueMarkdown,
     applyGithubIssueResult: applyGithubIssueResult,
     markGithubFailure: markGithubFailure,
     applyExternalUpdate: applyExternalUpdate,
+    applySyncPayload: applySyncPayload,
     renderProgressHtml: renderProgressHtml,
     STATUS_JA: STATUS_JA,
-    AGENT_STATUS: AGENT_STATUS
+    AGENT_STATUS: AGENT_STATUS,
+    AGENT_TO_JOB: AGENT_TO_JOB
   };
 })(window);

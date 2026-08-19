@@ -14108,7 +14108,6 @@
   onClick("btn-more-ask-ai", function () { openAiJobModal(); });
   onClick("btn-home-see-progress", function () {
     openAiJobModal();
-    renderAiJobsList();
   });
   onClick("btn-manage-projects-more", function () {
     showAppView("projects");
@@ -15353,11 +15352,13 @@
   function openAiJobModal() {
     setModalOpen("ai-job-modal", true);
     renderAiJobsList();
+    startAiJobsSyncLoop();
     var ta = document.getElementById("ai-job-request");
     if (ta) setTimeout(function () { ta.focus(); }, 40);
   }
 
   function closeAiJobModal() {
+    stopAiJobsSyncLoop();
     setModalOpen("ai-job-modal", false);
   }
 
@@ -15379,7 +15380,78 @@
   }
 
   function getStudioCsrfToken() {
-    return (studioAuthSession && studioAuthSession.csrfToken) || readCsrfCookie();
+    return (studioAuthSession && studioAuthSession.csrfToken) ||
+      (typeof readCsrfCookie === "function" ? readCsrfCookie() : "");
+  }
+
+  var aiJobsSyncTimer = null;
+  var aiJobsSyncInFlight = false;
+
+  function stopAiJobsSyncLoop() {
+    if (aiJobsSyncTimer) {
+      clearInterval(aiJobsSyncTimer);
+      aiJobsSyncTimer = null;
+    }
+  }
+
+  function startAiJobsSyncLoop() {
+    stopAiJobsSyncLoop();
+    syncAiJobsFromGithub();
+    aiJobsSyncTimer = setInterval(function () {
+      var modal = document.getElementById("ai-job-modal");
+      if (!modal || modal.getAttribute("aria-hidden") === "true") {
+        stopAiJobsSyncLoop();
+        return;
+      }
+      syncAiJobsFromGithub();
+    }, 20000);
+  }
+
+  function syncAiJobsFromGithub() {
+    if (!DevJobs || aiJobsSyncInFlight) return Promise.resolve();
+    var jobs = typeof DevJobs.jobsNeedingSync === "function"
+      ? DevJobs.jobsNeedingSync()
+      : [];
+    if (!jobs.length) return Promise.resolve();
+    var numbers = jobs.map(function (j) { return j.githubIssueNumber; }).filter(Boolean);
+    if (!numbers.length) return Promise.resolve();
+
+    aiJobsSyncInFlight = true;
+    var csrf = getStudioCsrfToken();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return fetch("/.netlify/functions/api-github-issues", {
+      method: "POST",
+      headers: headers,
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        action: "sync-batch",
+        issueNumbers: numbers
+      })
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false };
+      });
+    }).then(function (data) {
+      if (!data || !data.ok || !Array.isArray(data.syncs)) return;
+      var changed = false;
+      data.syncs.forEach(function (sync) {
+        if (!sync || sync.error) return;
+        var before = DevJobs.getById && jobs.find(function (j) {
+          return Number(j.githubIssueNumber) === Number(sync.githubIssueNumber);
+        });
+        var updated = DevJobs.applySyncPayload(sync);
+        if (updated && before && before.status !== updated.status) changed = true;
+        else if (updated) changed = true;
+      });
+      if (changed) renderAiJobsList();
+    }).catch(function () { /* ignore transient */ }).finally(function () {
+      aiJobsSyncInFlight = false;
+    });
   }
 
   function createGithubIssueForJob(job) {
@@ -15460,6 +15532,7 @@
         }
         if (request && !retryJobId) request.value = "";
         showToast("GitHub Issue を作成しました");
+        startAiJobsSyncLoop();
       } else {
         var msg = (data && (data.userMessage || data.error)) || "GitHubへ送信できませんでした";
         if (data && data.error === "unauthorized") {

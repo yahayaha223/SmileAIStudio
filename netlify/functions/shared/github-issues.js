@@ -3,14 +3,28 @@
 /**
  * Server-side GitHub Issues helper.
  * Token never leaves the server. Repo is allowlisted.
+ * Agent Status on Issue body drives developmentJobs status sync.
  */
 
 var ALLOWED_AGENT_STATUS = {
   READY_FOR_AGENT: true,
   AGENT_WORKING: true,
+  TESTING: true,
+  FIXING: true,
   READY_FOR_REVIEW: true,
   FAILED: true,
   COMPLETED: true
+};
+
+/** Agent Status → developmentJobs.status */
+var AGENT_STATUS_TO_JOB = {
+  READY_FOR_AGENT: "waiting_for_agent",
+  AGENT_WORKING: "agent_working",
+  TESTING: "testing",
+  FIXING: "fixing",
+  READY_FOR_REVIEW: "waiting_for_review",
+  FAILED: "failed",
+  COMPLETED: "completed"
 };
 
 function readEnv(name) {
@@ -99,6 +113,36 @@ function sanitizeLabels(labels, defaults) {
   return out.slice(0, 8);
 }
 
+function parseAgentStatus(body) {
+  var m = String(body || "").match(/##\s*Agent Status\s*\n\s*([A-Z_]+)/i);
+  if (!m) return null;
+  var st = String(m[1] || "").trim().toUpperCase();
+  return ALLOWED_AGENT_STATUS[st] ? st : null;
+}
+
+function parseJobId(body) {
+  var m = String(body || "").match(/##\s*Job Id\s*\n\s*([^\n]+)/i);
+  if (!m) return null;
+  var id = String(m[1] || "").trim();
+  return id || null;
+}
+
+function parseBranchName(body) {
+  var m = String(body || "").match(/##\s*Branch\s*\n\s*([^\n]+)/i);
+  if (!m) return null;
+  return String(m[1] || "").trim() || null;
+}
+
+function parsePrFromBody(body) {
+  var m = String(body || "").match(/##\s*Pull Request\s*\n\s*#?(\d+)/i);
+  if (!m) {
+    m = String(body || "").match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/i);
+  }
+  if (!m) return null;
+  var n = Number(m[1]);
+  return isFinite(n) && n > 0 ? n : null;
+}
+
 function ensureAgentStatus(body, status) {
   var st = String(status || "READY_FOR_AGENT").trim().toUpperCase();
   if (!ALLOWED_AGENT_STATUS[st]) st = "READY_FOR_AGENT";
@@ -109,6 +153,15 @@ function ensureAgentStatus(body, status) {
     /(##\s*Agent Status\s*\n)([^\n]*)/i,
     "$1" + st
   );
+}
+
+function mapAgentStatusToJobStatus(agentStatus, opts) {
+  opts = opts || {};
+  var st = String(agentStatus || "").toUpperCase();
+  if (opts.githubPrNumber && (st === "READY_FOR_REVIEW" || !st)) {
+    return "waiting_for_review";
+  }
+  return AGENT_STATUS_TO_JOB[st] || null;
 }
 
 async function githubFetch(cfg, path, method, payload) {
@@ -183,7 +236,135 @@ async function createIssue(opts) {
     number: res.json.number,
     url: res.json.html_url || res.json.url,
     title: res.json.title,
-    agentStatus: "READY_FOR_AGENT"
+    agentStatus: parseAgentStatus(body) || "READY_FOR_AGENT",
+    jobStatus: "waiting_for_agent"
+  };
+}
+
+async function getIssue(number) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です" };
+  }
+  var n = Number(number);
+  if (!isFinite(n) || n < 1) {
+    return { ok: false, error: "invalid_issue_number", userMessage: "Issue番号が不正です" };
+  }
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/issues/" + encodeURIComponent(String(n));
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "Issueを取得できませんでした",
+      httpStatus: res.status
+    };
+  }
+  return { ok: true, issue: res.json };
+}
+
+async function findRelatedPullRequest(issueNumber) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) return { ok: false, pr: null };
+  var n = Number(issueNumber);
+  var q = "repo:" + cfg.owner + "/" + cfg.repo + " is:pr " + n;
+  var path = "/search/issues?q=" + encodeURIComponent(q) + "&per_page=5";
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json || !Array.isArray(res.json.items)) {
+    return { ok: true, pr: null };
+  }
+  var hit = res.json.items.find(function (it) {
+    return it && it.pull_request && Number(it.number) !== n;
+  }) || res.json.items[0];
+  if (!hit || !hit.number) return { ok: true, pr: null };
+  return {
+    ok: true,
+    pr: {
+      number: hit.number,
+      url: hit.html_url || hit.url,
+      title: hit.title || "",
+      state: hit.state || ""
+    }
+  };
+}
+
+async function updateIssueAgentStatus(number, agentStatus) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です" };
+  }
+  var st = String(agentStatus || "").trim().toUpperCase();
+  if (!ALLOWED_AGENT_STATUS[st]) {
+    return { ok: false, error: "invalid_agent_status", userMessage: "Agent Statusが不正です" };
+  }
+  var got = await getIssue(number);
+  if (!got.ok) return got;
+  var body = ensureAgentStatus(got.issue.body || "", st);
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/issues/" + encodeURIComponent(String(number));
+  var res = await githubFetch(cfg, path, "PATCH", { body: body });
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "Agent Statusを更新できませんでした",
+      httpStatus: res.status
+    };
+  }
+  return {
+    ok: true,
+    number: Number(number),
+    agentStatus: st,
+    jobStatus: mapAgentStatusToJobStatus(st)
+  };
+}
+
+/**
+ * Read Issue (+ optional related PR) and map to developmentJobs fields.
+ */
+async function syncIssueState(number) {
+  var got = await getIssue(number);
+  if (!got.ok) return got;
+  var issue = got.issue;
+  var body = issue.body || "";
+  var agentStatus = parseAgentStatus(body) || "READY_FOR_AGENT";
+  var jobId = parseJobId(body);
+  var branchName = parseBranchName(body);
+  var prFromBody = parsePrFromBody(body);
+  var prInfo = null;
+  if (prFromBody) {
+    prInfo = {
+      number: prFromBody,
+      url: "https://github.com/" + getGithubConfig().owner + "/" + getGithubConfig().repo +
+        "/pull/" + prFromBody
+    };
+  } else {
+    var related = await findRelatedPullRequest(number);
+    if (related && related.pr) prInfo = related.pr;
+  }
+  if (prInfo && agentStatus === "READY_FOR_AGENT") {
+    // PR exists → treat as ready for review unless agent already advanced
+    agentStatus = "READY_FOR_REVIEW";
+  }
+  var jobStatus = mapAgentStatusToJobStatus(agentStatus, {
+    githubPrNumber: prInfo && prInfo.number
+  }) || "waiting_for_agent";
+
+  return {
+    ok: true,
+    sync: {
+      githubIssueNumber: issue.number,
+      githubIssueUrl: issue.html_url || issue.url,
+      agentStatus: agentStatus,
+      status: jobStatus,
+      jobId: jobId,
+      branchName: branchName,
+      githubPrNumber: prInfo ? prInfo.number : null,
+      githubPrUrl: prInfo ? prInfo.url : null,
+      issueState: issue.state || "open",
+      issueTitle: issue.title || ""
+    }
   };
 }
 
@@ -194,7 +375,17 @@ module.exports = {
   sanitizeTitle: sanitizeTitle,
   sanitizeBody: sanitizeBody,
   sanitizeLabels: sanitizeLabels,
+  parseAgentStatus: parseAgentStatus,
+  parseJobId: parseJobId,
+  parseBranchName: parseBranchName,
+  parsePrFromBody: parsePrFromBody,
   ensureAgentStatus: ensureAgentStatus,
+  mapAgentStatusToJobStatus: mapAgentStatusToJobStatus,
   createIssue: createIssue,
-  ALLOWED_AGENT_STATUS: ALLOWED_AGENT_STATUS
+  getIssue: getIssue,
+  findRelatedPullRequest: findRelatedPullRequest,
+  updateIssueAgentStatus: updateIssueAgentStatus,
+  syncIssueState: syncIssueState,
+  ALLOWED_AGENT_STATUS: ALLOWED_AGENT_STATUS,
+  AGENT_STATUS_TO_JOB: AGENT_STATUS_TO_JOB
 };
