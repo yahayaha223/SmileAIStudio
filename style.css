@@ -74,6 +74,228 @@ body::before {
   --color-bg: #f2f2f7;
 }
 
+/* シンプルホーム：主役アクション */
+.home-greet--simple {
+  margin: 8px 0 18px;
+  padding: 0 4px;
+}
+
+.home-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.home-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 88px;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.home-action--diary {
+  border-color: rgba(79, 110, 247, 0.35);
+  background: linear-gradient(180deg, #f5f7ff 0%, #fff 70%);
+}
+
+.home-action__icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.home-action__title {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.home-action__hint {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.home-action:active {
+  transform: scale(0.985);
+}
+
+.home-more-panel {
+  margin: 8px 0 24px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.home-more-panel__summary {
+  padding: 14px 16px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.home-more-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.home-more-panel__body {
+  padding: 0 8px 16px;
+}
+
+/* 簡易日記モーダル */
+.modal--simple-diary {
+  max-width: 520px;
+}
+
+.simple-diary__lead,
+.simple-diary__hint {
+  margin: 0 0 12px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.simple-diary__photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.simple-diary__photo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch-min);
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.simple-diary__photo-btn--secondary {
+  background: #e8eefc;
+  color: var(--color-primary-dark);
+}
+
+.simple-diary__preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.simple-diary__preview img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #e2e8f0;
+}
+
+.simple-diary__body {
+  width: 100%;
+  min-height: 160px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.simple-diary__status {
+  min-height: 1.4em;
+  margin: 10px 0;
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+}
+
+.simple-diary__status.is-error {
+  color: #dc2626;
+}
+
+.simple-diary__status.is-ok {
+  color: #059669;
+}
+
+.simple-diary__result {
+  margin: 8px 0 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f0fdf4;
+}
+
+.simple-diary__result.is-error {
+  background: #fef2f2;
+}
+
+.simple-diary__confirm {
+  margin: 8px 0 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff7ed;
+}
+
+.simple-diary__confirm-msg {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.simple-diary__details {
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+
+.simple-diary__details-log {
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  max-height: 160px;
+  overflow: auto;
+  margin: 8px 0;
+}
+
+.ai-job-preview,
+.ai-jobs-list {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+.ai-job-card {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-job-card:last-child {
+  border-bottom: 0;
+}
+
+@media (min-width: 640px) {
+  .home-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 body:has(.app--secretary-first)::before {
   background:
     radial-gradient(ellipse 70% 40% at 50% -5%, rgba(148, 163, 184, 0.12), transparent);

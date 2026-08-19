@@ -9,6 +9,9 @@
   "scripts": {
     "test:line": "node scripts/run-line-unit-tests.js",
     "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js",
+    "test:github-issues": "node scripts/test-github-issues.js",
+    "test:simple-diary": "node scripts/test-simple-diary-publish.js",
+    "test:phase2": "npm run test:auth && npm run test:line && npm run test:github-issues && npm run test:simple-diary",
     "mock:webhook": "node scripts/mock-line-webhook.js",
     "dev:netlify": "npx netlify dev"
   },

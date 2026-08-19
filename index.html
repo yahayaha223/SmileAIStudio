@@ -28,137 +28,136 @@
     <!-- ホーム：AI秘書ファースト -->
     <main class="main">
       <section class="view view--home is-active" id="view-home" aria-label="ホーム">
-        <!-- ① 家族写真 -->
-        <div class="home-family" id="home-family">
-          <div class="home-family__frame">
-            <img
-              id="home-family-photo"
-              class="home-family__img"
-              src="assets/family-dummy.svg"
-              alt="家族写真"
-              width="800"
-              height="500"
-            >
-          </div>
-          <label class="home-family__change" for="home-family-photo-input">写真を変更</label>
-          <input type="file" id="home-family-photo-input" accept="image/*" hidden>
-        </div>
+        <header class="home-greet home-greet--simple">
+          <p class="home-greet__hello" id="home-greeting">おはよう、YAHA</p>
+          <h2 class="home-greet__ask" id="home-secretary-heading">今日は何をしますか？</h2>
+        </header>
 
-        <!-- ② Mission / 今日のひとこと / Vision -->
-        <div class="home-purpose">
-          <details class="home-accordion home-accordion--mission" id="home-mission">
-            <summary class="home-accordion__summary">
-              <span class="home-accordion__label">Mission</span>
-              <span class="home-accordion__hint">なぜ経営するのか</span>
-            </summary>
-            <div class="home-accordion__body" id="home-mission-body"></div>
-          </details>
+        <!-- 主役4つ：毎日使う操作だけ -->
+        <nav class="home-actions" aria-label="主な操作">
+          <button type="button" class="home-action home-action--diary" id="btn-home-write-diary">
+            <span class="home-action__icon" aria-hidden="true">📷</span>
+            <span class="home-action__title">日記を書く</span>
+            <span class="home-action__hint">写真と文章で公開</span>
+          </button>
+          <button type="button" class="home-action home-action--hp" id="btn-home-edit-hp">
+            <span class="home-action__icon" aria-hidden="true">🌐</span>
+            <span class="home-action__title">ホームページを編集</span>
+            <span class="home-action__hint">自然文で変更を依頼</span>
+          </button>
+          <button type="button" class="home-action home-action--ai" id="btn-home-ask-ai">
+            <span class="home-action__icon" aria-hidden="true">✨</span>
+            <span class="home-action__title">AIに仕事を頼む</span>
+            <span class="home-action__hint">やりたいことを伝える</span>
+          </button>
+          <button type="button" class="home-action home-action--progress" id="btn-home-see-progress">
+            <span class="home-action__icon" aria-hidden="true">📋</span>
+            <span class="home-action__title">進行中を見る</span>
+            <span class="home-action__hint">依頼と開発の様子</span>
+          </button>
+        </nav>
 
-          <p class="home-word" id="home-daily-word" aria-live="polite"></p>
-
-          <details class="home-accordion home-accordion--vision" id="home-vision">
-            <summary class="home-accordion__summary">
-              <span class="home-accordion__label">Vision</span>
-              <span class="home-accordion__hint">何を目指すのか</span>
-            </summary>
-            <div class="home-accordion__body" id="home-vision-body"></div>
-          </details>
-        </div>
-
-        <!-- ④ AI秘書（最も目立つ） -->
-        <section class="home-secretary" aria-labelledby="home-secretary-heading">
-          <header class="home-greet">
-            <p class="home-greet__hello" id="home-greeting">おはよう、YAHA😊</p>
-            <h2 class="home-greet__ask" id="home-secretary-heading">今日は何をしましたか？</h2>
-          </header>
-
-          <div class="home-compose">
-            <label class="visually-hidden" for="home-secretary-input">今日したこと</label>
-            <textarea
-              id="home-secretary-input"
-              class="home-compose__input"
-              rows="6"
-              placeholder="今日したことを、そのまま書いてください"
-            ></textarea>
-
-            <div class="home-compose__photo">
-              <label class="home-compose__photo-btn" for="home-secretary-photo">
-                <span aria-hidden="true">📷</span> 写真を追加
-              </label>
-              <input type="file" id="home-secretary-photo" accept="image/*" multiple hidden>
-              <div class="home-compose__preview" id="home-photo-preview" hidden>
-                <img id="home-photo-img" alt="選択した写真">
-                <button type="button" class="btn btn--ghost btn--touch" id="btn-home-photo-clear">写真を外す</button>
+        <!-- 旧ホーム要素は残すが通常は隠す（削除しない） -->
+        <details class="home-more-panel" id="home-more-panel">
+          <summary class="home-more-panel__summary">その他の表示（予定・Mission など）</summary>
+          <div class="home-more-panel__body">
+            <div class="home-family" id="home-family">
+              <div class="home-family__frame">
+                <img
+                  id="home-family-photo"
+                  class="home-family__img"
+                  src="assets/family-dummy.svg"
+                  alt="家族写真"
+                  width="800"
+                  height="500"
+                >
               </div>
+              <label class="home-family__change" for="home-family-photo-input">写真を変更</label>
+              <input type="file" id="home-family-photo-input" accept="image/*" hidden>
             </div>
 
-            <button type="button" class="btn btn--primary btn--block btn--touch home-compose__run" id="btn-home-ai-run">
-              ✨ AIに任せる
-            </button>
-          </div>
-        </section>
-
-        <!-- AI制作センター入口 -->
-        <section class="home-dash-card home-dash-card--creative" aria-labelledby="home-creative-heading">
-          <button type="button" class="home-creative-card" id="btn-creative-studio">
-            <span class="home-creative-card__icon" aria-hidden="true">🎨</span>
-            <span class="home-creative-card__body">
-              <span class="home-creative-card__title" id="home-creative-heading">AI制作センター</span>
-              <span class="home-creative-card__hint">LP・記事・SNS・アプリをスマホから依頼</span>
-            </span>
-            <span class="home-creative-card__chev" aria-hidden="true">›</span>
-          </button>
-        </section>
-
-        <!-- Web管理センター入口 -->
-        <section class="home-dash-card home-dash-card--web" aria-labelledby="home-web-heading">
-          <button type="button" class="web-center-card" id="btn-web-center-home">
-            <span class="web-center-card__icon" aria-hidden="true">🌐</span>
-            <span class="web-center-card__text">
-              <strong id="home-web-heading">Web管理センター</strong>
-              <small>活動日記 · お知らせ · ホームページ管理</small>
-            </span>
-            <span class="web-center-card__open">開く</span>
-          </button>
-        </section>
-
-        <!-- ⑥ 今日の予定 -->
-        <section class="home-dash-card" aria-labelledby="home-schedule-heading">
-          <h2 class="home-dash-card__title" id="home-schedule-heading">
-            <span aria-hidden="true">📅</span> 今日の予定
-          </h2>
-          <p class="home-dash-card__hint">サンプル表示です（カレンダー未連携）</p>
-          <ul class="home-schedule" id="home-schedule-list"></ul>
-        </section>
-
-        <!-- ⑦ 今日の最優先 -->
-        <section class="home-dash-card home-dash-card--priority" aria-labelledby="home-top-priority-heading">
-          <h2 class="home-dash-card__title" id="home-top-priority-heading">
-            <span aria-hidden="true">🔥</span> 今日の最優先
-          </h2>
-          <div class="home-top-priority" id="home-top-priority">
-            <p class="home-top-priority__text" id="home-top-priority-text"></p>
-            <label class="visually-hidden" for="home-top-priority-input">今日の最優先</label>
-            <input
-              type="text"
-              id="home-top-priority-input"
-              class="home-top-priority__input"
-              maxlength="80"
-              placeholder="今日いちばん大切なことを1つ"
-              hidden
-            >
-            <div class="home-top-priority__actions">
-              <button type="button" class="btn btn--secondary btn--touch" id="btn-top-priority-edit">編集</button>
-              <button type="button" class="btn btn--primary btn--touch" id="btn-top-priority-save" hidden>保存</button>
+            <div class="home-purpose">
+              <details class="home-accordion home-accordion--mission" id="home-mission">
+                <summary class="home-accordion__summary">
+                  <span class="home-accordion__label">Mission</span>
+                  <span class="home-accordion__hint">なぜ経営するのか</span>
+                </summary>
+                <div class="home-accordion__body" id="home-mission-body"></div>
+              </details>
+              <p class="home-word" id="home-daily-word" aria-live="polite"></p>
+              <details class="home-accordion home-accordion--vision" id="home-vision">
+                <summary class="home-accordion__summary">
+                  <span class="home-accordion__label">Vision</span>
+                  <span class="home-accordion__hint">何を目指すのか</span>
+                </summary>
+                <div class="home-accordion__body" id="home-vision-body"></div>
+              </details>
             </div>
-          </div>
-        </section>
 
-        <!-- ⑧ 現在の目標（進捗） -->
-        <section class="home-goals" aria-labelledby="home-goals-heading">
-          <h2 class="home-goals__title" id="home-goals-heading">今日の進捗</h2>
-          <ul class="home-goals__list" id="home-goals-list"></ul>
-        </section>
+            <section class="home-secretary" aria-labelledby="home-secretary-legacy-heading" hidden>
+              <h3 class="visually-hidden" id="home-secretary-legacy-heading">AI秘書（従来）</h3>
+              <div class="home-compose">
+                <label class="visually-hidden" for="home-secretary-input">今日したこと</label>
+                <textarea id="home-secretary-input" class="home-compose__input" rows="4" placeholder="今日したこと"></textarea>
+                <div class="home-compose__photo">
+                  <label class="home-compose__photo-btn" for="home-secretary-photo"><span aria-hidden="true">📷</span> 写真</label>
+                  <input type="file" id="home-secretary-photo" accept="image/*" multiple hidden>
+                  <div class="home-compose__preview" id="home-photo-preview" hidden>
+                    <img id="home-photo-img" alt="選択した写真">
+                    <button type="button" class="btn btn--ghost btn--touch" id="btn-home-photo-clear">写真を外す</button>
+                  </div>
+                </div>
+                <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-home-ai-run">✨ AIに任せる</button>
+              </div>
+            </section>
+
+            <section class="home-dash-card home-dash-card--creative" aria-labelledby="home-creative-heading">
+              <button type="button" class="home-creative-card" id="btn-creative-studio">
+                <span class="home-creative-card__icon" aria-hidden="true">🎨</span>
+                <span class="home-creative-card__body">
+                  <span class="home-creative-card__title" id="home-creative-heading">AI制作センター</span>
+                  <span class="home-creative-card__hint">LP・記事・SNS・アプリ</span>
+                </span>
+                <span class="home-creative-card__chev" aria-hidden="true">›</span>
+              </button>
+            </section>
+
+            <section class="home-dash-card home-dash-card--web" aria-labelledby="home-web-heading">
+              <button type="button" class="web-center-card" id="btn-web-center-home">
+                <span class="web-center-card__icon" aria-hidden="true">🌐</span>
+                <span class="web-center-card__text">
+                  <strong id="home-web-heading">Web管理センター（詳細）</strong>
+                  <small>下書き一覧・FTP・公開準備</small>
+                </span>
+                <span class="web-center-card__open">開く</span>
+              </button>
+            </section>
+
+            <section class="home-dash-card" aria-labelledby="home-schedule-heading">
+              <h2 class="home-dash-card__title" id="home-schedule-heading"><span aria-hidden="true">📅</span> 今日の予定</h2>
+              <p class="home-dash-card__hint">サンプル表示です</p>
+              <ul class="home-schedule" id="home-schedule-list"></ul>
+            </section>
+
+            <section class="home-dash-card home-dash-card--priority" aria-labelledby="home-top-priority-heading">
+              <h2 class="home-dash-card__title" id="home-top-priority-heading"><span aria-hidden="true">🔥</span> 今日の最優先</h2>
+              <div class="home-top-priority" id="home-top-priority">
+                <p class="home-top-priority__text" id="home-top-priority-text"></p>
+                <label class="visually-hidden" for="home-top-priority-input">今日の最優先</label>
+                <input type="text" id="home-top-priority-input" class="home-top-priority__input" maxlength="80" placeholder="今日いちばん大切なこと" hidden>
+                <div class="home-top-priority__actions">
+                  <button type="button" class="btn btn--secondary btn--touch" id="btn-top-priority-edit">編集</button>
+                  <button type="button" class="btn btn--primary btn--touch" id="btn-top-priority-save" hidden>保存</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="home-goals" aria-labelledby="home-goals-heading">
+              <h2 class="home-goals__title" id="home-goals-heading">今日の進捗</h2>
+              <ul class="home-goals__list" id="home-goals-list"></ul>
+            </section>
+          </div>
+        </details>
       </section>
 
       <!-- プロジェクト -->
@@ -212,6 +211,12 @@
         </section>
 
         <div class="more-menu">
+          <button type="button" class="more-menu__btn" id="btn-more-write-diary">
+            <span aria-hidden="true">📷</span> 日記を書く
+          </button>
+          <button type="button" class="more-menu__btn" id="btn-more-ask-ai">
+            <span aria-hidden="true">✨</span> AIに仕事を頼む
+          </button>
           <button type="button" class="more-menu__btn" id="btn-company-brain">
             <span aria-hidden="true">🧠</span> 会社の脳
           </button>
@@ -228,7 +233,7 @@
             <span aria-hidden="true">📝</span> 指示書を作る
           </button>
           <button type="button" class="more-menu__btn" id="btn-web-center">
-            <span aria-hidden="true">🌐</span> Web管理センター
+            <span aria-hidden="true">🌐</span> Web管理センター（詳細）
           </button>
           <button type="button" class="more-menu__btn" id="btn-meeting-logs">
             <span aria-hidden="true">📒</span> AI会議ログ
@@ -238,6 +243,12 @@
           </button>
           <button type="button" class="more-menu__btn" id="btn-ai-secretary">
             <span aria-hidden="true">💬</span> AI秘書（詳細入力）
+          </button>
+          <button type="button" class="more-menu__btn" id="btn-manage-projects-more">
+            <span aria-hidden="true">📂</span> プロジェクト一覧
+          </button>
+          <button type="button" class="more-menu__btn" id="btn-release-center">
+            <span aria-hidden="true">🚀</span> リリースセンター
           </button>
           <button type="button" class="more-menu__btn" id="btn-system-check">
             <span aria-hidden="true">🔧</span> システムチェック
@@ -319,13 +330,13 @@
           <span class="quick-nav__icon" aria-hidden="true">🏠</span>
           <span class="quick-nav__label">ホーム</span>
         </button>
-        <button type="button" class="quick-nav__btn" id="btn-nav-projects" data-view="projects">
-          <span class="quick-nav__icon" aria-hidden="true">📂</span>
-          <span class="quick-nav__label">プロジェクト</span>
+        <button type="button" class="quick-nav__btn" id="btn-nav-diary">
+          <span class="quick-nav__icon" aria-hidden="true">📷</span>
+          <span class="quick-nav__label">日記</span>
         </button>
-        <button type="button" class="quick-nav__btn" id="btn-release-center">
-          <span class="quick-nav__icon" aria-hidden="true">🚀</span>
-          <span class="quick-nav__label">リリース</span>
+        <button type="button" class="quick-nav__btn" id="btn-nav-ai">
+          <span class="quick-nav__icon" aria-hidden="true">✨</span>
+          <span class="quick-nav__label">AI</span>
         </button>
         <button type="button" class="quick-nav__btn" id="btn-nav-more" data-view="more">
           <span class="quick-nav__icon" aria-hidden="true">⋯</span>
@@ -337,6 +348,107 @@
 
   <!-- トースト通知 -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Instagram型・簡易日記 -->
+  <div class="modal-overlay" id="simple-diary-modal" aria-hidden="true">
+    <div class="modal modal--simple-diary" role="dialog" aria-labelledby="simple-diary-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="simple-diary-title">日記を書く</h3>
+        <button type="button" class="modal__close" id="simple-diary-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body simple-diary">
+        <p class="simple-diary__lead">写真を選んで、ひとこと書いて、公開するだけです。</p>
+        <div class="simple-diary__photos">
+          <label class="simple-diary__photo-btn" for="simple-diary-images">
+            <span aria-hidden="true">📷</span> 写真を選ぶ
+          </label>
+          <input type="file" id="simple-diary-images" accept="image/*" multiple hidden>
+          <label class="simple-diary__photo-btn simple-diary__photo-btn--secondary" for="simple-diary-camera">
+            <span aria-hidden="true">📸</span> 撮影
+          </label>
+          <input type="file" id="simple-diary-camera" accept="image/*" capture="environment" hidden>
+        </div>
+        <div class="simple-diary__preview" id="simple-diary-preview" hidden></div>
+        <label class="visually-hidden" for="simple-diary-body">本文</label>
+        <textarea id="simple-diary-body" class="simple-diary__body" rows="8" placeholder="今日の出来事を、そのまま書いてください"></textarea>
+        <p class="simple-diary__hint">タイトルは自動で付けます。</p>
+        <p class="simple-diary__status" id="simple-diary-status" role="status" aria-live="polite"></p>
+        <div class="simple-diary__confirm" id="simple-diary-confirm" hidden>
+          <p class="simple-diary__confirm-msg">本番ホームページへ公開します</p>
+          <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-simple-diary-confirm-yes">公開する</button>
+          <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-simple-diary-confirm-no">やめる</button>
+        </div>
+        <div class="simple-diary__result" id="simple-diary-result" hidden>
+          <p class="simple-diary__result-msg" id="simple-diary-result-msg"></p>
+          <a class="btn btn--secondary btn--touch" id="simple-diary-open-page" href="https://www.egaonokiroku.co.jp/diary/index.htm" target="_blank" rel="noopener" hidden>公開ページを見る</a>
+          <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-simple-diary-retry" hidden>もう一度試す</button>
+          <details class="simple-diary__details" id="simple-diary-details" hidden>
+            <summary>詳細を見る</summary>
+            <pre class="simple-diary__details-log" id="simple-diary-details-log"></pre>
+            <button type="button" class="btn btn--ghost btn--touch" id="simple-diary-open-advanced" hidden>詳細な公開準備へ</button>
+          </details>
+        </div>
+      </div>
+      <div class="modal__actions modal__actions--stack">
+        <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-simple-diary-publish">公開</button>
+        <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-simple-diary-cancel">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AIに仕事を頼む -->
+  <div class="modal-overlay" id="ai-job-modal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="ai-job-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="ai-job-title">AIに仕事を頼む</h3>
+        <button type="button" class="modal__close" id="ai-job-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="form-group">
+          <label for="ai-job-project">プロジェクト</label>
+          <select id="ai-job-project">
+            <option value="smile-ai-studio">Smile AI Studio</option>
+            <option value="corporate-site">公式ホームページ</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="ai-job-request">やりたいこと</label>
+          <textarea id="ai-job-request" rows="6" placeholder="例：日記投稿をもっとInstagramみたいにしたい"></textarea>
+        </div>
+        <p class="form-hint">GitHub Issue用の作業票を自動で作ります。本番への自動書き込みはしません。</p>
+        <p class="simple-diary__status" id="ai-job-status" role="status" aria-live="polite"></p>
+        <div id="ai-job-preview" class="ai-job-preview" hidden></div>
+        <div id="ai-jobs-list" class="ai-jobs-list" aria-live="polite"></div>
+      </div>
+      <div class="modal__actions modal__actions--stack">
+        <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-ai-job-submit">依頼する</button>
+        <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-ai-job-cancel">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HP自然文編集（第一段階） -->
+  <div class="modal-overlay" id="hp-edit-modal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-labelledby="hp-edit-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="hp-edit-title">ホームページを編集</h3>
+        <button type="button" class="modal__close" id="hp-edit-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body">
+        <p class="simple-diary__lead">変えたいことを、普通の言葉で書いてください。</p>
+        <label class="visually-hidden" for="hp-edit-request">変更内容</label>
+        <textarea id="hp-edit-request" class="simple-diary__body" rows="6" placeholder="例：トップページに人形焼きのお知らせを追加したい"></textarea>
+        <p class="form-hint">本番反映は必ず確認後です。今は依頼票として保存します。</p>
+        <p class="simple-diary__status" id="hp-edit-status" role="status"></p>
+      </div>
+      <div class="modal__actions modal__actions--stack">
+        <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-hp-edit-submit">変更案をつくる</button>
+        <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-hp-edit-open-web">Web管理センターを開く</button>
+        <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-hp-edit-cancel">閉じる</button>
+      </div>
+    </div>
+  </div>
 
   <!-- AIルーター モーダル -->
   <div class="modal-overlay" id="request-modal" aria-hidden="true">
@@ -1878,6 +1990,8 @@
   <script src="js/smile-ftp-probe.js"></script>
   <script src="js/smile-ftp-dry-run.js"></script>
   <script src="js/smile-ftp-production-publish.js"></script>
+  <script src="js/smile-dev-jobs.js"></script>
+  <script src="js/smile-simple-diary-publish.js"></script>
   <script src="js/creative-interview-engine.js"></script>
   <script src="script.js"></script>
 </body>
