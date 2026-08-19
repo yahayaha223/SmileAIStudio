@@ -23,6 +23,162 @@
     }
   }
 
+  function fileToJpegDataUrl(file, maxEdge) {
+    return new Promise(function (resolve) {
+      if (!file) return resolve(null);
+      var max = typeof maxEdge === "number" ? maxEdge : 480;
+      var url = "";
+      try { url = URL.createObjectURL(file); } catch (e) { url = ""; }
+      function readOriginal() {
+        if (!file || typeof FileReader === "undefined") return resolve(null);
+        var fr = new FileReader();
+        fr.onload = function () { resolve(fr.result || null); };
+        fr.onerror = function () { resolve(null); };
+        fr.readAsDataURL(file);
+      }
+      if (!url || typeof Image === "undefined") return readOriginal();
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width || 1;
+          var h = img.naturalHeight || img.height || 1;
+          var scale = Math.min(1, max / Math.max(w, h, 1));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw;
+          canvas.height = ch;
+          var ctx = canvas.getContext("2d");
+          if (!ctx) {
+            if (url) try { URL.revokeObjectURL(url); } catch (e1) { /* ignore */ }
+            return readOriginal();
+          }
+          ctx.drawImage(img, 0, 0, cw, ch);
+          if (url) try { URL.revokeObjectURL(url); } catch (e2) { /* ignore */ }
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        } catch (err) {
+          if (url) try { URL.revokeObjectURL(url); } catch (e3) { /* ignore */ }
+          readOriginal();
+        }
+      };
+      img.onerror = function () {
+        if (url) try { URL.revokeObjectURL(url); } catch (e4) { /* ignore */ }
+        readOriginal();
+      };
+      img.src = url;
+    });
+  }
+
+  function collectServerImages(memoryItems) {
+    var items = Array.isArray(memoryItems) ? memoryItems : [];
+    var jobs = items.map(function (item, i) {
+      if (item && item.dataUrl && /^data:/i.test(item.dataUrl)) {
+        return Promise.resolve({
+          order: i,
+          caption: String((item && item.caption) || ""),
+          altText: String((item && item.altText) || ""),
+          dataUrl: item.dataUrl
+        });
+      }
+      var file = item && item.file;
+      if (!file) return Promise.resolve(null);
+      return fileToJpegDataUrl(file, 480).then(function (dataUrl) {
+        if (!dataUrl) return null;
+        return {
+          order: i,
+          caption: String((item && item.caption) || ""),
+          altText: String((item && item.altText) || ""),
+          dataUrl: dataUrl
+        };
+      });
+    });
+    return Promise.all(jobs).then(function (rows) {
+      return rows.filter(Boolean);
+    });
+  }
+
+  function runServerPublish(opts) {
+    opts = opts || {};
+    var onProgress = opts.onProgress;
+    var log = [];
+    function note(msg) {
+      log.push({ at: new Date().toISOString(), message: msg });
+    }
+    if (!opts.userConfirmed) {
+      return Promise.resolve(fail("confirm_required", "公開確認が必要です", { log: log }));
+    }
+    if (!opts.entry || !opts.entry.id) {
+      return Promise.resolve(fail("invalid_entry", "日記データがありません", { log: log }));
+    }
+    note("server_path");
+    progress(onProgress, "html", "ホームページ用の文章を作っています…");
+    var fetchImpl = typeof opts.fetch === "function" ? opts.fetch : root.fetch;
+    if (typeof fetchImpl !== "function") {
+      return Promise.resolve(fail("fetch_missing", "公開APIに接続できません", { log: log }));
+    }
+    var csrf = typeof opts.getCsrfToken === "function" ? opts.getCsrfToken() : (opts.csrfToken || "");
+    return collectServerImages(opts.memoryItems).then(function (images) {
+      progress(onProgress, "upload", "公開しています…");
+      var headers = {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      };
+      if (csrf) headers["X-CSRF-Token"] = csrf;
+      return fetchImpl("/.netlify/functions/api-diary-publish", {
+        method: "POST",
+        headers: headers,
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({
+          userConfirmed: true,
+          entry: {
+            id: opts.entry.id,
+            title: opts.entry.title,
+            content: opts.entry.content || opts.entry.body,
+            body: opts.entry.content || opts.entry.body,
+            publishDate: opts.entry.publishDate
+          },
+          images: images
+        })
+      }).then(function (res) {
+        return res.json().catch(function () {
+          return { ok: false, error: "invalid_json", userMessage: "公開できませんでした" };
+        }).then(function (data) {
+          data = data || {};
+          if (data.ok) {
+            note("server_ok");
+            return {
+              ok: true,
+              code: "published",
+              message: data.userMessage || "日記を公開しました",
+              pageUrl: data.pageUrl || DIARY_URL,
+              productionUntouched: false,
+              diaryId: opts.entry.id,
+              log: log
+            };
+          }
+          note("server_fail:" + (data.error || "failed"));
+          return fail(
+            data.error || "pipeline_error",
+            data.userMessage || "公開できませんでした",
+            {
+              productionUntouched: data.productionUntouched !== false,
+              diarySaved: true,
+              log: log
+            }
+          );
+        });
+      });
+    }).catch(function (err) {
+      note("error:" + ((err && err.message) || "unknown"));
+      return fail(
+        (err && err.code) || "pipeline_error",
+        (err && err.message) || "公開できませんでした",
+        { productionUntouched: true, diarySaved: true, log: log }
+      );
+    });
+  }
+
   function progress(onProgress, stage, message) {
     if (typeof onProgress === "function") {
       try { onProgress({ stage: stage, message: message }); } catch (e) { /* ignore */ }
@@ -72,6 +228,11 @@
         needsConfirm: true,
         log: log
       }));
+    }
+
+    if (!isLocalHost()) {
+      note("branch_server");
+      return runServerPublish(opts);
     }
 
     var Local = root.SmileDiaryLocalPublish;
@@ -274,6 +435,7 @@
 
   root.SmileSimpleDiaryPublish = {
     runOneButtonPublish: runOneButtonPublish,
+    runServerPublish: runServerPublish,
     isLocalHost: isLocalHost,
     DIARY_URL: DIARY_URL,
     UNLOCK_PHRASE: UNLOCK_PHRASE,

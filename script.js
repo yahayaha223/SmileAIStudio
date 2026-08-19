@@ -15275,7 +15275,11 @@
         memoryItems: diaryImageItems || [],
         otherEntries: loadDiaryEntries().filter(function (d) { return d.id !== entry.id; }),
         userConfirmed: true,
+        getCsrfToken: getStudioCsrfToken,
         loadIndex: function () {
+          if (SimpleDiaryPublish.isLocalHost && !SimpleDiaryPublish.isLocalHost()) {
+            return Promise.reject(new Error("本番ではローカル index.htm を読み込みません"));
+          }
           setSimpleDiaryStatus("ホームページ用の文章を作っています…", "is-info");
           return loadCorporateIndexIntoUi();
         },

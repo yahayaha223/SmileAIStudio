@@ -5,12 +5,15 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["@netlify/blobs", "@simplewebauthn/server", "@simplewebauthn/browser"]
-  included_files = ["netlify/functions/shared/**", "knowledge/**"]
+  external_node_modules = ["@netlify/blobs", "@simplewebauthn/server", "@simplewebauthn/browser", "basic-ftp"]
+  included_files = ["netlify/functions/shared/**", "knowledge/**", "js/smile-charset.js", "js/smile-cp932-map.js", "js/smile-diary-html.js"]
 
 # Japan 08:00 = UTC 23:00 previous day
 [functions."line-send-morning"]
   schedule = "0 23 * * *"
+
+[functions."api-diary-publish"]
+  timeout = 26
 
 # Evening task check (DISABLED until LINE_EVENING_TASKS_ENABLED=1)
 # Japan 19:00 = UTC 10:00 — enable schedule only after morning is stable
@@ -28,6 +31,13 @@
 [[redirects]]
   from = "/api/github-issues"
   to = "/.netlify/functions/api-github-issues"
+  status = 200
+  force = true
+
+# Production diary publish (owner + CSRF; FTP secrets stay server-side)
+[[redirects]]
+  from = "/api/diary-publish"
+  to = "/.netlify/functions/api-diary-publish"
   status = 200
   force = true
 
