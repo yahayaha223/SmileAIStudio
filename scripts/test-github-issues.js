@@ -107,14 +107,24 @@ async function run() {
 
   await test("createIssue mock success path via stub", async function () {
     var origFetch = global.fetch;
+    var calls = [];
     process.env.GITHUB_TOKEN = "test-token-not-real";
     process.env.GITHUB_OWNER = "egao";
     process.env.GITHUB_REPO = "SmileAIStudio";
-    global.fetch = async function () {
+    global.fetch = async function (url, opts) {
+      calls.push({
+        url: String(url),
+        method: (opts && opts.method) || "GET",
+        body: opts && opts.body
+      });
+      var isComment = String(url).indexOf("/comments") >= 0;
       return {
         ok: true,
         status: 201,
         text: async function () {
+          if (isComment) {
+            return JSON.stringify({ id: 99, body: "READY_FOR_AGENT" });
+          }
           return JSON.stringify({
             number: 42,
             html_url: "https://github.com/egao/SmileAIStudio/issues/42",
@@ -131,6 +141,13 @@ async function run() {
       assert.strictEqual(r.ok, true);
       assert.strictEqual(r.number, 42);
       assert.strictEqual(r.jobStatus, "waiting_for_agent");
+      assert.strictEqual(r.kickoffCommentPosted, true);
+      assert.ok(calls.length >= 2);
+      var commentCall = calls.find(function (c) { return c.url.indexOf("/comments") >= 0; });
+      assert.ok(commentCall, "expected kickoff comment POST");
+      assert.strictEqual(commentCall.method, "POST");
+      var payload = JSON.parse(commentCall.body);
+      assert.strictEqual(payload.body, "READY_FOR_AGENT");
     } finally {
       global.fetch = origFetch;
       delete process.env.GITHUB_TOKEN;
@@ -160,6 +177,66 @@ async function run() {
       });
       assert.strictEqual(r.ok, false);
       assert.strictEqual(r.error, "github_api_failed");
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("isAgentKickoffComment requires exact READY_FOR_AGENT", function () {
+    assert.strictEqual(github.isAgentKickoffComment("READY_FOR_AGENT"), true);
+    assert.strictEqual(github.isAgentKickoffComment(" READY_FOR_AGENT \n"), true);
+    assert.strictEqual(github.isAgentKickoffComment("ready_for_agent"), false);
+    assert.strictEqual(github.isAgentKickoffComment("READY_FOR_AGENT please"), false);
+    assert.strictEqual(github.AGENT_KICKOFF_COMMENT, "READY_FOR_AGENT");
+  });
+
+  await test("shouldStartAgent blocks busy Agent Status even with kickoff comment", function () {
+    assert.strictEqual(github.shouldStartAgent("READY_FOR_AGENT", "READY_FOR_AGENT"), true);
+    assert.strictEqual(github.shouldStartAgent("AGENT_WORKING", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("TESTING", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("FIXING", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("READY_FOR_REVIEW", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("FAILED", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("COMPLETED", "READY_FOR_AGENT"), false);
+    assert.strictEqual(github.shouldStartAgent("READY_FOR_AGENT", "please start"), false);
+  });
+
+  await test("createIssue still succeeds if kickoff comment fails", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = async function (url) {
+      if (String(url).indexOf("/comments") >= 0) {
+        return {
+          ok: false,
+          status: 502,
+          text: async function () { return JSON.stringify({ message: "Bad Gateway" }); }
+        };
+      }
+      return {
+        ok: true,
+        status: 201,
+        text: async function () {
+          return JSON.stringify({
+            number: 43,
+            html_url: "https://github.com/egao/SmileAIStudio/issues/43",
+            title: "Hello"
+          });
+        }
+      };
+    };
+    try {
+      var r = await github.createIssue({
+        title: "Mock issue title two",
+        body: "これは十分な長さのある開発依頼本文です。受け入れ条件も含みます。"
+      });
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.number, 43);
+      assert.strictEqual(r.kickoffCommentPosted, false);
     } finally {
       global.fetch = origFetch;
       delete process.env.GITHUB_TOKEN;

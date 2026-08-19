@@ -80,7 +80,8 @@ async function handleCreate(event, guard, body) {
       url: result.url,
       title: result.title,
       agentStatus: result.agentStatus,
-      jobStatus: result.jobStatus || "waiting_for_agent"
+      jobStatus: result.jobStatus || "waiting_for_agent",
+      kickoffCommentPosted: result.kickoffCommentPosted === true
     }
   }, event);
 }

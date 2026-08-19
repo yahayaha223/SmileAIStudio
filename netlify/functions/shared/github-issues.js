@@ -16,6 +16,9 @@ var ALLOWED_AGENT_STATUS = {
   COMPLETED: true
 };
 
+/** Exact GitHub Issue comment that starts Cursor Automation. */
+var AGENT_KICKOFF_COMMENT = "READY_FOR_AGENT";
+
 /** Agent Status → developmentJobs.status */
 var AGENT_STATUS_TO_JOB = {
   READY_FOR_AGENT: "waiting_for_agent",
@@ -118,6 +121,27 @@ function parseAgentStatus(body) {
   if (!m) return null;
   var st = String(m[1] || "").trim().toUpperCase();
   return ALLOWED_AGENT_STATUS[st] ? st : null;
+}
+
+function isAgentKickoffComment(text) {
+  return String(text || "").trim() === AGENT_KICKOFF_COMMENT;
+}
+
+var BUSY_AGENT_STATUS = {
+  AGENT_WORKING: true,
+  TESTING: true,
+  FIXING: true,
+  READY_FOR_REVIEW: true,
+  FAILED: true,
+  COMPLETED: true
+};
+
+function shouldStartAgent(agentStatus, commentBody) {
+  if (!isAgentKickoffComment(commentBody)) return false;
+  var st = String(agentStatus || "").trim().toUpperCase();
+  if (st !== "READY_FOR_AGENT") return false;
+  if (BUSY_AGENT_STATUS[st]) return false;
+  return true;
 }
 
 function parseJobId(body) {
@@ -231,14 +255,66 @@ async function createIssue(opts) {
     };
   }
 
+  var agentStatus = parseAgentStatus(body) || "READY_FOR_AGENT";
+  var kickoffCommentPosted = false;
+  if (agentStatus === "READY_FOR_AGENT") {
+    var kick = await postAgentKickoffComment(res.json.number);
+    kickoffCommentPosted = !!(kick && kick.ok);
+  }
+
   return {
     ok: true,
     number: res.json.number,
     url: res.json.html_url || res.json.url,
     title: res.json.title,
-    agentStatus: parseAgentStatus(body) || "READY_FOR_AGENT",
-    jobStatus: "waiting_for_agent"
+    agentStatus: agentStatus,
+    jobStatus: "waiting_for_agent",
+    kickoffCommentPosted: kickoffCommentPosted
   };
+}
+
+async function postIssueComment(number, bodyText) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です" };
+  }
+  var n = Number(number);
+  if (!isFinite(n) || n < 1) {
+    return { ok: false, error: "invalid_issue_number", userMessage: "Issue番号が不正です" };
+  }
+  var commentBody = String(bodyText == null ? "" : bodyText);
+  if (!commentBody) {
+    return { ok: false, error: "comment_empty", userMessage: "コメントが空です" };
+  }
+  if (commentBody.length > 65536) commentBody = commentBody.slice(0, 65536);
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/issues/" + encodeURIComponent(String(n)) + "/comments";
+  var res = await githubFetch(cfg, path, "POST", { body: commentBody });
+  if (!res.ok) {
+    var msg = (res.json && (res.json.message || res.json.error)) ||
+      ("GitHub API error HTTP " + res.status);
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "起動コメントの投稿に失敗しました",
+      detail: String(msg).slice(0, 200),
+      httpStatus: res.status
+    };
+  }
+  return {
+    ok: true,
+    commentId: res.json && res.json.id,
+    body: commentBody
+  };
+}
+
+async function postAgentKickoffComment(number) {
+  var last = null;
+  for (var attempt = 0; attempt < 2; attempt++) {
+    last = await postIssueComment(number, AGENT_KICKOFF_COMMENT);
+    if (last && last.ok) return last;
+  }
+  return last;
 }
 
 async function getIssue(number) {
@@ -376,16 +452,22 @@ module.exports = {
   sanitizeBody: sanitizeBody,
   sanitizeLabels: sanitizeLabels,
   parseAgentStatus: parseAgentStatus,
+  isAgentKickoffComment: isAgentKickoffComment,
+  shouldStartAgent: shouldStartAgent,
   parseJobId: parseJobId,
   parseBranchName: parseBranchName,
   parsePrFromBody: parsePrFromBody,
   ensureAgentStatus: ensureAgentStatus,
   mapAgentStatusToJobStatus: mapAgentStatusToJobStatus,
   createIssue: createIssue,
+  postIssueComment: postIssueComment,
+  postAgentKickoffComment: postAgentKickoffComment,
   getIssue: getIssue,
   findRelatedPullRequest: findRelatedPullRequest,
   updateIssueAgentStatus: updateIssueAgentStatus,
   syncIssueState: syncIssueState,
   ALLOWED_AGENT_STATUS: ALLOWED_AGENT_STATUS,
-  AGENT_STATUS_TO_JOB: AGENT_STATUS_TO_JOB
+  AGENT_STATUS_TO_JOB: AGENT_STATUS_TO_JOB,
+  AGENT_KICKOFF_COMMENT: AGENT_KICKOFF_COMMENT,
+  BUSY_AGENT_STATUS: BUSY_AGENT_STATUS
 };
