@@ -1,0 +1,580 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 //EN">
+<html lang="ja">
+<head>
+
+
+	<meta http-equiv="Content-Type" content="text/html; charset=Shift_JIS">
+	<meta http-equiv="Content-Script-Type" content="text/javascript">
+	<meta http-equiv="Content-Style-Type" content="text/css">
+	<meta name="viewport" content="width=device-width">
+	<meta name="format-detection" content="telephone=no">
+	<meta name="SKYPE_TOOLBAR" content="SKYPE_TOOLBAR_PARSER_COMPATIBLE" />
+	<meta name="description" content="イベントの企画・派遣依頼から、大道芸人やピエロなどパフォーマー（芸人）の派遣・出演手配に対応。イベントやお祭りのすべてをサポート！現役の大道芸人がイベントを企画しますので、今流行している最先端のパフォーマンスをお届け！愛知・岐阜・三重のみならず全国にパフォーマーや芸人を派遣いたします。">
+	<meta name="keywords" content="イベント,お祭り,企画,派遣,大道芸,大道芸人,マジシャン,パフォーマー,ピエロ,クラウン,愛知,岐阜,三重">
+	<meta name="author" content="えがおのきろく" />
+	<meta name="copyright" content="えがおのきろく" />
+	<meta content='IE=Edge,chrome=1' http-equiv='X-UA-Compatible'>
+
+	<title>イベント企画からパフォーマーの出演手配まで「えがおのきろく」</title>
+
+
+	<!-- OGP --> 
+	<meta property="og:type" content="article" />
+	<meta property="og:title" content="イベント企画からパフォーマーの出演手配まで「えがおのきろく」" />
+	<meta property="og:description" content="イベントの企画・派遣依頼から、大道芸人やピエロなどパフォーマー（芸人）の派遣・出演手配に対応。イベントやお祭りのすべてをサポート！現役の大道芸人がイベントを企画しますので、今流行している最先端のパフォーマンスをお届け！愛知・岐阜・三重のみならず全国にパフォーマーや芸人を派遣いたします。" />
+	<meta property="og:image" content="https://www.egaonokiroku.co.jp/image/sns-fbimg.jpg" />
+	<meta property="og:url" content="https://www.egaonokiroku.co.jp/" />
+	<meta property="og:site_name" content="えがおのきろく" />
+	<meta property="article:published_time" content="2025-09-30T10:30:00+00:00" />
+	<meta property="article:author" content="えがおのきろく" />
+	<!-- /OGP -->
+
+	<!-- tw -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="イベント企画からパフォーマーの出演手配まで「えがおのきろく」" />
+	<meta name="twitter:description" content="イベントの企画・派遣依頼から、大道芸人やピエロなどパフォーマー（芸人）の派遣・出演手配に対応。イベントやお祭りのすべてをサポート！現役の大道芸人がイベントを企画しますので、今流行している最先端のパフォーマンスをお届け！愛知・岐阜・三重のみならず全国にパフォーマーや芸人を派遣いたします。" />
+	<meta name="twitter:image:src" content="https://www.egaonokiroku.co.jp/image/sns-twimg.jpg" />
+	<meta name="twitter:domain" content="https://www.egaonokiroku.co.jp/" />
+	<!-- /tw -->
+
+
+	<link rel="stylesheet" href="css/common.css" type="text/css">
+	<link rel="stylesheet" href="css/pc.css" type="text/css" media="only screen and (min-width: 481px)">
+	<link rel="stylesheet" href="css/mobile.css" type="text/css" media="only screen and (max-width: 480px)">
+	<link rel="stylesheet" href="css/top-diary-notice.css" type="text/css">
+	<link rel="stylesheet" href="css/print.css" type="text/css" media="print" />
+	<link rel="stylesheet" href="css/lytebox.css" type="text/css" media="screen" />
+
+	<meta name="apple-mobile-web-app-title" content="えがおのきろく">
+	<link rel="apple-touch-icon" href="https://www.egaonokiroku.co.jp/apple-touch-icon.png">
+	<link rel="icon" href="https://www.egaonokiroku.co.jp/favicon.png">
+	<link rel="shortcut icon" href="https://www.egaonokiroku.co.jp/favicon.png">
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.3.2/jquery.min.js"></script>
+	<script language="JavaScript" SRC="js/js.js"></script>
+	<script language="JavaScript" src="js/lytebox.js"></script>
+
+
+
+    <SCRIPT type="text/javascript">
+	$(function(){
+		$('#loopslider').each(function(){
+			var loopsliderWidth = $(this).width();
+			var loopsliderHeight = $(this).height();
+			$(this).children('ul').wrapAll('<div id="loopslider_wrap"></div>');
+
+			var listWidth = $('#loopslider_wrap').children('ul').children('li').width();
+			var listCount = $('#loopslider_wrap').children('ul').children('li').length;
+
+			var loopWidth = (listWidth)*(listCount);
+
+			$('#loopslider_wrap').css({
+				top: '0',
+				left: '0',
+				width: ((loopWidth) * 2),
+				height: (loopsliderHeight),
+				overflow: 'hidden',
+				position: 'absolute'
+			});
+
+			$('#loopslider_wrap ul').css({
+				width: (loopWidth)
+			});
+			loopsliderPosition();
+
+			function loopsliderPosition(){
+				$('#loopslider_wrap').css({left:'0'});
+				$('#loopslider_wrap').stop().animate({left:'-' + (loopWidth) + 'px'},200000,'linear');
+				setTimeout(function(){
+					loopsliderPosition();
+				},200000);
+			};
+
+			$('#loopslider_wrap ul').clone().appendTo('#loopslider_wrap');
+		});
+	});
+    </script>
+
+
+
+	<!-- Google tag (gtag.js) -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-C5L7HD4VHY"></script>
+	<script>
+	  window.dataLayer = window.dataLayer || [];
+	  function gtag(){dataLayer.push(arguments);}
+	  gtag('js', new Date());
+	  gtag('config', 'G-C5L7HD4VHY');
+	</script>
+
+
+
+</head>
+
+
+
+
+<body>
+
+<div id="wrapper"> 
+
+  <div id="scroll-box">
+    <div id="scroll-order"><a href="order/index.htm"><img src="image/scl-order.png" alt="イベント企画のお見積もり" width="120" height="90" border="0"></a></div>
+    <div id="scroll-info"><a href="info/index.htm"><img src="image/scl-info.png" alt="大道芸人派遣のお問い合わせ" width="120" height="90" border="0"></a></div>
+    <div id="scroll-line"><a href="info/line.htm"><img src="image/scl-line.png" alt="友達追加はこちら" width="120" height="90" border="0"></a></div>
+
+    <div id="scroll-sns">
+      <div id="scroll-instagram"><a href="https://www.instagram.com/performer.yaha/" target="_blank" rel="noopener nofollow"><img src="image/scl-instagram.png" alt="えがおのきろく公式Instagram" width="30" height="30" border="0"></a></div>
+      <div id="scroll-faceboook"><a href="https://www.facebook.com/masashi.yaha" target="_blank" rel="noopener nofollow"><img src="image/scl-facebook.png" alt="えがおのきろく公式facebook" width="30" height="30" border="0"></a></div>
+      <div id="scroll-twitter"><a href="https://x.com/YAHA223" target="_blank" rel="noopener nofollow"><img src="image/scl-twitter.png" alt="えがおのきろく公式twitter" width="30" height="30" border="0"></a></div>
+    </div><!--scroll-sns-->
+
+  </div><!--scroll-box-->
+
+
+<!--PC用ヘッダー-->
+  <div class="change-pc">
+
+    <div id="top-hd-wrapper">
+	<div id="top-hd">
+	  <div id="top-logo">
+<a href="https://www.egaonokiroku.co.jp/"><img src="image/logo.png" alt="えがおのきろく" width="190" height="150" border="0"></a>
+	  </div><!--top-logo-->
+	  <div id="top-copy">
+<img src="image/copy.png" alt="Everyone smiles" width="620" height="160" border="0">
+	  </div><!--top-copy-->
+	</div><!--top-hd-->
+    </div><!--top-hd-wrapper-->
+
+    <div id="top-photo">
+      <div id="loopslider"> 
+	<ul class="loopslider">
+	  <li><img src="image/slide1.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide2.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide3.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide4.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide5.jpg" width="1200" height="600" border="0" /></li>
+	</ul>
+      </div>
+    </div><!--top-photo-->
+
+ </div><!--change-pc-->
+
+<!-- ここまで -->
+
+
+
+<!-- モバイル用ヘッダー -->
+	<div class="change-mobile">
+
+	  <div id="hd-infobox">
+	    <div id="m-hd-order"><a href="order/index.htm"><img src="image/m-hd-order.jpg" alt="イベント企画のお見積もり" width="150" height="70" border="0"></div>
+	    <div id="m-hd-mail"><a href="info/index.htm"><img src="image/m-hd-mail.jpg" alt="大道芸人派遣のお問い合わせ" width="150" height="70" border="0"></a></div>
+	    <div id="m-hd-line"><a href="info/line.htm"><img src="image/m-hd-line.jpg" alt="LINEでのお問い合わせ" width="150" height="70" border="0"></a></div>
+	  </div>
+
+	<div id="hd-box">
+	  <div id="hd-box-l">
+	    <div id="logo"><a href="https://www.egaonokiroku.co.jp/"><img src="image/logo.png" alt="えがおのきろく" width="180" height="180" border="0"></a></div>
+	  </div><!--hd-box-l-->
+
+	  <div id="hd-box-r">
+	    <div id="hd-tel">090-9134-2227</div>
+	  </div>
+	</div>
+
+    <div id="top-photo">
+      <div id="loopslider"> 
+	<ul class="loopslider">
+	  <li><img src="image/slide1.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide2.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide3.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide4.jpg" width="1200" height="600" border="0" /></li>
+	  <li><img src="image/slide5.jpg" width="1200" height="600" border="0" /></li>
+	</ul>
+      </div>
+    </div><!--top-photo-->
+
+	</div><!-- change-mobile -->
+<!-- ここまで -->
+
+
+
+<!-- モバイル用ハンバーガーボタン -->
+
+	<div class="hamburger">
+	  <span></span>
+	  <span></span>
+	  <span></span>
+	</div>
+
+	<div class="hamburger">
+	  <span></span>
+	  <span></span>
+	  <span></span>
+	</div>
+
+	<nav class="globalMenuSp">
+	  <ul class="nav-list">
+	  <div class="nav-title">
+	    <div id="logo"><a href="https://www.egaonokiroku.co.jp/"><img src="image/logo.png" alt="えがおのきろく" width="180" height="180" border="0"></a></div>
+	    <div id="hd-ct">イベント企画とパフォーマーの出演手配</div>
+	  </div>
+	    <li class="nav-item"><a href="index.htm">トップページ</a></li>
+	    <li class="nav-item"><a href="work/index.htm">できること</a></li>
+	    <li class="nav-item"><a href="company/index.htm">えがおのきろくとは</a></li>
+	    <li class="nav-item"><a href="schedule/index.htm">出演スケジュール</a></li>
+	    <li class="nav-item"><a href="result/index.htm">出演模様</a></li>
+	    <li class="nav-item"><a href="user/index.htm">お客様の声</a></li>
+	    <li class="nav-item"><a href="faq/index.htm">よくあるご質問</a></li>
+	    <li class="nav-item"><a href="oyako/index.htm">親子パフォーマンス</a></li>
+	    <li class="nav-item"><a href="matsuri/index.htm">お祭り（縁日）の企画</a></li>
+	    <li class="nav-item"><a href="balloon/index.htm">バルーンアート</a></li>
+	    <li class="nav-item"><a href="omutsu/index.htm">おむつケーキ</a></li>
+	    <li class="nav-item"><a href="toyokawa/index.htm">豊川ジャグリングクラブ</a></li>
+	    <li class="nav-item"><a href="order/index.htm">お見積もり依頼</a></li>
+	    <li class="nav-item"><a href="info/index.htm">お問い合わせ</a></li>
+	    <div class="nav-item-btn"><a href="order/index.htm"><img src="image/m-hd-order.jpg" alt="イベント企画のお見積もり" width="150" height="70" border="0"><a href="info/index.htm"><img src="image/m-hd-mail.jpg" alt="大道芸人派遣のお問い合わせ" width="150" height="70" border="0"></a><a href="info/line.htm"><img src="image/m-hd-line.jpg" alt="LINEでのお問い合わせ" width="150" height="70" border="0"></a></div>
+	  </ul>
+	</nav>
+
+<!-- ここまで -->
+
+
+
+
+
+
+
+    <div id="top-ct-box">
+      <div id="top-ct-left">
+	<div class="top-ct"><img src="image/ct1.jpg" alt="各種イベントの盛り上げで人全国を笑顔に！" width="500" height="100" border="0"></div>
+	<div class="top-ct-text">えがおのきろくには多種多様のパフォーマーが在籍しており、ありとあらゆるお客様のご要望に対応しております。パフォーマンスの内容や芸人の種類だけでなく、年齢や性別のご希望までどんなご要望にも対応できますので、イベントの盛り上げはえがおのきろくにお任せください！</div>
+	<div class="top-ct"><img src="image/ct2.jpg" alt="企画・運営全てお任せいただけます！" width="500" height="100" border="0"></div>
+	<div class="top-ct-text">えがおのきろくは単なるパフォーマーの出演手配だけでなく、イベントの企画まですべてを請け負っています。しかも現役のパフォーマーが企画立案しますので、ご希望だけお伝えいただければそのイベントに合った最適なパフォーマーの提案から当日のタイムスケジュールまで、すべてをご提案させていただきます。</div>
+      </div>
+      <div id="top-ct-right">
+<a href="work/index.htm"><img src="image/ct-r.jpg" alt=" えがおのきろくにできることはこちら" width="680" height="700" border="0"></a>
+      </div>
+    </div>
+
+
+
+    <div id="top-menu-box"><!--メニューと最新スケジュール-->
+
+      <div id="menu-box">
+	<div id="menu">
+<a href="work/index.htm" onMouseOver="MM_swapImage('Work','','image/work2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/work1.jpg" alt="えがおのきろくにできること" name="Gym" id="Gym" width="150" height="60" border="0"></a>
+<a href="company/index.htm" onMouseOver="MM_swapImage('Company','','image/company2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/company1.jpg" alt="えがおのきろくとは" name="Company" id="Company" width="150" height="60" border="0"></a>
+<a href="schedule/index.htm" onMouseOver="MM_swapImage('Schedule','','image/schedule2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/schedule1.jpg" alt="出演スケジュール" name="Schedule" id="Schedule" width="150" height="60" border="0"></a>
+<a href="result/index.htm" onMouseOver="MM_swapImage('Result','','image/result2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/result1.jpg" alt="イベント出演模様" name="Result" id="Result" width="150" height="60" border="0"></a>
+<a href="user/index.htm" onMouseOver="MM_swapImage('User','','image/user2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/user1.jpg" alt="大道芸へのお客様の声" name="User" id="User" width="150" height="60" border="0"></a>
+<a href="faq/index.htm" onMouseOver="MM_swapImage('Faq','','image/faq2.jpg',1)" onMouseOut="MM_swapImgRestore()"><img src="image/faq1.jpg" alt="よくあるご質問" name="Faq" id="Faq" width="150" height="60" border="0"></a>
+	</div><!--menu-->
+      </div><!--menu-box-->
+
+<a name="schedule"></a>
+      <div id="top-schedule-box-base">
+      <div id="top-schedule-box">
+	<div id="top-schedule-title"><img src="image/schedule-st.png" alt="最新スケジュール" width="240" height="24" border="0"></div>
+
+	<div id="top-schedule-box2">
+	      <div class="schedule-list">
+		<ul>
+		  <li>最新スケジュールは公式インスタグラムでご確認いただけます</li>
+		</ul>
+	      </div>
+	</div><!--top-schedule-box2-->
+
+
+	<div class="top-schedule-cta">
+	<div class="nv-box"><a href="https://www.instagram.com/performer.yaha/" target="_blank" rel="noopener nofollow"><div id="top-nv-schedule">インスタグラムはこちら<div id="top-nv-schedule-arrow"></div></div></a></div>
+	<div class="nv-box-diary"><a href="/diary/" aria-label="日記・バックナンバー。イベントの準備や活動の様子をご紹介します"><div class="top-nv-diary">日記・バックナンバー<div class="top-nv-diary-arrow"></div></div></a>
+	<p class="top-nv-diary-update">最新の日記を更新しました！</p>
+	<p class="top-nv-diary-lead">イベントの準備や活動の様子をご紹介します</p>
+	</div>
+	</div>
+
+
+      </div><!--top-schedule-box-->
+      </div><!--top-schedule-box-base-->
+
+    </div><!--top-menu-box-->
+
+
+
+
+    <div id="top-work">
+      <div class="top-st-box"><img src="image/work-st.jpg" alt="催しやお祭りなど企画からお任せいただけます" width="520" height="100" border="0"></div>
+      <div id="top-work-box">
+<a href="work/index.htm"><img src="image/work-l1.jpg" alt="イベント内容に合わせて最適なご提案！" width="200" height="290" border="0"></a>
+<a href="work/index.htm"><img src="image/work-l2.jpg" alt="多種多様のパフォーマーが在籍！" width="200" height="290" border="0"></a>
+<a href="work/index.htm"><img src="image/work-l3.jpg" alt="イベントの企画を0からお手伝い！" width="200" height="290" border="0"></a>
+<a href="work/index.htm"><img src="image/work-l4.jpg" alt="お祭り（縁日）も丸投げでOK！" width="200" height="290" border="0"></a>
+      </div><!--top-work-box-->
+    </div><!--top-work-->
+
+
+
+
+
+    <div id="top-user">
+      <div class="top-st-box"><img src="image/user-st.png" alt="大道芸へのお客様の声" width="520" height="100" border="0"></div>
+      <div id="top-user-box">
+
+      <div class="top-nv-user-banner">
+	<a href="user/index.htm" class="btnshine"><img src="image/nv-user.jpg" alt="大道芸へのお客様の声" width="900" height="200" border="0"></a>
+      </div>
+      </div><!--top-user-box-->
+    </div><!--top-user-->
+
+
+
+
+
+    <div id="top-faq">
+      <div class="top-faq-st"><img src="image/faq-st.jpg" alt="よくいただくご質問" width="460" height="70" border="0"></div>
+      <div id="top-faq-box">
+	<div id="top-faq-left">
+	  <div class="top-faq-list">
+	    <ul>
+	      <li><a href="faq/faq001.htm">どこまで出張してくれますか？</a></li>
+	      <li><a href="faq/faq005.htm">子ども向けのパフォーマンスも依頼できますか？</a></li>
+	      <li><a href="faq/faq008.htm">パフォーマー（芸人）の指定はできますか？</a></li>
+	      <li><a href="faq/faq012.htm">どれくらい前から依頼したらいいですか？</a></li>
+	    </ul>
+	  </div>
+	</div><!--top-faq-left-->
+	<div id="top-faq-right">
+	  <div class="top-faq-list">
+	    <ul>
+	      <li><a href="faq/faq027.htm">学校行事やPTAイベントもお願いできますか？</a></li>
+	      <li><a href="faq/faq022.htm">イベントに関する許可や保険などもお願いできますか？</a></li>
+	      <li><a href="faq/faq010.htm">企画から相談に乗ってくれますか？</a></li>
+	      <li><a href="faq/faq017.htm">キャンセル料はかかりますか？</a></li>
+	    </ul>
+	  </div>
+	</div><!--top-faq-right-->
+      </div><!--top-faq-box-->
+      <div class="nv-box-faq"><a href="faq/index.htm"><div class="top-nv-faq">この他にもたくさんのご質問にお答えしています<div class="top-nv-faq-arrow"></div></div></a></div>
+    </div><!--top-faq-->
+
+
+
+
+
+
+
+    <div id="top-result">
+      <div class="top-st-box"><img src="image/result-st.png" alt="イベント出演模様" width="520" height="100" border="0"></div>
+      <div id="top-result-box">
+
+	<div class="top-result-item">
+	  <div class="top-result-photo"><a href="result/250712.htm"><img src="result/image/250712-1.jpg" alt="中畑八幡社 例大祭" width="480" height="360" border="0"></a></div>
+	  <div class="top-result-title">中畑八幡社 例大祭</div>
+	  <div class="nv-box"><a href="result/250712.htm"><div class="top-nv-result">詳しくはこちら<div class="top-nv-result-arrow"></div></div></a></div>
+	</div>
+
+	<div class="top-result-item">
+	  <div class="top-result-photo"><a href="result/250505.htm"><img src="result/image/250505-1.jpg" alt="浜松まつり" width="480" height="360" border="0"></a></div>
+	  <div class="top-result-title">浜松まつり</div>
+	  <div class="nv-box"><a href="result/250505.htm"><div class="top-nv-result">詳しくはこちら<div class="top-nv-result-arrow"></div></div></a></div>
+	</div>
+
+	<div class="top-result-item">
+	  <div class="top-result-photo"><a href="result/250503-2.htm"><img src="result/image/250503-9.jpg" alt="浜名湖パルパル 大道芸パフォーマンス" width="480" height="360" border="0"></a></div>
+	  <div class="top-result-title">浜名湖パルパル 大道芸パフォーマンス</div>
+	  <div class="nv-box"><a href="result/250503-2.htm"><div class="top-nv-result">詳しくはこちら<div class="top-nv-result-arrow"></div></div></a></div>
+	</div>
+
+      </div><!--top-result-box-->
+    </div><!--top-result-->
+
+
+
+
+
+
+    <div id="top-flow">
+      <div class="top-st-box"><img src="image/flow-st.png" alt="ご利用の流れ" width="520" height="100" border="0"></div>
+      <div id="top-flow-box">
+  <div class="change-pc">
+<img src="image/flow-img.png" alt="ご利用の流れ" width="1000" height="120" border="0">
+  </div>
+  <div class="change-mobile">
+<img src="image/m-flow-img.png" alt="ご利用の流れ" width="460" height="410" border="0">
+  </div>
+      </div><!--top-flow-box-->
+	  <div class="nv-box"><a href="work/index.htm#flow"><div class="top-nv-result">詳しくはこちら<div class="top-nv-result-arrow"></div></div></a></div>
+    </div><!--top-flow-->
+
+
+
+
+
+  <div class="change-pc">
+    <div class="top-banner-box">
+      <div class="top-banner-oyako">
+	<a href="oyako/index.htm" class="btnshine"><img src="image/nv-oyako.jpg" alt="親子大道芸パフォーマンス" width="440" height="150" border="0"></a>
+      </div>
+      <div class="top-banner-matsuri">
+	<a href="matsuri/index.htm" class="btnshine"><img src="image/nv-matsuri.jpg" alt="お祭りの企画もお任せ！" width="440" height="150" border="0"></a>
+      </div>
+    </div>
+    <div class="top-banner-box">
+      <div class="top-banner-baloon">
+	<a href="balloon/index.htm" class="btnshine"><img src="image/nv-baloon.jpg" alt="バルーンアートで華やかに！" width="440" height="150" border="0"></a>
+      </div>
+      <div class="top-banner-matsuri">
+	<a href="omutsu/index.htm" class="btnshine"><img src="image/nv-omutsu.jpg" alt="ギフトに最適！おむつケーキ" width="440" height="150" border="0"></a>
+      </div>
+    </div>
+
+      <div class="top-banner-toyokawa">
+	<a href="toyokawa/index.htm" class="btnshine"><img src="image/nv-toyokawa.jpg" alt="豊川ジャグリングクラブ" width="1000" height="150" border="0"></a>
+      </div>
+
+      <div class="top-banner-place">
+	<a href="info/index.htm" class="btnshine"><img src="image/nv-place.jpg" alt="自由にパフォーマンスできる場所募集！" width="1000" height="300" border="0"></a>
+      </div>
+
+    <div class="top-banner-box">
+      <div class="top-banner-info">
+	<a href="info/index.htm" class="btnshine"><img src="image/nv-info.jpg" alt="イベントのお問い合わせはこちら" width="440" height="120" border="0"></a>
+      </div>
+      <div class="top-banner-order">
+	<a href="order/index.htm" class="btnshine"><img src="image/nv-order.jpg" alt="パフォーマー派遣のお見積もりはこちら" width="440" height="120" border="0"></a>
+      </div>
+    </div>
+
+
+    <div class="top-sns-box">
+      <div class="top-banner-instagram">
+	<a href="https://www.instagram.com/performer.yaha/" target="_blank" rel="noopener nofollow"><img src="image/nv-instagram.jpg" alt="えがおのきろく公式Instagram" width="280" height="84" border="0"></a>
+      </div>
+      <div class="top-banner-facebook">
+	<a href="https://www.facebook.com/masashi.yaha" target="_blank" rel="noopener nofollow"><img src="image/nv-facebook.jpg" alt="えがおのきろく公式facebook" width="280" height="84" border="0"></a>
+      </div>
+      <div class="top-banner-twitter">
+	<a href="https://x.com/YAHA223" target="_blank" rel="noopener nofollow"><img src="image/nv-twitter.jpg" alt="えがおのきろく公式twitter" width="280" height="84" border="0"></a>
+      </div>
+    </div>
+  </div><!--change-pc-->
+
+
+
+
+
+  <div class="change-mobile">
+
+	<!-- モバイル用メニュー -->
+	<div id="menu-mobile">
+
+	  <div id="menu-mobile-contents">
+<a href="work/index.htm"><img src="image/m-work.jpg" alt="えがおのきろくにできること" width="160" height="50" border="0"></a><a href="company/index.htm"><img src="image/m-company.jpg" alt="えがおのきろくとは" width="160" height="50" border="0"></a><a href="schedule/index.htm"><img src="image/m-schedule.jpg" alt="イベント出演スケジュール" width="160" height="50" border="0"></a><a href="result/index.htm"><img src="image/m-result.jpg" alt="大道芸の出演模様" width="160" height="50" border="0"></a><a href="user/index.htm"><img src="image/m-user.jpg" alt="大道芸へのお客様の声" width="160" height="50" border="0"></a><a href="faq/index.htm"><img src="image/m-faq.jpg" alt="よくあるご質問" width="160" height="50" border="0"></a>
+
+<div id="menu-mobile-order"><a href="order/index.htm"><img src="image/m-order.jpg" alt="大道芸人派遣のお見積もり" width="480" height="50" border="0"></a></div>
+<div id="menu-mobile-info"><a href="info/index.htm"><img src="image/m-info.jpg" alt="イベントのお問い合わせ" width="480" height="50" border="0"></a></div>
+	  </div>
+
+	</div><!-- menu-mobile -->
+<!-- モバイル用メニュー ここまで-->
+
+
+      <div class="top-banner-place">
+	<a href="info/index.htm"><img src="image/m-nv-place.jpg" alt="自由にパフォーマンスできる場所募集！" width="440" height="300" border="0"></a>
+      </div>
+
+    <div class="top-banner-box">
+      <div class="top-banner-oyako">
+	<a href="oyako/index.htm"><img src="image/nv-oyako.jpg" alt="親子大道芸パフォーマンス" width="440" height="150" border="0"></a>
+      </div>
+      <div class="top-banner-matsuri">
+	<a href="matsuri/index.htm"><img src="image/nv-matsuri.jpg" alt="お祭りの企画もお任せ！" width="440" height="150" border="0"></a>
+      </div>
+    </div>
+    <div class="top-banner-box">
+      <div class="top-banner-baloon">
+	<a href="balloon/index.htm"><img src="image/nv-baloon.jpg" alt="バルーンアートで華やかに！" width="440" height="150" border="0"></a>
+      </div>
+      <div class="top-banner-matsuri">
+	<a href="omutsu/index.htm"><img src="image/nv-omutsu.jpg" alt="ギフトに最適！おむつケーキ" width="440" height="150" border="0"></a>
+      </div>
+    </div>
+
+      <div class="top-banner-toyokawa">
+	<a href="toyokawa/index.htm"><img src="image/m-nv-toyokawa.jpg" alt="豊川ジャグリングクラブ" width="440" height="150" border="0"></a>
+      </div>
+
+    <div class="top-sns-box">
+      <div class="top-banner-instagram">
+	<a href="https://www.instagram.com/performer.yaha/" target="_blank" rel="noopener nofollow"><img src="image/m-nv-instagram.jpg" alt="えがおのきろく公式Instagram" width="130" height="106" border="0"></a>
+      </div>
+      <div class="top-banner-facebook">
+	<a href="https://www.facebook.com/masashi.yaha" target="_blank" rel="noopener nofollow"><img src="image/m-nv-facebook.jpg" alt="えがおのきろく公式facebook" width="130" height="106" border="0"></a>
+      </div>
+      <div class="top-banner-twitter">
+	<a href="https://x.com/YAHA223" target="_blank" rel="noopener nofollow"><img src="image/m-nv-twitter.jpg" alt="えがおのきろく公式twitter" width="130" height="106" border="0"></a>
+      </div>
+    </div>
+
+  </div><!--change-mobile-->
+
+
+
+
+
+	  <div id="footer">
+	    <div id="footer-inner">
+		
+		  <div id="footer-left-box">
+		    <div id="footer-company-box">
+			<a href="https://www.egaonokiroku.co.jp/"><img src="image/ft-logo.png" alt="えがおのきろく" width="375" height="70"></a><br>
+			<div id="footer-address">〒441-0105 愛知県豊川市伊奈町古当103-15-101</div><br>
+			TEL：<a href="tel:09091342227">090-9134-2227</a><br>
+			<a href="mailto:&#105;&#110;&#102;&#x6f;&#x40;&#x65;&#x67;&#97;&#x6F;&#x6E;&#111;&#x6B;&#x69;&#x72;&#x6f;&#x6b;&#117;&#46;&#99;&#x6f;&#x2e;&#x6a;&#x70;">MAIL：&#105;&#110;&#102;&#x6f;&#x40;&#x65;&#x67;&#97;&#x6F;&#x6E;&#111;&#x6B;&#x69;&#x72;&#x6f;&#x6b;&#117;&#46;&#99;&#x6f;&#x2e;&#x6a;&#x70;</a>
+		    </div>
+		  </div>
+
+		  <div id="footer-right-box">
+		    <div id="footer-menu-box">
+		      <div id="footer-menu-boxinner">
+		        <div class="footer-menu">
+<a href="work/index.htm">えがおのきろくのできること</a><br>
+<a href="company/index.htm">えがおのきろくとは</a><br>
+<a href="schedule/index.htm">出演スケジュール</a><br>
+<a href="result/index.htm">出演模様</a><br>
+<a href="user/index.htm">お客様の声</a><br>
+<a href="faq/index.htm">よくあるご質問</a>
+		        </div>
+		        <div class="footer-menu">
+<a href="oyako/index.htm">親子パフォーマンス</a><br>
+<a href="matsuri/index.htm">お祭り（縁日）の企画</a><br>
+<a href="balloon/index.htm">バルーンアート</a><br>
+<a href="omutsu/index.htm">おむつケーキ</a><br>
+<a href="toyokawa/index.htm">豊川ジャグリングクラブ</a>
+		        </div>
+		        <div class="footer-menu">
+<a href="order/index.htm">お見積もり依頼</a><br>
+<a href="info/index.htm">お問い合わせ</a><br>
+<a href="sitemap/index.htm">サイトマップ</a><br>
+<a href="link/index.htm">リンク</a>
+		        </div>
+		      </div><!-- footer-menu-boxinner -->
+		    </div><!-- footer-menu-box -->
+		  </div><!-- footer-right-box -->
+
+	    </div><!-- footer-inner -->
+
+	    <div id="footer-copy-box"><span class="copy">&copy;</span> Copyright by えがおのきろく 2024-<script type="text/javascript">thisYear();</script> All Rights Reserved.</div>
+
+	  </div><!-- footer -->
+
+
+	  
+</div><!-- wrapper -->
+
+<!-- トップに戻るDIV -->
+<div id="pageTop"><a href="#"><i class="fa fa-chevron-up"><img src="image/pagetop.png" width="60" height="100" alt="ページトップボタン"></a></i></a></div>
+
+
+</body>
+</html>
