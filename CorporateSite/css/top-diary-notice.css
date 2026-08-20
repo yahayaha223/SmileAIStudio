@@ -1,0 +1,23 @@
+/* Top-page notice near the diary / back-number button.
+   Loaded after pc.css / mobile.css. Does not change other layout. */
+#top-schedule-box .top-schedule-cta .top-nv-diary-update {
+	display: block;
+	width: 100%;
+	max-width: 100%;
+	margin: 8px 0 0 0;
+	padding: 0;
+	text-align: center;
+	font-size: 90%;
+	font-weight: 700;
+	line-height: 1.5;
+	color: #F8288B;
+	box-sizing: border-box;
+}
+
+@media only screen and (max-width: 480px) {
+	#top-schedule-box .top-schedule-cta .top-nv-diary-update {
+		margin-top: 6px;
+		padding: 0 12px;
+		font-size: 85%;
+	}
+}

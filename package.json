@@ -11,10 +11,11 @@
     "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js",
     "test:github-issues": "node scripts/test-github-issues.js",
     "test:hp-edit-jobs": "node scripts/test-hp-edit-jobs.js",
+    "test:hp-top-diary-notice": "node scripts/test-corporate-site-top-diary-notice.js",
     "test:simple-diary": "node scripts/test-simple-diary-publish.js",
     "test:diary-server-publish": "node scripts/test-diary-server-publish.js",
     "test:diary-function-bundle": "node scripts/test-diary-function-bundle.js",
-    "test:phase2": "npm run test:auth && npm run test:line && npm run test:github-issues && npm run test:hp-edit-jobs && npm run test:simple-diary && npm run test:diary-server-publish && npm run test:diary-function-bundle",
+    "test:phase2": "npm run test:auth && npm run test:line && npm run test:github-issues && npm run test:hp-edit-jobs && npm run test:hp-top-diary-notice && npm run test:simple-diary && npm run test:diary-server-publish && npm run test:diary-function-bundle",
     "mock:webhook": "node scripts/mock-line-webhook.js",
     "dev:netlify": "npx netlify dev"
   },
