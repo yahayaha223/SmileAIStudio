@@ -15578,9 +15578,17 @@
     pendingHpPublishJobId = null;
   }
 
+  function canRequestHpSitePublish(job) {
+    if (!job || !DevJobs) return false;
+    if (typeof DevJobs.canRequestSitePublish === "function") {
+      return DevJobs.canRequestSitePublish(job);
+    }
+    return !!(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job));
+  }
+
   function showHpPublishConfirm(jobId) {
     var job = DevJobs && DevJobs.getById(jobId);
-    if (!job || !(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job))) {
+    if (!canRequestHpSitePublish(job)) {
       showToast("まだ本番へ反映できません");
       return;
     }
@@ -15598,7 +15606,7 @@
       if (status) status.textContent = "公開する依頼が見つかりません。";
       return;
     }
-    if (!(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job))) {
+    if (!canRequestHpSitePublish(job)) {
       if (status) status.textContent = "PRがmainへmergeされるまで本番反映できません。";
       return;
     }
@@ -15815,7 +15823,7 @@
         if (id) submitHpEditRequest(id);
         return;
       }
-      if (t.classList.contains("btn-hp-site-publish")) {
+      if (t.classList.contains("btn-hp-site-publish") || t.classList.contains("btn-hp-site-republish")) {
         if (id) showHpPublishConfirm(id);
       }
     });
