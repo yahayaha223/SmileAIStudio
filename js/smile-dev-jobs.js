@@ -46,9 +46,24 @@
     COMPLETED: "completed"
   };
 
+  var memoryStoreData = {};
+  function storage() {
+    try {
+      if (typeof localStorage !== "undefined" && localStorage) return localStorage;
+    } catch (e) { /* Node / private mode */ }
+    return {
+      getItem: function (k) {
+        return Object.prototype.hasOwnProperty.call(memoryStoreData, k) ? memoryStoreData[k] : null;
+      },
+      setItem: function (k, v) {
+        memoryStoreData[k] = String(v);
+      }
+    };
+  }
+
   function load() {
     try {
-      var raw = localStorage.getItem(KEY);
+      var raw = storage().getItem(KEY);
       var list = raw ? JSON.parse(raw) : [];
       return Array.isArray(list) ? list : [];
     } catch (e) {
@@ -57,7 +72,7 @@
   }
 
   function save(list) {
-    localStorage.setItem(KEY, JSON.stringify(list || []));
+    storage().setItem(KEY, JSON.stringify(list || []));
   }
 
   function newId() {
@@ -110,6 +125,72 @@
       ],
       agentStatus: AGENT_STATUS.READY_FOR_AGENT
     };
+  }
+
+  function buildHomepageEditTask(userRequest) {
+    var req = String(userRequest || "").trim();
+    var job = buildTaskFromRequest({
+      projectId: "corporate-site",
+      userRequest: req
+    });
+    job.kind = "homepage-edit";
+    job.title = ("HP編集: " + req).replace(/\s+/g, " ").trim().slice(0, 48) || "HP編集依頼";
+    job.status = "ready_for_issue";
+    job.riskLevel = "high";
+    job.approvalRequired = true;
+    job.goal = "公式ホームページの変更案をPRにする。本番反映はしない。";
+    job.background = "ホームページを編集（自然文依頼）";
+    job.affectedAreas = ["公式ホームページ / CorporateSite", "関連する文言・画像・CSS（必要な場合のみ）"];
+    job.acceptanceCriteria = [
+      "依頼内容の変更案がPull Requestになっている",
+      "依頼していない箇所を不用意に変えていない",
+      "本番FTP公開・Production Deploy・main mergeをしていない"
+    ];
+    job.testPlan = [
+      "変更箇所の表示確認",
+      "関係ないページが壊れていないこと"
+    ];
+    job.rollbackPlan = ["PRをマージしない / 変更branchを破棄"];
+    job.safetyRules = [
+      "main直push禁止",
+      "mainへmergeしない",
+      "Production Deployしない",
+      "本番FTP公開しない",
+      "DNS変更しない",
+      "Netlify本番環境変数を変更しない",
+      "secretsをcommitしない",
+      "本番反映は人間の承認後のみ"
+    ];
+    job.agentStatus = AGENT_STATUS.READY_FOR_AGENT;
+    return job;
+  }
+
+  function homepageEditJobs() {
+    return load().filter(function (j) {
+      return j && j.kind === "homepage-edit";
+    }).slice(0, 8);
+  }
+
+  function studioProgressMessage(job) {
+    if (!job) return "";
+    var st = String(job.status || "");
+    if (st === "failed") {
+      return job.failureReason || job.lastGithubError || "変更案の作成に失敗しました";
+    }
+    if (st === "cancelled") return "キャンセルしました";
+    if (st === "ready_for_issue" && job.lastGithubError) {
+      return "依頼は保存しましたが、GitHubへ送れませんでした。再送信できます。";
+    }
+    if (
+      st === "waiting_for_review" ||
+      st === "pr_ready" ||
+      st === "approved" ||
+      st === "completed" ||
+      job.githubPrNumber
+    ) {
+      return "確認してください";
+    }
+    return "変更案を作成中です";
   }
 
   function upsert(job) {
@@ -229,6 +310,9 @@
       "## Safety Rules",
       (job.safetyRules || []).map(function (x) { return "- " + x; }).join("\n"),
       "",
+      "## Job Kind",
+      job.kind || "general",
+      "",
       "## Job Id",
       job.id || "",
       "",
@@ -247,6 +331,9 @@
       "3. While fixing failures: FIXING",
       "4. When PR is ready: READY_FOR_REVIEW and fill Pull Request + Branch",
       "5. Never merge to main / never Production Deploy / never real FTP publish",
+      job.kind === "homepage-edit"
+        ? "6. Homepage-edit job: create a PR with the proposed site change. Do not publish to production."
+        : "",
       ""
     ].join("\n");
   }
@@ -267,6 +354,11 @@
       lines.push("<p>" + esc(job.lastGithubError) + "</p>");
       lines.push("<p><button type=\"button\" class=\"btn btn--secondary btn--touch btn-ai-job-retry\" data-job-id=\"" +
         esc(job.id) + "\">再送信</button></p>");
+    } else if (job.kind === "homepage-edit") {
+      lines.push("<p>" + esc(studioProgressMessage(job)) + "</p>");
+      if (job.githubIssueNumber) {
+        lines.push("<p>GitHub Issue #" + esc(String(job.githubIssueNumber)) + "</p>");
+      }
     } else if (job.githubIssueNumber &&
       (job.status === "issue_created" || job.status === "waiting_for_agent")) {
       lines.push("<p>✅ 開発依頼を作成しました</p>");
@@ -304,7 +396,7 @@
     return lines.join("");
   }
 
-  global.SmileDevJobs = {
+  var api = {
     KEY: KEY,
     load: load,
     save: save,
@@ -312,6 +404,9 @@
     getById: getById,
     jobsNeedingSync: jobsNeedingSync,
     buildTaskFromRequest: buildTaskFromRequest,
+    buildHomepageEditTask: buildHomepageEditTask,
+    homepageEditJobs: homepageEditJobs,
+    studioProgressMessage: studioProgressMessage,
     statusLabel: statusLabel,
     toIssueMarkdown: toIssueMarkdown,
     applyGithubIssueResult: applyGithubIssueResult,
@@ -323,4 +418,8 @@
     AGENT_STATUS: AGENT_STATUS,
     AGENT_TO_JOB: AGENT_TO_JOB
   };
-})(window);
+  if (typeof module === "object" && module.exports) {
+    module.exports = api;
+  }
+  global.SmileDevJobs = api;
+})(typeof globalThis !== "undefined" ? globalThis : window);

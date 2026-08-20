@@ -439,8 +439,9 @@
         <p class="simple-diary__lead">変えたいことを、普通の言葉で書いてください。</p>
         <label class="visually-hidden" for="hp-edit-request">変更内容</label>
         <textarea id="hp-edit-request" class="simple-diary__body" rows="6" placeholder="例：トップページに人形焼きのお知らせを追加したい"></textarea>
-        <p class="form-hint">本番反映は必ず確認後です。今は依頼票として保存します。</p>
-        <p class="simple-diary__status" id="hp-edit-status" role="status"></p>
+        <p class="form-hint">本番反映は必ず確認後です。変更案の作成を開始します。</p>
+        <p class="simple-diary__status" id="hp-edit-status" role="status" aria-live="polite"></p>
+        <div id="hp-edit-jobs-list" class="ai-jobs-list" aria-live="polite"></div>
       </div>
       <div class="modal__actions modal__actions--stack">
         <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-hp-edit-submit">変更案をつくる</button>

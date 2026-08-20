@@ -15388,8 +15388,17 @@
       (typeof readCsrfCookie === "function" ? readCsrfCookie() : "");
   }
 
+  var currentHpEditJobId = null;
   var aiJobsSyncTimer = null;
   var aiJobsSyncInFlight = false;
+
+  function isDevJobProgressModalOpen() {
+    function isOpen(id) {
+      var el = document.getElementById(id);
+      return !!(el && el.classList.contains("is-open"));
+    }
+    return isOpen("ai-job-modal") || isOpen("hp-edit-modal");
+  }
 
   function stopAiJobsSyncLoop() {
     if (aiJobsSyncTimer) {
@@ -15402,8 +15411,7 @@
     stopAiJobsSyncLoop();
     syncAiJobsFromGithub();
     aiJobsSyncTimer = setInterval(function () {
-      var modal = document.getElementById("ai-job-modal");
-      if (!modal || modal.getAttribute("aria-hidden") === "true") {
+      if (!isDevJobProgressModalOpen()) {
         stopAiJobsSyncLoop();
         return;
       }
@@ -15452,7 +15460,11 @@
         if (updated && before && before.status !== updated.status) changed = true;
         else if (updated) changed = true;
       });
-      if (changed) renderAiJobsList();
+      if (changed) {
+        renderAiJobsList();
+        renderHpEditJobs();
+        refreshHpEditStatus();
+      }
     }).catch(function () { /* ignore transient */ }).finally(function () {
       aiJobsSyncInFlight = false;
     });
@@ -15562,34 +15574,119 @@
     setModalOpen("hp-edit-modal", true);
     var ta = document.getElementById("hp-edit-request");
     if (ta) setTimeout(function () { ta.focus(); }, 40);
+    renderHpEditJobs();
+    refreshHpEditStatus();
+    startAiJobsSyncLoop();
   }
 
   function closeHpEditModal() {
     setModalOpen("hp-edit-modal", false);
+    if (!isDevJobProgressModalOpen()) stopAiJobsSyncLoop();
   }
 
-  function submitHpEditRequest() {
-    var status = document.getElementById("hp-edit-status");
-    var request = document.getElementById("hp-edit-request");
-    var text = request ? String(request.value || "").trim() : "";
-    if (!text) {
-      if (status) status.textContent = "変えたい内容を書いてください。";
+  function renderHpEditJobs() {
+    var box = document.getElementById("hp-edit-jobs-list");
+    if (!box || !DevJobs) return;
+    var list = typeof DevJobs.homepageEditJobs === "function"
+      ? DevJobs.homepageEditJobs()
+      : [];
+    if (!list.length) {
+      box.innerHTML = "";
       return;
     }
-    if (DevJobs) {
-      var job = DevJobs.buildTaskFromRequest({
-        projectId: "corporate-site",
-        userRequest: "ホームページ編集: " + text
-      });
-      job.status = "planning";
-      job.riskLevel = "high";
-      job.approvalRequired = true;
+    box.innerHTML = list.map(function (job) {
+      if (typeof DevJobs.renderProgressHtml === "function") {
+        return DevJobs.renderProgressHtml(job, escapeHtml);
+      }
+      return "<div class=\"ai-job-card\"><strong>" + escapeHtml(job.title) + "</strong><br>" +
+        "<span>" + escapeHtml(DevJobs.studioProgressMessage
+          ? DevJobs.studioProgressMessage(job)
+          : DevJobs.statusLabel(job.status)) + "</span></div>";
+    }).join("");
+  }
+
+  function refreshHpEditStatus() {
+    var status = document.getElementById("hp-edit-status");
+    if (!status || !DevJobs || !currentHpEditJobId) return;
+    var job = DevJobs.getById(currentHpEditJobId);
+    if (!job) return;
+    status.textContent = typeof DevJobs.studioProgressMessage === "function"
+      ? DevJobs.studioProgressMessage(job)
+      : DevJobs.statusLabel(job.status);
+  }
+
+  function githubErrorMessage(data) {
+    var msg = (data && (data.userMessage || data.error)) || "GitHubへ送信できませんでした";
+    if (data && data.error === "unauthorized") msg = "ログイン（オーナー）が必要です";
+    else if (data && data.error === "forbidden") msg = "オーナー権限が必要です";
+    else if (data && data.error === "github_not_configured") msg = "GitHub接続設定が必要です";
+    return msg;
+  }
+
+  function submitHpEditRequest(retryJobId) {
+    var status = document.getElementById("hp-edit-status");
+    var request = document.getElementById("hp-edit-request");
+    var submitBtn = document.getElementById("btn-hp-edit-submit");
+    if (!DevJobs || typeof DevJobs.buildHomepageEditTask !== "function") {
+      if (status) status.textContent = "開発ジョブ基盤を読み込めませんでした。";
+      return;
+    }
+
+    var job = null;
+    if (retryJobId) {
+      job = DevJobs.getById(retryJobId);
+      if (!job) {
+        if (status) status.textContent = "再送信する依頼が見つかりません。";
+        return;
+      }
+    } else {
+      var text = request ? String(request.value || "").trim() : "";
+      if (!text) {
+        if (status) status.textContent = "変えたい内容を書いてください。";
+        return;
+      }
+      job = DevJobs.buildHomepageEditTask(text);
       DevJobs.upsert(job);
     }
+
+    currentHpEditJobId = job.id;
+    job.status = "ready_for_issue";
+    job.agentStatus = "READY_FOR_AGENT";
+    DevJobs.upsert(job);
     if (status) {
-      status.textContent = "変更案の依頼を保存しました。本番反映は必ず確認後です。";
+      status.textContent = typeof DevJobs.studioProgressMessage === "function"
+        ? DevJobs.studioProgressMessage(job)
+        : "変更案を作成中です";
     }
-    showToast("HP変更の依頼を保存しました");
+    if (submitBtn) submitBtn.disabled = true;
+    renderHpEditJobs();
+
+    createGithubIssueForJob(job).then(function (data) {
+      if (data && data.ok && data.issue) {
+        DevJobs.applyGithubIssueResult(job, data.issue);
+        if (status) {
+          status.textContent = typeof DevJobs.studioProgressMessage === "function"
+            ? DevJobs.studioProgressMessage(DevJobs.getById(job.id) || job)
+            : "変更案を作成中です";
+        }
+        if (request && !retryJobId) request.value = "";
+        showToast("変更案の作成を開始しました");
+        startAiJobsSyncLoop();
+      } else {
+        var msg = githubErrorMessage(data);
+        DevJobs.markGithubFailure(job, { userMessage: msg, error: data && data.error });
+        if (status) status.textContent = "依頼は保存しましたが、GitHubへ送れませんでした。再送信できます。";
+        showToast(msg);
+      }
+      renderHpEditJobs();
+      refreshHpEditStatus();
+    }).catch(function () {
+      DevJobs.markGithubFailure(job, { userMessage: "通信に失敗しました" });
+      if (status) status.textContent = "依頼は保存しましたが、GitHubへ送れませんでした。再送信できます。";
+      renderHpEditJobs();
+    }).finally(function () {
+      if (submitBtn) submitBtn.disabled = false;
+    });
   }
 
   onClick("simple-diary-close", closeSimpleDiary);
@@ -15613,11 +15710,21 @@
   onClick("btn-ai-job-submit", function () { submitAiJob(); });
   onClick("hp-edit-close", closeHpEditModal);
   onClick("btn-hp-edit-cancel", closeHpEditModal);
-  onClick("btn-hp-edit-submit", submitHpEditRequest);
+  onClick("btn-hp-edit-submit", function () { submitHpEditRequest(); });
   onClick("btn-hp-edit-open-web", function () {
     closeHpEditModal();
     openWebCenter();
   });
+
+  var hpEditJobsListEl = document.getElementById("hp-edit-jobs-list");
+  if (hpEditJobsListEl) {
+    hpEditJobsListEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("btn-ai-job-retry")) return;
+      var id = t.getAttribute("data-job-id");
+      if (id) submitHpEditRequest(id);
+    });
+  }
 
   var aiJobsListEl = document.getElementById("ai-jobs-list");
   if (aiJobsListEl) {
