@@ -29,6 +29,7 @@ var API_PERMISSIONS = {
 
   // reserved for future / local bridge
   "production-publish:POST": { roles: ["owner"], stepUp: true, adminPublishGate: true },
+  "api-diary-publish:POST": { roles: ["owner"], stepUp: false },
   "ftp-upload:POST": { roles: ["owner"], stepUp: true },
   "user-admin:POST": { roles: ["owner"], stepUp: true },
   "secrets:POST": { roles: ["owner"], stepUp: true },

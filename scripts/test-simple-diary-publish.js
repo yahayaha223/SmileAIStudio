@@ -28,6 +28,10 @@ var perm = fs.readFileSync(
 test("orchestrator exports and keeps safety gates", function () {
   assert.ok(/SmileSimpleDiaryPublish/.test(src));
   assert.ok(/runOneButtonPublish/.test(src));
+  assert.ok(/runServerPublish/.test(src));
+  assert.ok(/api-diary-publish/.test(src));
+  assert.ok(/if \(!isLocalHost\(\)\)/.test(src));
+  assert.ok(src.indexOf("note(\"branch_server\")") < src.indexOf("var indexPromise"));
   assert.ok(/enableRealPublishModeWithServerArm/.test(src));
   assert.ok(/runDryRun/.test(src));
   assert.ok(/evaluateEligibility/.test(src));
@@ -50,6 +54,8 @@ test("UI has confirm + success/fail + retry + details hide", function () {
 test("permissions include github issues owner-only", function () {
   assert.ok(/api-github-issues:POST:create/.test(perm));
   assert.ok(/"api-github-issues:POST:create":\s*\{\s*roles:\s*\["owner"\]/.test(perm));
+  assert.ok(/api-diary-publish:POST/.test(perm));
+  assert.ok(/"api-diary-publish:POST":\s*\{\s*roles:\s*\["owner"\]/.test(perm));
 });
 
 console.log("\nPassed " + passed + " simple-diary-publish tests");

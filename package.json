@@ -11,13 +11,15 @@
     "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js",
     "test:github-issues": "node scripts/test-github-issues.js",
     "test:simple-diary": "node scripts/test-simple-diary-publish.js",
-    "test:phase2": "npm run test:auth && npm run test:line && npm run test:github-issues && npm run test:simple-diary",
+    "test:diary-server-publish": "node scripts/test-diary-server-publish.js",
+    "test:phase2": "npm run test:auth && npm run test:line && npm run test:github-issues && npm run test:simple-diary && npm run test:diary-server-publish",
     "mock:webhook": "node scripts/mock-line-webhook.js",
     "dev:netlify": "npx netlify dev"
   },
   "dependencies": {
     "@netlify/blobs": "^8.1.0",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.2"
+    "@simplewebauthn/server": "^13.3.2",
+    "basic-ftp": "^5.0.5"
   }
 }

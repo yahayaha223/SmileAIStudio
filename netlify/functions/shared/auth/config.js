@@ -71,6 +71,7 @@ function isProductionOnlyPermission(permissionKey) {
   var key = String(permissionKey || "");
   var blocked = [
     "production-publish:POST",
+    "api-diary-publish:POST",
     "ftp-upload:POST",
     "backup-restore:POST",
     "secrets:POST",
@@ -87,7 +88,8 @@ function isProductionOnlyPermission(permissionKey) {
 function isAlwaysEnforcedPermission(permissionKey) {
   var key = String(permissionKey || "");
   return key === "api-github-issues:POST:create" ||
-    key === "api-github-issues:POST:update-agent-status";
+    key === "api-github-issues:POST:update-agent-status" ||
+    key === "api-diary-publish:POST";
 }
 
 /**
