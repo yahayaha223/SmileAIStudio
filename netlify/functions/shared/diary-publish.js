@@ -4,7 +4,12 @@
  * Server-side diary publish: fetch/mutate index.htm, upload images, atomic swap.
  * FTP secrets never leave this module. Tests inject a memory FTP adapter.
  */
-var path = require("path");
+// Static requires so Netlify esbuild inlines these into the function bundle.
+// Runtime path.join of __dirname plus ../../../js is invisible to esbuild
+// and resolves against /var/task after deploy, so those files 404.
+require("../../../js/smile-cp932-map.js");
+var Charset = require("../../../js/smile-charset.js");
+var DiaryHtml = require("../../../js/smile-diary-html.js");
 var env = require("./env");
 var mutate = require("./diary-index-mutate");
 var ftpClient = require("./ftp-client");
@@ -16,15 +21,6 @@ var INDEX_NAME = "index.htm";
 var PUBLISHING_NAME = "index.htm.smile-publishing";
 var PREPUB_BAK_NAME = "index.htm.smile-prepub-bak";
 var SAFETY_BAK_NAME = "index.htm.smile-studio-bak";
-
-function loadCharset() {
-  require(path.join(__dirname, "../../../js/smile-cp932-map.js"));
-  return require(path.join(__dirname, "../../../js/smile-charset.js"));
-}
-
-function loadDiaryHtml() {
-  return require(path.join(__dirname, "../../../js/smile-diary-html.js"));
-}
 
 function fail(code, message, extra) {
   var out = {
@@ -136,8 +132,6 @@ async function publishDiaryOnServer(opts) {
     return fail("ftp_missing", "FTP接続がありません");
   }
 
-  var Charset = loadCharset();
-  var DiaryHtml = loadDiaryHtml();
   var originalBytes = null;
   var swapped = false;
 
