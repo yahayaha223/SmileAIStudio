@@ -6,6 +6,7 @@
  * FTP secrets stay in ftp-client / env.
  */
 var path = require("path");
+var siteFtpPaths = require("./site-ftp-paths");
 
 var MAX_FILE_BYTES = 1500 * 1024;
 var BAK_SUFFIX = ".smile-studio-bak";
@@ -116,19 +117,62 @@ async function publishSiteFiles(opts) {
     return fail("ftp_missing", "FTP接続がありません");
   }
   var incoming = Array.isArray(opts.files) ? opts.files : [];
-  var files = [];
+  var siteRoot = opts.siteRoot || siteFtpPaths.readConfiguredSiteRoot();
+  var repoPaths = [];
   incoming.forEach(function (f) {
-    if (!f) return;
-    var mapped = mapAllowedRepoPath(f.repoPath || f.remotePath);
-    if (!mapped) return;
-    var buf = f.buffer;
-    if (!buf || !buf.length || buf.length > MAX_FILE_BYTES) return;
+    if (f && f.repoPath) repoPaths.push(f.repoPath);
+  });
+  var plan = siteFtpPaths.resolvePublishPlan(repoPaths, siteRoot);
+  if (!plan.ok) {
+    if (ftp && typeof ftp.close === "function") {
+      try { await ftp.close(); } catch (eClosePlan) { /* ignore */ }
+    }
+    return fail(plan.code, plan.userMessage, {
+      finalFtpPath: plan.finalFtpPath || null
+    });
+  }
+
+  var cwd = opts.ftpCwd || "";
+  if (!cwd && typeof ftp.pwd === "function") {
+    try {
+      cwd = await ftp.pwd();
+    } catch (ePwd) {
+      cwd = "";
+    }
+  }
+  if (cwd) {
+    var cwdCheck = siteFtpPaths.assertCwdIsHomepageRoot(cwd);
+    if (!cwdCheck.ok) {
+      if (ftp && typeof ftp.close === "function") {
+        try { await ftp.close(); } catch (eCloseCwd) { /* ignore */ }
+      }
+      return fail(cwdCheck.code, cwdCheck.userMessage, { ftpCwd: cwdCheck.ftpCwd || cwd });
+    }
+  }
+
+  siteFtpPaths.logPathPlan(plan, { ftpCwd: cwd || null });
+
+  var files = [];
+  for (var p = 0; p < plan.files.length; p++) {
+    var mapped = plan.files[p];
+    var src = null;
+    for (var s = 0; s < incoming.length; s++) {
+      if (incoming[s] && incoming[s].repoPath === mapped.repoPath) {
+        src = incoming[s];
+        break;
+      }
+    }
+    var buf = src && src.buffer;
+    if (!buf || !buf.length || buf.length > MAX_FILE_BYTES) {
+      return fail("no_allowed_files", "公開できるファイルがありません");
+    }
     files.push({
       repoPath: mapped.repoPath,
       remotePath: mapped.remotePath,
+      absolutePath: mapped.absolutePath,
       buffer: Buffer.from(buf)
     });
-  });
+  }
   if (!files.length) {
     return fail("no_allowed_files", "公開できるファイルがありません");
   }
@@ -185,9 +229,11 @@ async function publishSiteFiles(opts) {
       userMessage: "公式サイトへ反映しました",
       productionUntouched: false,
       publishedFiles: files.map(function (f) { return f.remotePath; }),
+      publishedAbsolutePaths: files.map(function (f) { return f.absolutePath; }),
       history: {
         publishedAt: new Date().toISOString(),
-        files: files.map(function (f) { return f.repoPath; })
+        files: files.map(function (f) { return f.repoPath; }),
+        finalFtpPaths: files.map(function (f) { return f.absolutePath; })
       }
     };
   } catch (e) {
@@ -220,6 +266,7 @@ module.exports = {
   publishSiteFiles: publishSiteFiles,
   filterAllowedFiles: filterAllowedFiles,
   mapAllowedRepoPath: mapAllowedRepoPath,
+  siteFtpPaths: siteFtpPaths,
   isUnsafePath: isUnsafePath,
   normalizeRepoPath: normalizeRepoPath,
   fail: fail,

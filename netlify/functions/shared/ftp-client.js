@@ -5,6 +5,7 @@
  * Tests inject a memory adapter instead of connecting.
  */
 var env = require("./env");
+var siteFtpPaths = require("./site-ftp-paths");
 var { Readable, Writable } = require("stream");
 
 function getFtpConfig() {
@@ -25,14 +26,22 @@ function isConfigured(cfg) {
 }
 
 function getSiteFtpConfig() {
-  var cfg = getFtpConfig();
-  cfg.remoteDir = env.getEnv("FTP_SITE_REMOTE_DIR", "") || "";
-  return cfg;
+  var diary = getFtpConfig();
+  return {
+    host: diary.host,
+    user: diary.user,
+    password: diary.password,
+    port: diary.port,
+    secure: diary.secure,
+    timeoutMs: diary.timeoutMs,
+    remoteDir: siteFtpPaths.readConfiguredSiteRoot()
+  };
 }
 
 function isSiteConfigured(cfg) {
   cfg = cfg || getSiteFtpConfig();
-  return !!(cfg.host && cfg.user && cfg.password);
+  if (!(cfg.host && cfg.user && cfg.password)) return false;
+  return !!(siteFtpPaths.validateSiteRoot(cfg.remoteDir).ok);
 }
 
 function createMemoryFtp(initialFiles) {
@@ -44,6 +53,7 @@ function createMemoryFtp(initialFiles) {
   return {
     files: files,
     ops: ops,
+    cwd: "/",
     retr: async function (name) {
       if (!Object.prototype.hasOwnProperty.call(files, name)) {
         var err = new Error("not found: " + name);
@@ -79,6 +89,10 @@ function createMemoryFtp(initialFiles) {
     remove: async function (name) {
       delete files[name];
       ops.push({ op: "remove", name: name });
+    },
+    pwd: async function () {
+      ops.push({ op: "pwd" });
+      return this.cwd || "/";
     },
     close: async function () {
       ops.push({ op: "close" });
@@ -149,6 +163,9 @@ async function connectFromEnv(cfg) {
         await client.remove(name);
       } catch (e) { /* missing is fine */ }
     },
+    pwd: async function () {
+      return client.pwd();
+    },
     close: async function () {
       client.close();
     }
@@ -157,8 +174,26 @@ async function connectFromEnv(cfg) {
 
 async function connectSiteFromEnv() {
   var cfg = getSiteFtpConfig();
-  cfg.allowEmptyRemoteDir = true;
-  return connectFromEnv(cfg);
+  var root = siteFtpPaths.validateSiteRoot(cfg.remoteDir);
+  if (!root.ok) {
+    var missing = new Error(root.userMessage);
+    missing.code = root.code || "ftp_not_configured";
+    throw missing;
+  }
+  cfg.remoteDir = root.root;
+  cfg.allowEmptyRemoteDir = false;
+  var ftp = await connectFromEnv(cfg);
+  if (typeof ftp.pwd === "function") {
+    var cwd = await ftp.pwd();
+    var cwdCheck = siteFtpPaths.assertCwdIsHomepageRoot(cwd);
+    if (!cwdCheck.ok) {
+      try { await ftp.close(); } catch (eClose) { /* ignore */ }
+      var badCwd = new Error(cwdCheck.userMessage);
+      badCwd.code = cwdCheck.code || "ftp_cwd_is_diary";
+      throw badCwd;
+    }
+  }
+  return ftp;
 }
 
 module.exports = {
