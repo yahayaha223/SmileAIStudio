@@ -70,8 +70,29 @@ function homepageFtp(initialFiles) {
   return ftp;
 }
 
+function xserverFtp(initialFiles) {
+  var ftp = ftpClient.createMemoryFtp(initialFiles);
+  ftp.cwd = "/";
+  var existing = {
+    "/": true,
+    "/egaonokiroku.co.jp": true,
+    "/egaonokiroku.co.jp/public_html": true,
+    "/egaonokiroku.co.jp/public_html/css": true,
+    "/egaonokiroku.co.jp/public_html/diary": true
+  };
+  ftp.resolveCd = async function (target) {
+    if (target === "/public_html" || !existing[target]) {
+      var err = new Error("550");
+      err.code = 550;
+      throw err;
+    }
+  };
+  return ftp;
+}
+
 async function run() {
   process.env.SITE_FTP_REMOTE_DIR = "/public_html";
+  process.env.SITE_FTP_CWD = "/egaonokiroku.co.jp/public_html";
   process.env.FTP_REMOTE_DIR = "/public_html/diary";
 
   await test("CorporateSite/index.htm → /public_html/index.htm", function () {
@@ -103,8 +124,10 @@ async function run() {
 
   await test("事故再現: 日記用 FTP_REMOTE_DIR をホームページ公開で再利用しない", function () {
     var prevSite = process.env.SITE_FTP_REMOTE_DIR;
+    var prevCwd = process.env.SITE_FTP_CWD;
     var prevAlias = process.env.FTP_SITE_REMOTE_DIR;
     delete process.env.SITE_FTP_REMOTE_DIR;
+    delete process.env.SITE_FTP_CWD;
     delete process.env.FTP_SITE_REMOTE_DIR;
     process.env.FTP_REMOTE_DIR = "/public_html/diary";
     try {
@@ -127,6 +150,7 @@ async function run() {
       }), true);
     } finally {
       process.env.SITE_FTP_REMOTE_DIR = prevSite;
+      process.env.SITE_FTP_CWD = prevCwd;
       if (prevAlias) process.env.FTP_SITE_REMOTE_DIR = prevAlias;
       else delete process.env.FTP_SITE_REMOTE_DIR;
       process.env.FTP_REMOTE_DIR = "/public_html/diary";
@@ -151,13 +175,16 @@ async function run() {
     assert.ok(!/connectSiteFromEnv/.test(diaryApi));
     assert.ok(!/connectSiteFromEnv/.test(diarySrc));
     assert.ok(/remoteDir:\s*env\.getEnv\("FTP_REMOTE_DIR"\)/.test(ftpSrc));
+    assert.ok(/readConfiguredSiteCwd\(\)/.test(ftpSrc));
     assert.ok(/readConfiguredSiteRoot\(\)/.test(ftpSrc));
     assert.ok(!/cfg\.remoteDir = env\.getEnv\("FTP_REMOTE_DIR"\)/.test(
       ftpSrc.slice(ftpSrc.indexOf("function getSiteFtpConfig"))
     ));
     var diaryCfg = ftpClient.getFtpConfig();
     assert.strictEqual(diaryCfg.remoteDir, "/public_html/diary");
-    assert.notStrictEqual(ftpClient.getSiteFtpConfig().remoteDir, "/public_html/diary");
+    assert.strictEqual(ftpClient.getSiteFtpConfig().remoteDir, "/egaonokiroku.co.jp/public_html");
+    assert.notStrictEqual(ftpClient.getSiteFtpConfig().remoteDir, diaryCfg.remoteDir);
+    assert.strictEqual(siteFtpPaths.readConfiguredSiteRoot(), "/public_html");
   });
 
   await test("path traversal and non-allowlisted files are rejected", function () {
@@ -261,6 +288,57 @@ async function run() {
       process.env.SITE_FTP_REMOTE_DIR = "/public_html";
     }
     assert.strictEqual(siteFtpPaths.validateSiteRoot("/public_html").ok, true);
+  });
+
+  await test("Xserver 550: cd /public_html は失敗し SITE_FTP_CWD で公開できる", async function () {
+    var ftpOld = xserverFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var oldCd = await siteFtpPaths.enterSiteFtpCwd(ftpOld, "/public_html");
+    assert.strictEqual(oldCd.ok, false);
+    assert.strictEqual(oldCd.code, "ftp_cwd_550");
+    assert.ok(!ftpOld.ops.some(function (op) { return op.op === "stor"; }));
+
+    var ftp = xserverFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, "/egaonokiroku.co.jp/public_html");
+    assert.strictEqual(entered.ok, true, entered.userMessage || entered.code);
+    assert.strictEqual(entered.cwd, "/egaonokiroku.co.jp/public_html");
+    var ok = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: entered.cwd,
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(ok.ok, true, ok.userMessage || ok.code);
+    assert.strictEqual(ftp.files["index.htm"].toString(), NEW_INDEX);
+    assert.strictEqual(ftp.files["css/top-diary-notice.css"].toString(), NEW_CSS);
+    assert.deepStrictEqual(ok.publishedAbsolutePaths, [
+      "/public_html/index.htm",
+      "/public_html/css/top-diary-notice.css"
+    ]);
+  });
+
+  await test("FTP実CWDが diary 配下または不正ドメイン/.. なら拒否", async function () {
+    assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("/egaonokiroku.co.jp/public_html/diary").ok, false);
+    assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("/egaonokiroku.co.jp/public_html/diary").code, "ftp_cwd_is_diary");
+    assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("/not_a_host/public_html").ok, false);
+    assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("/egaonokiroku.co.jp/../public_html").ok, false);
+    assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("../egaonokiroku.co.jp/public_html").ok, false);
+    var ftp = xserverFtp({ "index.htm": Buffer.from("DIARY-INDEX") });
+    var denied = await siteFtpPaths.enterSiteFtpCwd(ftp, "/egaonokiroku.co.jp/public_html/diary");
+    assert.strictEqual(denied.ok, false);
+    assert.strictEqual(denied.code, "ftp_cwd_is_diary");
+    assert.ok(!ftp.ops.some(function (op) { return op.op === "cd"; }));
+    var siteCfg = ftpClient.getSiteFtpConfig();
+    assert.notStrictEqual(siteCfg.remoteDir, process.env.FTP_REMOTE_DIR);
   });
 
   await test("明示確認なしは拒否 / 2ファイル公開成功mock", async function () {

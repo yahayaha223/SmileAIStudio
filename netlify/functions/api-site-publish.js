@@ -128,7 +128,30 @@ async function handler(event, guard) {
       productionUntouched: true
     }, event);
   }
-  siteFtpPaths.logPathPlan(plan);
+
+  var cwdPlan = siteFtpPaths.validateSiteFtpCwd(siteFtpPaths.readConfiguredSiteCwd());
+  if (!cwdPlan.ok) {
+    await audit.recordAudit({
+      event: "site_publish",
+      success: false,
+      reasonCode: cwdPlan.code || "invalid_ftp_cwd",
+      actorUserId: userId,
+      role: guard && guard.session ? guard.session.roleSnapshot : null,
+      target: "api-site-publish",
+      ipHash: ipHash,
+      meta: {
+        prNumber: prNumber,
+        ftpCwd: cwdPlan.ftpCwd || null
+      }
+    });
+    return http.json(409, {
+      ok: false,
+      error: cwdPlan.code,
+      userMessage: cwdPlan.userMessage || "FTP作業フォルダが不正です",
+      productionUntouched: true
+    }, event);
+  }
+  siteFtpPaths.logPathPlan(plan, { ftpCwd: cwdPlan.cwd });
 
   var ref = pr.mergeCommitSha || pr.headSha || "";
   var files = [];
@@ -163,7 +186,7 @@ async function handler(event, guard) {
     return http.json(503, {
       ok: false,
       error: "ftp_not_configured",
-      userMessage: "公式サイト公開先 SITE_FTP_REMOTE_DIR=/public_html の設定が必要です"
+      userMessage: "公式サイト公開先 SITE_FTP_REMOTE_DIR=/public_html と SITE_FTP_CWD の設定が必要です"
     }, event);
   }
 
@@ -183,7 +206,9 @@ async function handler(event, guard) {
     return http.json(503, {
       ok: false,
       error: e.code || "ftp_connect_failed",
-      userMessage: "公開先に接続できませんでした"
+      userMessage: e.code === "ftp_cwd_550"
+        ? (e.message || "公式サイトのFTP作業フォルダに入れません。SITE_FTP_CWD を確認してください")
+        : "公開先に接続できませんでした"
     }, event);
   }
 
@@ -191,7 +216,8 @@ async function handler(event, guard) {
     userConfirmed: true,
     files: files,
     ftp: ftp,
-    siteRoot: plan.siteRoot
+    siteRoot: plan.siteRoot,
+    ftpCwd: cwdPlan.cwd
   });
 
   await audit.recordAudit({
@@ -207,6 +233,7 @@ async function handler(event, guard) {
       jobId: body.jobId || null,
       files: result.publishedFiles || allowed.map(function (f) { return f.remotePath; }),
       finalFtpPaths: result.publishedAbsolutePaths || plan.files.map(function (f) { return f.absolutePath; }),
+      ftpCwd: cwdPlan.cwd,
       productionUntouched: result.productionUntouched !== false
     }
   });

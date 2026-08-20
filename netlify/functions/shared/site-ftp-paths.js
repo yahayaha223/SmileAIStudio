@@ -63,6 +63,65 @@ function readDiaryRemoteDir() {
   return env.getEnv("FTP_REMOTE_DIR") || "";
 }
 
+function readConfiguredSiteCwd() {
+  return env.getEnv("SITE_FTP_CWD") || "";
+}
+
+function isPlausibleHostname(part) {
+  var s = String(part || "");
+  if (!s) return false;
+  if (s.indexOf("..") >= 0) return false;
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(s);
+}
+
+function validateSiteFtpCwd(raw) {
+  var n = normalizeAbs(raw);
+  if (!n) {
+    return fail(
+      "site_cwd_required",
+      "公式サイトFTP作業フォルダ SITE_FTP_CWD が必要です"
+    );
+  }
+  if (pathHasDiarySegment(n)) {
+    return fail(
+      "ftp_cwd_is_diary",
+      "FTP作業フォルダが日記配下のため、公式サイト公開を中止しました",
+      { ftpCwd: n }
+    );
+  }
+  if (!/\/public_html$/i.test(n)) {
+    return fail(
+      "ftp_cwd_not_site_root",
+      "FTP作業フォルダの末尾は public_html である必要があります",
+      { ftpCwd: n }
+    );
+  }
+  var parts = n.split("/").filter(Boolean);
+  if (parts.length === 2 && !isPlausibleHostname(parts[0])) {
+    return fail(
+      "invalid_ftp_cwd_domain",
+      "FTP作業フォルダのドメインが不正です",
+      { ftpCwd: n }
+    );
+  }
+  if (parts.length !== 1 && parts.length !== 2) {
+    return fail(
+      "invalid_ftp_cwd",
+      "FTP作業フォルダの形式が不正です",
+      { ftpCwd: n }
+    );
+  }
+  var diary = normalizeAbs(readDiaryRemoteDir());
+  if (diary && (n === diary || n.indexOf(diary + "/") === 0)) {
+    return fail(
+      "site_cwd_reuses_diary_dir",
+      "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
+      { ftpCwd: n }
+    );
+  }
+  return { ok: true, cwd: n };
+}
+
 function validateSiteRoot(raw) {
   var n = normalizeAbs(raw);
   if (!n) {
@@ -211,6 +270,50 @@ function logPathPlan(plan, extra) {
   console.log(JSON.stringify(payload));
 }
 
+function ftpErrorLooksLike550(err) {
+  if (!err) return false;
+  var code = err.code != null ? String(err.code) : "";
+  var msg = String(err.message || err);
+  return code === "550" || /(?:^|\D)550(?:\D|$)/.test(msg);
+}
+
+async function enterSiteFtpCwd(ftp, requestedCwd) {
+  var check = validateSiteFtpCwd(requestedCwd);
+  if (!check.ok) return check;
+  if (!ftp || typeof ftp.cd !== "function") {
+    return fail("ftp_missing", "FTP接続がありません");
+  }
+  try {
+    await ftp.cd(check.cwd);
+  } catch (e) {
+    if (ftpErrorLooksLike550(e)) {
+      return fail(
+        "ftp_cwd_550",
+        "公式サイトのFTP作業フォルダに入れません。SITE_FTP_CWD を確認してください",
+        { ftpCwd: check.cwd }
+      );
+    }
+    return fail(
+      "ftp_cwd_failed",
+      "公式サイトのFTP作業フォルダに移動できませんでした",
+      { ftpCwd: check.cwd }
+    );
+  }
+  var pwd = "";
+  if (typeof ftp.pwd === "function") {
+    try {
+      pwd = await ftp.pwd();
+    } catch (ePwd) {
+      pwd = check.cwd;
+    }
+  } else {
+    pwd = check.cwd;
+  }
+  var cwdCheck = assertCwdIsHomepageRoot(pwd || check.cwd);
+  if (!cwdCheck.ok) return cwdCheck;
+  return { ok: true, cwd: cwdCheck.cwd };
+}
+
 module.exports = {
   ALLOWED_SITE_ROOT: ALLOWED_SITE_ROOT,
   ALLOWED_FINAL_PATHS: ALLOWED_FINAL_PATHS,
@@ -218,11 +321,14 @@ module.exports = {
   normalizeAbs: normalizeAbs,
   pathHasDiarySegment: pathHasDiarySegment,
   readConfiguredSiteRoot: readConfiguredSiteRoot,
+  readConfiguredSiteCwd: readConfiguredSiteCwd,
   readDiaryRemoteDir: readDiaryRemoteDir,
   validateSiteRoot: validateSiteRoot,
+  validateSiteFtpCwd: validateSiteFtpCwd,
   joinFtpPath: joinFtpPath,
   resolveOneTarget: resolveOneTarget,
   resolvePublishPlan: resolvePublishPlan,
   assertCwdIsHomepageRoot: assertCwdIsHomepageRoot,
+  enterSiteFtpCwd: enterSiteFtpCwd,
   logPathPlan: logPathPlan
 };
