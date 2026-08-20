@@ -79,8 +79,11 @@ function createMemoryFtp(initialFiles) {
       delete files[from];
       ops.push({ op: "rename", from: from, to: to });
     },
-    list: async function () {
-      ops.push({ op: "list" });
+    list: async function (dir) {
+      ops.push({ op: "list", dir: dir || "." });
+      if (typeof this.listEntries === "function") {
+        return this.listEntries(dir || ".");
+      }
       return Object.keys(files).map(function (name) {
         return { name: name, size: files[name].length };
       });
@@ -121,7 +124,10 @@ function createMemoryFtp(initialFiles) {
 async function connectFromEnv(cfg) {
   cfg = cfg || getFtpConfig();
   var allowEmptyDir = !!(cfg && cfg.allowEmptyRemoteDir);
-  var ready = allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg);
+  var probeOnly = !!(cfg && cfg.probeOnly);
+  var ready = probeOnly
+    ? !!(cfg.host && cfg.user && cfg.password)
+    : (allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg));
   if (!ready) {
     var missing = new Error("FTP接続設定が必要です");
     missing.code = "ftp_not_configured";
@@ -193,7 +199,16 @@ async function connectFromEnv(cfg) {
   };
 }
 
+async function connectLoginOnlyFromEnv() {
+  var cfg = getFtpConfig();
+  cfg.remoteDir = "";
+  cfg.allowEmptyRemoteDir = true;
+  cfg.probeOnly = true;
+  return connectFromEnv(cfg);
+}
+
 async function connectSiteFromEnv() {
+  var siteFtpProbe = require("./site-ftp-probe");
   var cfg = getSiteFtpConfig();
   var root = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
   if (!root.ok) {
@@ -212,9 +227,24 @@ async function connectSiteFromEnv() {
   var ftp = await connectFromEnv(cfg);
   var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, cwd.cwd);
   if (!entered.ok) {
+    var diagnostic = null;
+    if (entered.code === "ftp_cwd_550") {
+      try {
+        diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
+      } catch (eProbe) {
+        diagnostic = { ok: false, code: "probe_failed" };
+      }
+    }
     try { await ftp.close(); } catch (eClose) { /* ignore */ }
     var badCwd = new Error(entered.userMessage);
     badCwd.code = entered.code || "ftp_cwd_failed";
+    if (diagnostic && diagnostic.ok) {
+      badCwd.diagnostic = {
+        loginPwd: diagnostic.loginPwd,
+        rootDirs: diagnostic.rootDirs,
+        publicHtmlHints: diagnostic.publicHtmlHints
+      };
+    }
     throw badCwd;
   }
   return ftp;
@@ -227,5 +257,6 @@ module.exports = {
   isSiteConfigured: isSiteConfigured,
   createMemoryFtp: createMemoryFtp,
   connectFromEnv: connectFromEnv,
+  connectLoginOnlyFromEnv: connectLoginOnlyFromEnv,
   connectSiteFromEnv: connectSiteFromEnv
 };

@@ -31,6 +31,7 @@ var API_PERMISSIONS = {
   "production-publish:POST": { roles: ["owner"], stepUp: true, adminPublishGate: true },
   "api-diary-publish:POST": { roles: ["owner"], stepUp: false },
   "api-site-publish:POST": { roles: ["owner"], stepUp: false },
+  "api-site-ftp-probe:POST": { roles: ["owner"], stepUp: false },
   "ftp-upload:POST": { roles: ["owner"], stepUp: true },
   "user-admin:POST": { roles: ["owner"], stepUp: true },
   "secrets:POST": { roles: ["owner"], stepUp: true },

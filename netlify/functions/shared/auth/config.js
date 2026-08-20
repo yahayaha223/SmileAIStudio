@@ -73,6 +73,7 @@ function isProductionOnlyPermission(permissionKey) {
     "production-publish:POST",
     "api-diary-publish:POST",
     "api-site-publish:POST",
+    "api-site-ftp-probe:POST",
     "ftp-upload:POST",
     "backup-restore:POST",
     "secrets:POST",
@@ -91,7 +92,8 @@ function isAlwaysEnforcedPermission(permissionKey) {
   return key === "api-github-issues:POST:create" ||
     key === "api-github-issues:POST:update-agent-status" ||
     key === "api-diary-publish:POST" ||
-    key === "api-site-publish:POST";
+    key === "api-site-publish:POST" ||
+    key === "api-site-ftp-probe:POST";
 }
 
 /**

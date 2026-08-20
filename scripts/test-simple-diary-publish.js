@@ -57,6 +57,7 @@ test("permissions include github issues owner-only", function () {
   assert.ok(/api-diary-publish:POST/.test(perm));
   assert.ok(/"api-diary-publish:POST":\s*\{\s*roles:\s*\["owner"\]/.test(perm));
   assert.ok(/api-site-publish:POST/.test(perm));
+  assert.ok(/api-site-ftp-probe:POST/.test(perm));
 });
 
 console.log("\nPassed " + passed + " simple-diary-publish tests");
