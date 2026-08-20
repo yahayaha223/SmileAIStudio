@@ -127,6 +127,26 @@ async function run() {
     assert.strictEqual(DevJobs.canPublishToProduction(merged), true);
   });
 
+  test("published homepage job can be republished after merged PR", function () {
+    var job = DevJobs.buildHomepageEditTask("ロールバック後の再公開");
+    DevJobs.applyExternalUpdate(job, {
+      githubPrNumber: 7,
+      prMerged: true,
+      status: "ready_for_publish"
+    });
+    var ready = DevJobs.getById(job.id);
+    ready.status = "published";
+    DevJobs.upsert(ready);
+    var published = DevJobs.getById(job.id);
+    assert.strictEqual(published.status, "published");
+    assert.strictEqual(DevJobs.studioProgressMessage(published), "公開済み");
+    assert.strictEqual(DevJobs.canPublishToProduction(published), false);
+    assert.strictEqual(DevJobs.canRepublishToProduction(published), true);
+    assert.ok(/再公開する/.test(DevJobs.renderProgressHtml(published)));
+    published.prMerged = false;
+    assert.strictEqual(DevJobs.canRepublishToProduction(published), false);
+  });
+
   console.log("\nPassed " + passed + " hp-edit-jobs tests");
 }
 

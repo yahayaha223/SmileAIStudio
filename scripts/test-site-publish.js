@@ -214,6 +214,53 @@ async function run() {
     DevJobs.upsert(job);
     assert.strictEqual(DevJobs.canPublishToProduction(job), false);
     assert.ok(!/btn-hp-site-publish/.test(DevJobs.renderProgressHtml(job)));
+    assert.ok(!/再公開する/.test(DevJobs.renderProgressHtml(job)));
+  });
+
+  await test("published Jobで再公開するが表示される", function () {
+    var job = DevJobs.buildHomepageEditTask("Issue 6 再公開");
+    job.githubPrNumber = 7;
+    job.prMerged = true;
+    job.status = "published";
+    DevJobs.upsert(job);
+    assert.strictEqual(DevJobs.studioProgressMessage(job), "公開済み");
+    assert.strictEqual(DevJobs.canPublishToProduction(job), false);
+    assert.strictEqual(DevJobs.canRepublishToProduction(job), true);
+    assert.strictEqual(DevJobs.canRequestSitePublish(job), true);
+    var html = DevJobs.renderProgressHtml(job);
+    assert.ok(/再公開する/.test(html));
+    assert.ok(/btn-hp-site-republish/.test(html));
+    assert.ok(!/本番へ反映する/.test(html));
+  });
+
+  await test("未merge PRでは再公開不可", function () {
+    var job = DevJobs.buildHomepageEditTask("未merge再公開");
+    job.githubPrNumber = 7;
+    job.prMerged = false;
+    job.status = "published";
+    DevJobs.upsert(job);
+    assert.strictEqual(DevJobs.canRepublishToProduction(job), false);
+    assert.strictEqual(DevJobs.canRequestSitePublish(job), false);
+    assert.ok(!/再公開する/.test(DevJobs.renderProgressHtml(job)));
+    job.status = "waiting_for_review";
+    DevJobs.upsert(job);
+    assert.strictEqual(DevJobs.canRequestSitePublish(job), false);
+  });
+
+  await test("SITE_FTP_REMOTE_DIRが/public_html以外なら拒否", function () {
+    assert.strictEqual(siteFtpPaths.validateSiteRoot("/public_html/diary").ok, false);
+    assert.strictEqual(siteFtpPaths.validateSiteRoot("/tmp").ok, false);
+    assert.strictEqual(siteFtpPaths.validateSiteRoot("").ok, false);
+    process.env.SITE_FTP_REMOTE_DIR = "/public_html/diary";
+    try {
+      assert.strictEqual(siteFtpPaths.readConfiguredSiteRoot(), "/public_html/diary");
+      assert.strictEqual(siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot()).ok, false);
+      var plan = siteFtpPaths.resolvePublishPlan(["CorporateSite/index.htm"], "/public_html/diary");
+      assert.strictEqual(plan.ok, false);
+    } finally {
+      process.env.SITE_FTP_REMOTE_DIR = "/public_html";
+    }
+    assert.strictEqual(siteFtpPaths.validateSiteRoot("/public_html").ok, true);
   });
 
   await test("明示確認なしは拒否 / 2ファイル公開成功mock", async function () {
@@ -395,12 +442,19 @@ async function run() {
     assert.ok(!/api-site-publish/.test(submitFn));
     assert.ok(/showHpPublishConfirm/.test(script));
     assert.ok(/publishHpEditToSite/.test(script));
+    assert.ok(/btn-hp-site-republish/.test(script));
     assert.ok(/公式サイトへ本番反映します/.test(html));
     assert.ok(script.indexOf("function showHpPublishConfirm") < script.indexOf("function publishHpEditToSite"));
     var confirmStart = script.indexOf("function showHpPublishConfirm");
     var confirmEnd = script.indexOf("function publishHpEditToSite");
     var confirmFn = script.slice(confirmStart, confirmEnd);
     assert.ok(!/fetch\(/.test(confirmFn), "first click must not FTP");
+    var republishClick = script.slice(
+      script.indexOf("btn-hp-site-republish"),
+      script.indexOf("btn-hp-site-republish") + 180
+    );
+    assert.ok(/showHpPublishConfirm/.test(republishClick));
+    assert.ok(!/publishHpEditToSite/.test(republishClick));
     assert.ok(/userConfirmed: true/.test(script));
   });
 

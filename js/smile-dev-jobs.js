@@ -203,11 +203,24 @@
     return "変更案を作成中です";
   }
 
-  function canPublishToProduction(job) {
+  function hasMergedHomepagePr(job) {
     if (!job || job.kind !== "homepage-edit") return false;
+    return !!(job.prMerged && job.githubPrNumber);
+  }
+
+  function canPublishToProduction(job) {
+    if (!hasMergedHomepagePr(job)) return false;
     if (job.status === "published") return false;
-    if (!job.prMerged || !job.githubPrNumber) return false;
     return job.status === "ready_for_publish" || job.status === "publish_failed";
+  }
+
+  function canRepublishToProduction(job) {
+    if (!hasMergedHomepagePr(job)) return false;
+    return job.status === "published";
+  }
+
+  function canRequestSitePublish(job) {
+    return canPublishToProduction(job) || canRepublishToProduction(job);
   }
 
   function upsert(job) {
@@ -390,6 +403,10 @@
         lines.push("<p><button type=\"button\" class=\"btn btn--primary btn--touch btn-hp-site-publish\" data-job-id=\"" +
           esc(job.id) + "\" data-pr-number=\"" + esc(String(job.githubPrNumber)) +
           "\">本番へ反映する</button></p>");
+      } else if (canRepublishToProduction(job)) {
+        lines.push("<p><button type=\"button\" class=\"btn btn--secondary btn--touch btn-hp-site-republish\" data-job-id=\"" +
+          esc(job.id) + "\" data-pr-number=\"" + esc(String(job.githubPrNumber)) +
+          "\">再公開する</button></p>");
       }
     } else if (job.githubIssueNumber &&
       (job.status === "issue_created" || job.status === "waiting_for_agent")) {
@@ -440,6 +457,8 @@
     homepageEditJobs: homepageEditJobs,
     studioProgressMessage: studioProgressMessage,
     canPublishToProduction: canPublishToProduction,
+    canRepublishToProduction: canRepublishToProduction,
+    canRequestSitePublish: canRequestSitePublish,
     statusLabel: statusLabel,
     toIssueMarkdown: toIssueMarkdown,
     applyGithubIssueResult: applyGithubIssueResult,
