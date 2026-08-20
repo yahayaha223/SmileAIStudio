@@ -313,6 +313,19 @@ async function run() {
     assert.ok(!/FTP_PASSWORD\s*=\s*['"]/.test(api));
   });
 
+  await test("日記公開は FTP_REMOTE_DIR=/public_html/diary の index.htm のまま", function () {
+    process.env.FTP_REMOTE_DIR = "/public_html/diary";
+    process.env.SITE_FTP_REMOTE_DIR = "/public_html";
+    var diaryCfg = ftpClient.getFtpConfig();
+    var siteCfg = ftpClient.getSiteFtpConfig();
+    assert.strictEqual(diaryCfg.remoteDir, "/public_html/diary");
+    assert.strictEqual(siteCfg.remoteDir, "/public_html");
+    assert.notStrictEqual(siteCfg.remoteDir, diaryCfg.remoteDir);
+    var api = fs.readFileSync(path.join(__dirname, "..", "netlify", "functions", "api-diary-publish.js"), "utf8");
+    assert.ok(/connectFromEnv\(\)/.test(api));
+    assert.ok(!/connectSiteFromEnv/.test(api));
+  });
+
   console.log("\nPassed " + passed + " diary-server-publish tests" + (failed ? (" failed=" + failed) : ""));
   if (failed) process.exit(1);
 }

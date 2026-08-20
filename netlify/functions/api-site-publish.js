@@ -10,6 +10,7 @@ var protectApi = require("./shared/auth/protect-api");
 var rateLimit = require("./shared/auth/rate-limit");
 var audit = require("./shared/auth/audit");
 var sitePublish = require("./shared/site-publish");
+var siteFtpPaths = require("./shared/site-ftp-paths");
 var ftpClient = require("./shared/ftp-client");
 var githubIssues = require("./shared/github-issues");
 
@@ -102,6 +103,33 @@ async function handler(event, guard) {
     }, event);
   }
 
+  var siteRoot = siteFtpPaths.readConfiguredSiteRoot();
+  var plan = siteFtpPaths.resolvePublishPlan(allowed.map(function (f) {
+    return f.repoPath;
+  }), siteRoot);
+  if (!plan.ok) {
+    await audit.recordAudit({
+      event: "site_publish",
+      success: false,
+      reasonCode: plan.code || "invalid_ftp_path",
+      actorUserId: userId,
+      role: guard && guard.session ? guard.session.roleSnapshot : null,
+      target: "api-site-publish",
+      ipHash: ipHash,
+      meta: {
+        prNumber: prNumber,
+        finalFtpPath: plan.finalFtpPath || null
+      }
+    });
+    return http.json(409, {
+      ok: false,
+      error: plan.code,
+      userMessage: plan.userMessage || "公開先パスが不正です",
+      productionUntouched: true
+    }, event);
+  }
+  siteFtpPaths.logPathPlan(plan);
+
   var ref = pr.mergeCommitSha || pr.headSha || "";
   var files = [];
   for (var i = 0; i < allowed.length; i++) {
@@ -135,7 +163,7 @@ async function handler(event, guard) {
     return http.json(503, {
       ok: false,
       error: "ftp_not_configured",
-      userMessage: "公開先の接続設定が必要です"
+      userMessage: "公式サイト公開先 SITE_FTP_REMOTE_DIR=/public_html の設定が必要です"
     }, event);
   }
 
@@ -162,7 +190,8 @@ async function handler(event, guard) {
   var result = await sitePublish.publishSiteFiles({
     userConfirmed: true,
     files: files,
-    ftp: ftp
+    ftp: ftp,
+    siteRoot: plan.siteRoot
   });
 
   await audit.recordAudit({
@@ -177,6 +206,7 @@ async function handler(event, guard) {
       prNumber: prNumber,
       jobId: body.jobId || null,
       files: result.publishedFiles || allowed.map(function (f) { return f.remotePath; }),
+      finalFtpPaths: result.publishedAbsolutePaths || plan.files.map(function (f) { return f.absolutePath; }),
       productionUntouched: result.productionUntouched !== false
     }
   });
@@ -196,6 +226,7 @@ async function handler(event, guard) {
     code: result.code,
     userMessage: result.userMessage,
     publishedFiles: result.publishedFiles,
+    publishedAbsolutePaths: result.publishedAbsolutePaths,
     productionUntouched: false,
     history: result.history || null
   }, event);
