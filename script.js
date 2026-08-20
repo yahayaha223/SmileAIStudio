@@ -15389,6 +15389,8 @@
   }
 
   var currentHpEditJobId = null;
+  var pendingHpPublishJobId = null;
+  var hpSitePublishBusy = false;
   var aiJobsSyncTimer = null;
   var aiJobsSyncInFlight = false;
 
@@ -15570,6 +15572,86 @@
     });
   }
 
+  function hideHpPublishConfirm() {
+    var box = document.getElementById("hp-edit-publish-confirm");
+    if (box) box.hidden = true;
+    pendingHpPublishJobId = null;
+  }
+
+  function showHpPublishConfirm(jobId) {
+    var job = DevJobs && DevJobs.getById(jobId);
+    if (!job || !(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job))) {
+      showToast("まだ本番へ反映できません");
+      return;
+    }
+    pendingHpPublishJobId = job.id;
+    currentHpEditJobId = job.id;
+    var box = document.getElementById("hp-edit-publish-confirm");
+    if (box) box.hidden = false;
+  }
+
+  function publishHpEditToSite(jobId) {
+    var status = document.getElementById("hp-edit-status");
+    if (hpSitePublishBusy) return;
+    var job = DevJobs && DevJobs.getById(jobId);
+    if (!job) {
+      if (status) status.textContent = "公開する依頼が見つかりません。";
+      return;
+    }
+    if (!(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job))) {
+      if (status) status.textContent = "PRがmainへmergeされるまで本番反映できません。";
+      return;
+    }
+    hpSitePublishBusy = true;
+    if (status) status.textContent = "本番へ反映しています…";
+    var csrf = getStudioCsrfToken();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    fetch("/.netlify/functions/api-site-publish", {
+      method: "POST",
+      headers: headers,
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        userConfirmed: true,
+        jobId: job.id,
+        prNumber: job.githubPrNumber
+      })
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, error: "invalid_json" };
+      });
+    }).then(function (data) {
+      data = data || {};
+      if (data.ok) {
+        job.status = "published";
+        DevJobs.upsert(job);
+        if (status) status.textContent = "公開済み";
+        showToast("公式サイトへ反映しました");
+      } else {
+        job.status = "publish_failed";
+        job.failureReason = data.userMessage || "公開失敗";
+        DevJobs.upsert(job);
+        if (status) status.textContent = "公開失敗";
+        showToast(data.userMessage || "公開失敗");
+      }
+      renderHpEditJobs();
+      refreshHpEditStatus();
+    }).catch(function () {
+      job.status = "publish_failed";
+      job.failureReason = "通信に失敗しました";
+      DevJobs.upsert(job);
+      if (status) status.textContent = "公開失敗";
+      renderHpEditJobs();
+    }).finally(function () {
+      hpSitePublishBusy = false;
+      hideHpPublishConfirm();
+    });
+  }
+
   function openHpEditModal() {
     setModalOpen("hp-edit-modal", true);
     var ta = document.getElementById("hp-edit-request");
@@ -15716,13 +15798,26 @@
     openWebCenter();
   });
 
+  onClick("btn-hp-edit-publish-yes", function () {
+    var id = pendingHpPublishJobId;
+    if (!id) return;
+    publishHpEditToSite(id);
+  });
+  onClick("btn-hp-edit-publish-no", hideHpPublishConfirm);
+
   var hpEditJobsListEl = document.getElementById("hp-edit-jobs-list");
   if (hpEditJobsListEl) {
     hpEditJobsListEl.addEventListener("click", function (ev) {
       var t = ev.target;
-      if (!t || !t.classList || !t.classList.contains("btn-ai-job-retry")) return;
+      if (!t || !t.classList) return;
       var id = t.getAttribute("data-job-id");
-      if (id) submitHpEditRequest(id);
+      if (t.classList.contains("btn-ai-job-retry")) {
+        if (id) submitHpEditRequest(id);
+        return;
+      }
+      if (t.classList.contains("btn-hp-site-publish")) {
+        if (id) showHpPublishConfirm(id);
+      }
     });
   }
 

@@ -340,6 +340,116 @@ async function getIssue(number) {
   return { ok: true, issue: res.json };
 }
 
+function parseJobKind(body) {
+  var m = String(body || "").match(/##\s*Job Kind\s*\n\s*([^\n]+)/i);
+  if (!m) return null;
+  return String(m[1] || "").trim() || null;
+}
+
+function hasHomepagePublishFiles(filenames) {
+  var allow = {
+    "CorporateSite/index.htm": true,
+    "CorporateSite/css/top-diary-notice.css": true
+  };
+  return (filenames || []).some(function (n) {
+    var key = String(n || "").replace(/\\/g, "/").replace(/^\.\//, "").trim();
+    return !!allow[key];
+  });
+}
+
+async function getPullRequest(number) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です" };
+  }
+  var n = Number(number);
+  if (!isFinite(n) || n < 1) {
+    return { ok: false, error: "invalid_pr", userMessage: "PR番号が不正です" };
+  }
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/pulls/" + encodeURIComponent(String(n));
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "PRを取得できませんでした",
+      httpStatus: res.status
+    };
+  }
+  var p = res.json;
+  var baseRef = p.base && p.base.ref ? String(p.base.ref) : "";
+  return {
+    ok: true,
+    number: p.number || n,
+    merged: p.merged === true || !!(p.merged_at),
+    mergedAt: p.merged_at || null,
+    state: p.state || "",
+    htmlUrl: p.html_url || p.url || "",
+    baseRef: baseRef,
+    mergeCommitSha: p.merge_commit_sha || "",
+    headSha: p.head && p.head.sha ? String(p.head.sha) : ""
+  };
+}
+
+async function listPullFiles(number) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", filenames: [] };
+  }
+  var n = Number(number);
+  if (!isFinite(n) || n < 1) {
+    return { ok: false, error: "invalid_pr", filenames: [] };
+  }
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/pulls/" + encodeURIComponent(String(n)) + "/files?per_page=100";
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !Array.isArray(res.json)) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "変更ファイルを取得できませんでした",
+      filenames: []
+    };
+  }
+  var filenames = res.json.map(function (f) { return f && f.filename; }).filter(Boolean);
+  return { ok: true, filenames: filenames };
+}
+
+async function getRepoFileContent(repoPath, ref) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured" };
+  }
+  var p = String(repoPath || "").replace(/\\/g, "/").replace(/^\//, "");
+  if (!p || p.indexOf("..") >= 0) {
+    return { ok: false, error: "unsafe_path" };
+  }
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/contents/" + p.split("/").map(encodeURIComponent).join("/");
+  if (ref) path += "?ref=" + encodeURIComponent(String(ref));
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "ファイルを取得できませんでした"
+    };
+  }
+  if (res.json.type && res.json.type !== "file") {
+    return { ok: false, error: "not_a_file" };
+  }
+  var b64 = String(res.json.content || "").replace(/\s+/g, "");
+  var buf;
+  try {
+    buf = Buffer.from(b64, "base64");
+  } catch (e) {
+    return { ok: false, error: "decode_failed" };
+  }
+  if (!buf.length) return { ok: false, error: "empty_file" };
+  return { ok: true, buffer: buf, path: p, sha: res.json.sha || null };
+}
+
 async function findRelatedPullRequest(issueNumber) {
   var cfg = getGithubConfig();
   if (!isConfigured(cfg)) return { ok: false, pr: null };
@@ -419,13 +529,35 @@ async function syncIssueState(number) {
     var related = await findRelatedPullRequest(number);
     if (related && related.pr) prInfo = related.pr;
   }
-  if (prInfo && agentStatus === "READY_FOR_AGENT") {
-    // PR exists → treat as ready for review unless agent already advanced
+
+  var prMerged = false;
+  var prBaseRef = "";
+  var mergeCommitSha = "";
+  var changedFiles = [];
+  if (prInfo && prInfo.number) {
+    var pull = await getPullRequest(prInfo.number);
+    if (pull && pull.ok) {
+      prMerged = !!pull.merged;
+      prBaseRef = pull.baseRef || "";
+      mergeCommitSha = pull.mergeCommitSha || pull.headSha || "";
+      prInfo.url = pull.htmlUrl || prInfo.url;
+      var files = await listPullFiles(prInfo.number);
+      if (files && files.ok) changedFiles = files.filenames || [];
+    }
+  }
+
+  if (prInfo && agentStatus === "READY_FOR_AGENT" && !prMerged) {
     agentStatus = "READY_FOR_REVIEW";
   }
+  var jobKind = parseJobKind(body);
   var jobStatus = mapAgentStatusToJobStatus(agentStatus, {
     githubPrNumber: prInfo && prInfo.number
   }) || "waiting_for_agent";
+  var baseOk = String(prBaseRef || "").toLowerCase() === "main" ||
+    String(prBaseRef || "").toLowerCase() === "master";
+  if (prMerged && baseOk && hasHomepagePublishFiles(changedFiles)) {
+    jobStatus = "ready_for_publish";
+  }
 
   return {
     ok: true,
@@ -435,9 +567,14 @@ async function syncIssueState(number) {
       agentStatus: agentStatus,
       status: jobStatus,
       jobId: jobId,
+      jobKind: jobKind,
       branchName: branchName,
       githubPrNumber: prInfo ? prInfo.number : null,
       githubPrUrl: prInfo ? prInfo.url : null,
+      prMerged: prMerged,
+      prBaseRef: prBaseRef,
+      mergeCommitSha: mergeCommitSha,
+      changedFiles: changedFiles,
       issueState: issue.state || "open",
       issueTitle: issue.title || ""
     }
@@ -455,6 +592,7 @@ module.exports = {
   isAgentKickoffComment: isAgentKickoffComment,
   shouldStartAgent: shouldStartAgent,
   parseJobId: parseJobId,
+  parseJobKind: parseJobKind,
   parseBranchName: parseBranchName,
   parsePrFromBody: parsePrFromBody,
   ensureAgentStatus: ensureAgentStatus,
@@ -463,6 +601,9 @@ module.exports = {
   postIssueComment: postIssueComment,
   postAgentKickoffComment: postAgentKickoffComment,
   getIssue: getIssue,
+  getPullRequest: getPullRequest,
+  listPullFiles: listPullFiles,
+  getRepoFileContent: getRepoFileContent,
   findRelatedPullRequest: findRelatedPullRequest,
   updateIssueAgentStatus: updateIssueAgentStatus,
   syncIssueState: syncIssueState,

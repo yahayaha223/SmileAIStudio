@@ -110,6 +110,23 @@ async function run() {
     assert.strictEqual(github.shouldStartAgent(job.agentStatus, github.AGENT_KICKOFF_COMMENT), true);
   });
 
+  test("merged homepage job is ready to publish, unmerged is not", function () {
+    var job = DevJobs.buildHomepageEditTask("お知らせ");
+    DevJobs.applyExternalUpdate(job, {
+      githubPrNumber: 7,
+      prMerged: false,
+      status: "waiting_for_review"
+    });
+    var open = DevJobs.getById(job.id);
+    assert.strictEqual(DevJobs.studioProgressMessage(open), "確認してください");
+    assert.strictEqual(DevJobs.canPublishToProduction(open), false);
+    DevJobs.applyExternalUpdate(open, { githubPrNumber: 7, prMerged: true });
+    var merged = DevJobs.getById(job.id);
+    assert.strictEqual(merged.status, "ready_for_publish");
+    assert.strictEqual(DevJobs.studioProgressMessage(merged), "変更案は承認済みです。本番へ反映できます");
+    assert.strictEqual(DevJobs.canPublishToProduction(merged), true);
+  });
+
   console.log("\nPassed " + passed + " hp-edit-jobs tests");
 }
 

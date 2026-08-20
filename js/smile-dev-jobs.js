@@ -19,8 +19,11 @@
     fixing: "修正中",
     pr_ready: "確認してください",
     waiting_for_review: "確認してください",
+    ready_for_publish: "本番へ反映できます",
     approved: "承認済み",
     deploying: "公開準備中",
+    published: "公開済み",
+    publish_failed: "公開失敗",
     completed: "完了",
     failed: "失敗",
     cancelled: "キャンセル"
@@ -181,16 +184,30 @@
     if (st === "ready_for_issue" && job.lastGithubError) {
       return "依頼は保存しましたが、GitHubへ送れませんでした。再送信できます。";
     }
+    if (st === "published") return "公開済み";
+    if (st === "publish_failed") return "公開失敗";
+    if (st === "ready_for_publish" || (job.prMerged && st !== "published")) {
+      return "変更案は承認済みです。本番へ反映できます";
+    }
     if (
       st === "waiting_for_review" ||
       st === "pr_ready" ||
-      st === "approved" ||
-      st === "completed" ||
-      job.githubPrNumber
+      st === "approved"
     ) {
       return "確認してください";
     }
+    if (job.githubPrNumber && !job.prMerged && st !== "waiting_for_agent" && st !== "agent_working" &&
+      st !== "testing" && st !== "fixing" && st !== "ready_for_issue" && st !== "issue_created") {
+      return "確認してください";
+    }
     return "変更案を作成中です";
+  }
+
+  function canPublishToProduction(job) {
+    if (!job || job.kind !== "homepage-edit") return false;
+    if (job.status === "published") return false;
+    if (!job.prMerged || !job.githubPrNumber) return false;
+    return job.status === "ready_for_publish" || job.status === "publish_failed";
   }
 
   function upsert(job) {
@@ -214,7 +231,7 @@
   function jobsNeedingSync() {
     return load().filter(function (j) {
       if (!j || !j.githubIssueNumber) return false;
-      if (j.status === "completed" || j.status === "cancelled") return false;
+      if (j.status === "completed" || j.status === "cancelled" || j.status === "published") return false;
       return true;
     }).slice(0, 12);
   }
@@ -253,13 +270,23 @@
     if (update.githubIssueUrl) job.githubIssueUrl = update.githubIssueUrl;
     if (update.githubPrNumber != null) job.githubPrNumber = update.githubPrNumber;
     if (update.githubPrUrl) job.githubPrUrl = update.githubPrUrl;
+    if (typeof update.prMerged === "boolean") job.prMerged = update.prMerged;
+    if (update.prBaseRef) job.prBaseRef = update.prBaseRef;
+    if (update.mergeCommitSha) job.mergeCommitSha = update.mergeCommitSha;
+    if (Array.isArray(update.changedFiles)) job.changedFiles = update.changedFiles.slice(0, 40);
     if (update.branchName) job.branchName = update.branchName;
     if (update.previewUrl) job.previewUrl = update.previewUrl;
     if (update.testSummary) job.testSummary = update.testSummary;
     if (update.failureReason) job.failureReason = update.failureReason;
     job.lastSyncedAt = new Date().toISOString();
 
-    if (update.status && STATUS_JA[update.status] != null) {
+    if (job.status === "published") {
+      return upsert(job);
+    }
+
+    if (update.prMerged) {
+      job.status = "ready_for_publish";
+    } else if (update.status && STATUS_JA[update.status] != null) {
       job.status = update.status;
     } else if (update.agentStatus && AGENT_TO_JOB[update.agentStatus]) {
       job.status = AGENT_TO_JOB[update.agentStatus];
@@ -359,6 +386,11 @@
       if (job.githubIssueNumber) {
         lines.push("<p>GitHub Issue #" + esc(String(job.githubIssueNumber)) + "</p>");
       }
+      if (canPublishToProduction(job)) {
+        lines.push("<p><button type=\"button\" class=\"btn btn--primary btn--touch btn-hp-site-publish\" data-job-id=\"" +
+          esc(job.id) + "\" data-pr-number=\"" + esc(String(job.githubPrNumber)) +
+          "\">本番へ反映する</button></p>");
+      }
     } else if (job.githubIssueNumber &&
       (job.status === "issue_created" || job.status === "waiting_for_agent")) {
       lines.push("<p>✅ 開発依頼を作成しました</p>");
@@ -407,6 +439,7 @@
     buildHomepageEditTask: buildHomepageEditTask,
     homepageEditJobs: homepageEditJobs,
     studioProgressMessage: studioProgressMessage,
+    canPublishToProduction: canPublishToProduction,
     statusLabel: statusLabel,
     toIssueMarkdown: toIssueMarkdown,
     applyGithubIssueResult: applyGithubIssueResult,

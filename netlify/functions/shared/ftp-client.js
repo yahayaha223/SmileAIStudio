@@ -24,6 +24,17 @@ function isConfigured(cfg) {
   return !!(cfg.host && cfg.user && cfg.password && cfg.remoteDir);
 }
 
+function getSiteFtpConfig() {
+  var cfg = getFtpConfig();
+  cfg.remoteDir = env.getEnv("FTP_SITE_REMOTE_DIR", "") || "";
+  return cfg;
+}
+
+function isSiteConfigured(cfg) {
+  cfg = cfg || getSiteFtpConfig();
+  return !!(cfg.host && cfg.user && cfg.password);
+}
+
 function createMemoryFtp(initialFiles) {
   var files = {};
   Object.keys(initialFiles || {}).forEach(function (k) {
@@ -77,7 +88,9 @@ function createMemoryFtp(initialFiles) {
 
 async function connectFromEnv(cfg) {
   cfg = cfg || getFtpConfig();
-  if (!isConfigured(cfg)) {
+  var allowEmptyDir = !!(cfg && cfg.allowEmptyRemoteDir);
+  var ready = allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg);
+  if (!ready) {
     var missing = new Error("FTP接続設定が必要です");
     missing.code = "ftp_not_configured";
     throw missing;
@@ -142,9 +155,18 @@ async function connectFromEnv(cfg) {
   };
 }
 
+async function connectSiteFromEnv() {
+  var cfg = getSiteFtpConfig();
+  cfg.allowEmptyRemoteDir = true;
+  return connectFromEnv(cfg);
+}
+
 module.exports = {
   getFtpConfig: getFtpConfig,
   isConfigured: isConfigured,
+  getSiteFtpConfig: getSiteFtpConfig,
+  isSiteConfigured: isSiteConfigured,
   createMemoryFtp: createMemoryFtp,
-  connectFromEnv: connectFromEnv
+  connectFromEnv: connectFromEnv,
+  connectSiteFromEnv: connectSiteFromEnv
 };
