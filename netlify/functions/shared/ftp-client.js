@@ -34,14 +34,16 @@ function getSiteFtpConfig() {
     port: diary.port,
     secure: diary.secure,
     timeoutMs: diary.timeoutMs,
-    remoteDir: siteFtpPaths.readConfiguredSiteRoot()
+    remoteDir: siteFtpPaths.readConfiguredSiteCwd()
   };
 }
 
 function isSiteConfigured(cfg) {
   cfg = cfg || getSiteFtpConfig();
   if (!(cfg.host && cfg.user && cfg.password)) return false;
-  return !!(siteFtpPaths.validateSiteRoot(cfg.remoteDir).ok);
+  var logical = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
+  var cwd = siteFtpPaths.validateSiteFtpCwd(cfg.remoteDir || siteFtpPaths.readConfiguredSiteCwd());
+  return !!(logical.ok && cwd.ok);
 }
 
 function createMemoryFtp(initialFiles) {
@@ -93,6 +95,22 @@ function createMemoryFtp(initialFiles) {
     pwd: async function () {
       ops.push({ op: "pwd" });
       return this.cwd || "/";
+    },
+    cd: async function (dir) {
+      var raw = String(dir || "");
+      var target = raw.charAt(0) === "/"
+        ? siteFtpPaths.normalizeAbs(raw)
+        : siteFtpPaths.normalizeAbs((this.cwd || "/") + "/" + raw);
+      ops.push({ op: "cd", dir: raw, target: target });
+      if (typeof this.resolveCd === "function") {
+        await this.resolveCd(target, raw);
+      }
+      if (!target) {
+        var bad = new Error("550");
+        bad.code = 550;
+        throw bad;
+      }
+      this.cwd = target;
     },
     close: async function () {
       ops.push({ op: "close" });
@@ -166,6 +184,9 @@ async function connectFromEnv(cfg) {
     pwd: async function () {
       return client.pwd();
     },
+    cd: async function (dir) {
+      await client.cd(dir);
+    },
     close: async function () {
       client.close();
     }
@@ -174,24 +195,27 @@ async function connectFromEnv(cfg) {
 
 async function connectSiteFromEnv() {
   var cfg = getSiteFtpConfig();
-  var root = siteFtpPaths.validateSiteRoot(cfg.remoteDir);
+  var root = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
   if (!root.ok) {
-    var missing = new Error(root.userMessage);
-    missing.code = root.code || "ftp_not_configured";
-    throw missing;
+    var missingRoot = new Error(root.userMessage);
+    missingRoot.code = root.code || "ftp_not_configured";
+    throw missingRoot;
   }
-  cfg.remoteDir = root.root;
-  cfg.allowEmptyRemoteDir = false;
+  var cwd = siteFtpPaths.validateSiteFtpCwd(cfg.remoteDir);
+  if (!cwd.ok) {
+    var missingCwd = new Error(cwd.userMessage);
+    missingCwd.code = cwd.code || "ftp_not_configured";
+    throw missingCwd;
+  }
+  cfg.remoteDir = "";
+  cfg.allowEmptyRemoteDir = true;
   var ftp = await connectFromEnv(cfg);
-  if (typeof ftp.pwd === "function") {
-    var cwd = await ftp.pwd();
-    var cwdCheck = siteFtpPaths.assertCwdIsHomepageRoot(cwd);
-    if (!cwdCheck.ok) {
-      try { await ftp.close(); } catch (eClose) { /* ignore */ }
-      var badCwd = new Error(cwdCheck.userMessage);
-      badCwd.code = cwdCheck.code || "ftp_cwd_is_diary";
-      throw badCwd;
-    }
+  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, cwd.cwd);
+  if (!entered.ok) {
+    try { await ftp.close(); } catch (eClose) { /* ignore */ }
+    var badCwd = new Error(entered.userMessage);
+    badCwd.code = entered.code || "ftp_cwd_failed";
+    throw badCwd;
   }
   return ftp;
 }
