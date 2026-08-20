@@ -442,6 +442,13 @@
         <p class="form-hint">本番反映は必ず確認後です。変更案の作成を開始します。</p>
         <p class="simple-diary__status" id="hp-edit-status" role="status" aria-live="polite"></p>
         <div id="hp-edit-jobs-list" class="ai-jobs-list" aria-live="polite"></div>
+        <div id="hp-edit-publish-confirm" class="simple-diary__confirm" hidden>
+          <p>公式サイトへ本番反映します。よろしいですか？</p>
+          <div class="simple-diary__confirm-actions">
+            <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-hp-edit-publish-yes">反映する</button>
+            <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-hp-edit-publish-no">やめる</button>
+          </div>
+        </div>
       </div>
       <div class="modal__actions modal__actions--stack">
         <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-hp-edit-submit">変更案をつくる</button>
