@@ -201,14 +201,21 @@ async function handler(event, guard) {
       actorUserId: userId,
       role: guard && guard.session ? guard.session.roleSnapshot : null,
       target: "api-site-publish",
-      ipHash: ipHash
+      ipHash: ipHash,
+      meta: {
+        ftpCwd: siteFtpPaths.readConfiguredSiteCwd() || null,
+        loginPwd: e.diagnostic && e.diagnostic.loginPwd ? e.diagnostic.loginPwd : null,
+        rootDirs: e.diagnostic && e.diagnostic.rootDirs ? e.diagnostic.rootDirs : null
+      }
     });
     return http.json(503, {
       ok: false,
       error: e.code || "ftp_connect_failed",
       userMessage: e.code === "ftp_cwd_550"
         ? (e.message || "公式サイトのFTP作業フォルダに入れません。SITE_FTP_CWD を確認してください")
-        : "公開先に接続できませんでした"
+        : "公開先に接続できませんでした",
+      diagnostic: e.diagnostic || null,
+      productionUntouched: true
     }, event);
   }
 
