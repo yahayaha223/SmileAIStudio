@@ -241,6 +241,7 @@ async function publishSiteFiles(opts) {
       return fail(cwdCheck.code, cwdCheck.userMessage, { ftpCwd: cwdCheck.ftpCwd || cwd });
     }
     if (siteFtpPaths.normalizeAbs(cwd) === "/") {
+      var loginDirs = null;
       if (!ftp || typeof ftp.list !== "function") {
         if (ftp && typeof ftp.close === "function") {
           try { await ftp.close(); } catch (eCloseListFtp) { /* ignore */ }
@@ -250,7 +251,6 @@ async function publishSiteFiles(opts) {
           productionUntouched: true
         });
       }
-      var loginDirs = null;
       try {
         loginDirs = siteFtpPaths.listDirectoryNames(await ftp.list("."));
       } catch (eListHome) {

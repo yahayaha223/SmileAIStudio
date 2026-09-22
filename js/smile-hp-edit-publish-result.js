@@ -15,6 +15,7 @@
   var REASON_JA = {
     ftp_cwd_550: "FTPの作業フォルダへ移動できませんでした",
     ftp_cwd_restore_failed: "FTPの作業フォルダ処理で失敗しました",
+    site_cwd_reuses_diary_dir: "公式サイトの作業フォルダが日記フォルダと同じです",
     backup_failed: "公開前バックアップを作成できませんでした",
     upload_failed: "新しいファイルをアップロードできませんでした",
     swap_failed: "新しいファイルへの切替に失敗しました",

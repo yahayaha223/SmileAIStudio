@@ -25,6 +25,52 @@ function isConfigured(cfg) {
   return !!(cfg.host && cfg.user && cfg.password && cfg.remoteDir);
 }
 
+/**
+ * Diary connect: never CWD /. If FTP_REMOTE_DIR=/ and diary/ exists, cd diary.
+ */
+async function enterDiaryRemoteDir(client, remoteDir) {
+  var plan = siteFtpPaths.resolveDiaryFtpEnter(remoteDir);
+  if (plan && plan.needsRootDirs) {
+    var dirs = [];
+    try {
+      dirs = siteFtpPaths.listDirectoryNames(await client.list("."));
+    } catch (eList) {
+      return {
+        ok: false,
+        code: "ftp_list_failed",
+        userMessage: "ログイン直後のフォルダ一覧を取得できませんでした"
+      };
+    }
+    plan = siteFtpPaths.resolveDiaryFtpEnter(remoteDir, dirs);
+  }
+  if (!plan || !plan.ok) {
+    return plan || {
+      ok: false,
+      code: "diary_remote_failed",
+      userMessage: "日記FTP先を確認できませんでした"
+    };
+  }
+  if (plan.cd) {
+    if (siteFtpPaths.normalizeAbs(plan.cd) === "/") {
+      return {
+        ok: false,
+        code: "diary_remote_cd_slash",
+        userMessage: "日記FTP先で CWD / は使いません"
+      };
+    }
+    try {
+      await client.cd(plan.cd);
+    } catch (eCd) {
+      return {
+        ok: false,
+        code: "diary_remote_failed",
+        userMessage: "日記FTP先に入れませんでした"
+      };
+    }
+  }
+  return plan;
+}
+
 function getSiteFtpConfig() {
   return {
     host: env.getEnv("SITE_FTP_HOST"),
@@ -294,7 +340,13 @@ async function connectFromEnv(cfg) {
     secure: !!cfg.secure
   });
   if (cfg.remoteDir) {
-    await client.cd(cfg.remoteDir);
+    var diaryEnter = await enterDiaryRemoteDir(client, cfg.remoteDir);
+    if (!diaryEnter.ok) {
+      try { client.close(); } catch (eCloseDiary) { /* ignore */ }
+      var badDiary = new Error(diaryEnter.userMessage || "日記FTP先に入れません");
+      badDiary.code = diaryEnter.code || "diary_remote_failed";
+      throw badDiary;
+    }
   }
   return {
     retr: async function (name) {
@@ -480,6 +532,7 @@ module.exports = {
   connectLoginOnlyFromEnv: connectLoginOnlyFromEnv,
   enterSiteCwdAfterLoginProbe: enterSiteCwdAfterLoginProbe,
   connectSiteFromEnv: connectSiteFromEnv,
+  enterDiaryRemoteDir: enterDiaryRemoteDir,
   restoreFtpWorkingDir: restoreFtpWorkingDir,
   ensureDirKeepingCwd: ensureDirKeepingCwd,
   relativePathDepth: relativePathDepth

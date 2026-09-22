@@ -55,6 +55,22 @@ function pathHasDiarySegment(p) {
   return false;
 }
 
+/**
+ * True when the homepage FTP cwd is the diary article folder.
+ * SITE_FTP_CWD=/ and FTP_REMOTE_DIR=/ both mean the FTP chroot (public_html
+ * on this host). Diary articles live in the child folder diary/, so that
+ * pair is not a reuse.
+ */
+function siteCwdReusesDiaryFolder(siteCwd, diaryRaw) {
+  var n = normalizeAbs(siteCwd);
+  var diary = normalizeAbs(diaryRaw);
+  if (!n || !diary) return false;
+  if (n === "/" && diary === "/") return false;
+  if (n === diary) return true;
+  if (n.indexOf(diary + "/") === 0) return true;
+  return false;
+}
+
 function readConfiguredSiteRoot() {
   return env.getEnv("SITE_FTP_REMOTE_DIR") || env.getEnv("FTP_SITE_REMOTE_DIR") || "";
 }
@@ -108,8 +124,8 @@ function dirNamesHave(dirs, want) {
 }
 
 /**
- * SITE_FTP_CWD=/ is only safe when login root is the homepage (has diary/).
- * image/css without diary is the diary folder itself.
+ * SITE_FTP_CWD=/ is only safe when login root is public_html (has a diary/
+ * child). A listing of image/css without diary is the diary folder itself.
  */
 function assertLoginRootIsHomepage(rootDirs) {
   if (dirNamesHave(rootDirs, "public_html")) {
@@ -129,6 +145,37 @@ function assertLoginRootIsHomepage(rootDirs) {
   return { ok: true };
 }
 
+/**
+ * Diary FTP workdir. FTP_REMOTE_DIR=/ means login root, not CWD /.
+ * If a diary/ child exists, enter it so homepage index.htm is not overwritten.
+ */
+function resolveDiaryFtpEnter(remoteDir, rootDirs) {
+  var n = normalizeAbs(remoteDir);
+  if (!n) {
+    return fail(
+      "diary_remote_required",
+      "日記FTP先 FTP_REMOTE_DIR が必要です"
+    );
+  }
+  if (n === "/") {
+    if (!Array.isArray(rootDirs)) {
+      return { needsRootDirs: true, remoteDir: n };
+    }
+    if (dirNamesHave(rootDirs, "diary")) {
+      return { ok: true, cd: "diary", skippedCdSlash: true };
+    }
+    return { ok: true, cd: "", skippedCdSlash: true, alreadyDiaryRoot: true };
+  }
+  if (!pathHasDiarySegment(n)) {
+    return fail(
+      "diary_remote_not_diary",
+      "日記FTP先は diary 配下である必要があります",
+      { ftpCwd: n }
+    );
+  }
+  return { ok: true, cd: n };
+}
+
 function validateSiteFtpCwd(raw) {
   var n = normalizeAbs(raw);
   if (!n) {
@@ -145,6 +192,13 @@ function validateSiteFtpCwd(raw) {
     );
   }
   if (n === "/") {
+    if (siteCwdReusesDiaryFolder(n, readDiaryRemoteDir())) {
+      return fail(
+        "site_cwd_reuses_diary_dir",
+        "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
+        { ftpCwd: n }
+      );
+    }
     return { ok: true, cwd: "/", loginRoot: true };
   }
   if (!/\/public_html$/i.test(n)) {
@@ -170,7 +224,7 @@ function validateSiteFtpCwd(raw) {
     );
   }
   var diary = normalizeAbs(readDiaryRemoteDir());
-  if (diary && (n === diary || n.indexOf(diary + "/") === 0)) {
+  if (siteCwdReusesDiaryFolder(n, diary)) {
     return fail(
       "site_cwd_reuses_diary_dir",
       "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
@@ -421,6 +475,7 @@ module.exports = {
   RELATIVE_FROM_SITE_ROOT: RELATIVE_FROM_SITE_ROOT,
   normalizeAbs: normalizeAbs,
   pathHasDiarySegment: pathHasDiarySegment,
+  siteCwdReusesDiaryFolder: siteCwdReusesDiaryFolder,
   readConfiguredSiteRoot: readConfiguredSiteRoot,
   readConfiguredSiteCwd: readConfiguredSiteCwd,
   readDiaryRemoteDir: readDiaryRemoteDir,
@@ -429,6 +484,7 @@ module.exports = {
   listDirectoryNames: listDirectoryNames,
   dirNamesHave: dirNamesHave,
   assertLoginRootIsHomepage: assertLoginRootIsHomepage,
+  resolveDiaryFtpEnter: resolveDiaryFtpEnter,
   joinFtpPath: joinFtpPath,
   resolveOneTarget: resolveOneTarget,
   resolvePublishPlan: resolvePublishPlan,
