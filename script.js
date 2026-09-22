@@ -15391,6 +15391,7 @@
   var currentHpEditJobId = null;
   var pendingHpPublishJobId = null;
   var hpSitePublishBusy = false;
+  var hpFtpProbeBusy = false;
   var aiJobsSyncTimer = null;
   var aiJobsSyncInFlight = false;
 
@@ -15664,6 +15665,7 @@
     setModalOpen("hp-edit-modal", true);
     var ta = document.getElementById("hp-edit-request");
     if (ta) setTimeout(function () { ta.focus(); }, 40);
+    setHpFtpProbeResult("", false);
     renderHpEditJobs();
     refreshHpEditStatus();
     startAiJobsSyncLoop();
@@ -15703,6 +15705,91 @@
     status.textContent = typeof DevJobs.studioProgressMessage === "function"
       ? DevJobs.studioProgressMessage(job)
       : DevJobs.statusLabel(job.status);
+  }
+
+  function hpFtpProbeUi() {
+    return (typeof SmileSiteFtpProbeUi !== "undefined" && SmileSiteFtpProbeUi) ? SmileSiteFtpProbeUi : {};
+  }
+
+  function setHpFtpProbeResult(text, isError) {
+    var box = document.getElementById("hp-edit-ftp-probe-result");
+    if (!box) return;
+    var ui = hpFtpProbeUi();
+    var shown = String(text || "");
+    if (shown && ui.looksUnsafe && ui.looksUnsafe(shown)) {
+      shown = isError
+        ? "エラーコード：probe_failed\nFTP公開先を確認できませんでした"
+        : "FTP診断完了\n\n書込み操作：\n0回";
+    }
+    box.hidden = !shown;
+    box.textContent = shown;
+    if (isError) box.classList.add("is-error");
+    else box.classList.remove("is-error");
+  }
+
+  function runHpFtpProbe() {
+    var ui = hpFtpProbeUi();
+    var formatFail = ui.formatFailure || function (d) {
+      return "エラーコード：" + (d && d.error ? d.error : "probe_failed") + "\n" +
+        ((d && d.userMessage) || "FTP公開先を確認できませんでした");
+    };
+    var btn = document.getElementById("btn-hp-edit-ftp-probe");
+    if (hpFtpProbeBusy) return;
+    if (studioAuthSession && studioAuthSession.authenticated && studioAuthSession.role !== "owner") {
+      setHpFtpProbeResult(formatFail({
+        error: "forbidden",
+        userMessage: "オーナー権限が必要です"
+      }), true);
+      return;
+    }
+    var csrf = getStudioCsrfToken();
+    if (!csrf) {
+      setHpFtpProbeResult(formatFail({
+        error: "csrf_missing",
+        userMessage: "再ログインしてから、もう一度診断してください"
+      }), true);
+      return;
+    }
+    hpFtpProbeBusy = true;
+    if (btn) btn.disabled = true;
+    setHpFtpProbeResult("FTP公開先を確認しています…", false);
+    fetch("/.netlify/functions/api-site-ftp-probe", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrf
+      },
+      credentials: "include",
+      cache: "no-store",
+      body: "{}"
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, error: "invalid_json", userMessage: "応答の解析に失敗しました" };
+      });
+    }).then(function (data) {
+      data = data || {};
+      if (data.ok) {
+        var text = ui.formatSuccess
+          ? ui.formatSuccess(data)
+          : "FTP診断完了\n\n書込み操作：\n0回";
+        setHpFtpProbeResult(text, false);
+        return;
+      }
+      var err = data.error || data.code || "probe_failed";
+      var msg = data.userMessage || "FTP公開先を確認できませんでした";
+      if (err === "unauthorized") msg = "ログイン（オーナー）が必要です";
+      else if (err === "forbidden") msg = "オーナー権限が必要です";
+      setHpFtpProbeResult(formatFail({ error: err, userMessage: msg }), true);
+    }).catch(function () {
+      setHpFtpProbeResult(formatFail({
+        error: "network_error",
+        userMessage: "通信に失敗しました"
+      }), true);
+    }).finally(function () {
+      hpFtpProbeBusy = false;
+      if (btn) btn.disabled = false;
+    });
   }
 
   function githubErrorMessage(data) {
@@ -15801,6 +15888,7 @@
   onClick("hp-edit-close", closeHpEditModal);
   onClick("btn-hp-edit-cancel", closeHpEditModal);
   onClick("btn-hp-edit-submit", function () { submitHpEditRequest(); });
+  onClick("btn-hp-edit-ftp-probe", function () { runHpFtpProbe(); });
   onClick("btn-hp-edit-open-web", function () {
     closeHpEditModal();
     openWebCenter();

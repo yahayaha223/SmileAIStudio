@@ -101,6 +101,8 @@ async function run() {
     assert.ok(/createGithubIssueForJob/.test(script));
     assert.ok(/isDevJobProgressModalOpen/.test(script));
     assert.ok(/hp-edit-modal/.test(script));
+    assert.ok(/btn-hp-edit-ftp-probe/.test(html));
+    assert.ok(/FTP公開先を診断/.test(html));
   });
 
   test("Cursor kickoff stays exact READY_FOR_AGENT comment", function () {

@@ -282,6 +282,68 @@ async function run() {
     assert.ok(/Never STOR/.test(src) || /pwd \+ list only/.test(src));
   });
 
+  await test("ホームページ編集画面から診断できる", function () {
+    var ui = require(path.join(__dirname, "..", "js", "smile-site-ftp-probe-ui.js"));
+    var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+    var script = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
+    assert.ok(/id="btn-hp-edit-ftp-probe"/.test(html));
+    assert.ok(/FTP公開先を診断/.test(html));
+    assert.ok(/id="hp-edit-ftp-probe-result"/.test(html));
+    assert.ok(/smile-site-ftp-probe-ui\.js/.test(html));
+    var start = script.indexOf("function runHpFtpProbe(");
+    var end = script.indexOf("function githubErrorMessage(");
+    assert.ok(start >= 0 && end > start);
+    var fn = script.slice(start, end);
+    assert.ok(/\/\.netlify\/functions\/api-site-ftp-probe/.test(fn));
+    assert.ok(/X-CSRF-Token/.test(fn));
+    assert.ok(/credentials:\s*"include"/.test(fn));
+    assert.ok(/role !== "owner"/.test(fn));
+    assert.ok(!/api-site-publish/.test(fn));
+    assert.ok(!/api-github-issues/.test(fn));
+    assert.ok(!/api-diary-publish/.test(fn));
+    assert.ok(!/\.stor\(/.test(fn));
+    assert.ok(!/\.rename\(/.test(fn));
+    assert.ok(!/\.remove\(/.test(fn));
+    assert.ok(!/\.cd\(/.test(fn));
+    var submitStart = script.indexOf("function submitHpEditRequest(");
+    var submitEnd = script.indexOf("\n  onClick(\"simple-diary-close\"");
+    var submitFn = script.slice(submitStart, submitEnd);
+    assert.ok(!/api-site-ftp-probe/.test(submitFn));
+
+    var okText = ui.formatSuccess({
+      loginPwd: "/",
+      rootDirs: ["egaonokiroku.co.jp"],
+      publicHtmlHints: [{ at: "one-level", parent: "egaonokiroku.co.jp", name: "public_html" }],
+      writeOps: 0
+    });
+    assert.ok(/^FTP診断完了/.test(okText));
+    assert.ok(/ログイン直後の場所：\n\//.test(okText));
+    assert.ok(/見えているフォルダ：\negaonokiroku.co.jp/.test(okText));
+    assert.ok(/public_html候補：\negaonokiroku.co.jp \/ public_html/.test(okText));
+    assert.ok(/書込み操作：\n0回/.test(okText));
+    assert.ok(!/index\.htm/.test(okText));
+    var blob = okText.toLowerCase();
+    assert.ok(blob.indexOf("password") < 0);
+    assert.ok(blob.indexOf("ftp_user") < 0);
+    assert.ok(blob.indexOf("secret") < 0);
+
+    var hidden = ui.formatSuccess({
+      loginPwd: "/secret",
+      rootDirs: ["password"],
+      publicHtmlHints: []
+    });
+    assert.ok(hidden.indexOf("/secret") < 0);
+    assert.ok(hidden.toLowerCase().indexOf("password") < 0);
+
+    var failText = ui.formatFailure({
+      error: "ftp_connect_failed",
+      userMessage: "FTPに接続できませんでした"
+    });
+    assert.strictEqual(failText, "エラーコード：ftp_connect_failed\nFTPに接続できませんでした");
+    assert.ok(!/loginPwd/.test(failText));
+    assert.ok(!/FTP_PASSWORD/.test(ui.formatFailure.toString()));
+  });
+
   console.log("\nPassed " + passed + " site-ftp-probe tests" + (failed ? (" failed=" + failed) : ""));
   if (failed) process.exit(1);
 }
