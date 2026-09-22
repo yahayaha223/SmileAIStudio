@@ -16,7 +16,6 @@ var path = require("path");
 
 var probe = require(path.join(__dirname, "..", "netlify", "functions", "shared", "site-ftp-probe.js"));
 var ftpClient = require(path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"));
-var siteFtpPaths = require(path.join(__dirname, "..", "netlify", "functions", "shared", "site-ftp-paths.js"));
 var permissions = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "permissions.js"));
 var authConfig = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "config.js"));
 var middleware = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "middleware.js"));
@@ -139,20 +138,92 @@ async function run() {
     assert.ok(!Object.prototype.hasOwnProperty.call(payload, "host"));
   });
 
-  await test("cd 550 のあとも書込みせず診断できる", async function () {
+  await test("cd の前に pwd/list し 550 なら診断して終了", async function () {
     var ftp = xserverLoginFtp();
     ftp.resolveCd = async function (target) {
       var err = new Error("550");
       err.code = 550;
       throw err;
     };
-    var denied = await siteFtpPaths.enterSiteFtpCwd(ftp, "/egaonokiroku.co.jp/public_html");
+    var lines = [];
+    var origLog = console.log;
+    console.log = function (msg) { lines.push(String(msg)); };
+    var denied;
+    try {
+      denied = await ftpClient.enterSiteCwdAfterLoginProbe(ftp, "/egaonokiroku.co.jp/public_html");
+    } finally {
+      console.log = origLog;
+    }
     assert.strictEqual(denied.ok, false);
     assert.strictEqual(denied.code, "ftp_cwd_550");
+    assert.ok(denied.diagnostic);
+    assert.strictEqual(denied.diagnostic.loginPwd, "/");
+    assert.deepStrictEqual(denied.diagnostic.rootDirs, ["egaonokiroku.co.jp"]);
+    assert.ok(denied.diagnostic.publicHtmlHints.some(function (h) {
+      return h.at === "one-level" && h.parent === "egaonokiroku.co.jp";
+    }));
+    var ops = ftp.ops.map(function (op) { return op.op; });
+    var pwdIdx = ops.indexOf("pwd");
+    var listIdx = ops.indexOf("list");
+    var cdIdx = ops.indexOf("cd");
+    assert.ok(pwdIdx >= 0 && listIdx >= 0 && cdIdx >= 0);
+    assert.ok(pwdIdx < cdIdx, "pwd must run before cd");
+    assert.ok(listIdx < cdIdx, "list must run before cd");
+    assert.strictEqual(writeOpCount(ftp.ops), 0);
+    var cwd550 = lines.map(function (line) {
+      try { return JSON.parse(line); } catch (eParse) { return {}; }
+    }).filter(function (p) { return p.stage === "site-ftp-cwd-550"; });
+    assert.ok(cwd550.length >= 1);
+    assert.strictEqual(cwd550[0].loginPwd, "/");
+    assert.deepStrictEqual(cwd550[0].rootDirs, ["egaonokiroku.co.jp"]);
+    assert.strictEqual(cwd550[0].writeOps, 0);
+    var blob = JSON.stringify(cwd550[0]).toLowerCase();
+    assert.ok(blob.indexOf("password") < 0);
+    assert.ok(blob.indexOf("ftp_user") < 0);
+    assert.ok(blob.indexOf("secret") < 0);
+  });
+
+  await test("login直下に public_html があれば 1階層探索しない", async function () {
+    var ftp = ftpClient.createMemoryFtp({});
+    ftp.cwd = "/";
+    ftp.listEntries = async function (dir) {
+      if (dir === "." || dir === "/") {
+        return [
+          { name: "public_html", type: 2 },
+          { name: "mail", type: 2 }
+        ];
+      }
+      throw new Error("should not list children");
+    };
     var r = await probe.probeLoginLayout(ftp);
     assert.strictEqual(r.ok, true);
-    assert.deepStrictEqual(r.rootDirs, ["egaonokiroku.co.jp"]);
+    assert.deepStrictEqual(r.rootDirs, ["public_html", "mail"]);
+    assert.ok(r.publicHtmlHints.some(function (h) { return h.at === "login-list"; }));
+    assert.ok(!r.publicHtmlHints.some(function (h) { return h.at === "one-level"; }));
+    assert.strictEqual(ftp.ops.filter(function (op) { return op.op === "list"; }).length, 1);
     assert.strictEqual(writeOpCount(ftp.ops), 0);
+  });
+
+  await test("診断APIは cd/STOR/rename/remove しない", function () {
+    var probeApi = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "api-site-ftp-probe.js"),
+      "utf8"
+    );
+    var ftpSrc = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"),
+      "utf8"
+    );
+    assert.ok(/connectLoginOnlyFromEnv/.test(probeApi));
+    assert.ok(!/\.cd\(/.test(probeApi));
+    assert.ok(!/\.stor\(/.test(probeApi));
+    assert.ok(!/\.rename\(/.test(probeApi));
+    assert.ok(!/\.remove\(/.test(probeApi));
+    var loginOnly = ftpSrc.slice(
+      ftpSrc.indexOf("async function connectLoginOnlyFromEnv"),
+      ftpSrc.indexOf("async function enterSiteCwdAfterLoginProbe")
+    );
+    assert.ok(/cfg\.remoteDir = ""/.test(loginOnly));
+    assert.ok(/cfg\.probeOnly = true/.test(loginOnly));
   });
 
   await test("owner以外拒否 / CSRF拒否", async function () {

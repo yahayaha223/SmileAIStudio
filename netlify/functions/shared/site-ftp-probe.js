@@ -89,17 +89,6 @@ function pwdLooksLikePublicHtml(pwd) {
   return /\/public_html\/?$/i.test(s) || s === "public_html";
 }
 
-function logProbe(result) {
-  console.log(JSON.stringify({
-    at: new Date().toISOString(),
-    stage: "site-ftp-probe",
-    loginPwd: result && result.loginPwd ? result.loginPwd : null,
-    rootDirs: result && result.rootDirs ? result.rootDirs : [],
-    publicHtmlHints: result && result.publicHtmlHints ? result.publicHtmlHints : [],
-    writeOps: 0
-  }));
-}
-
 function payloadLooksUnsafe(text) {
   var blob = String(text || "").toLowerCase();
   if (blob.indexOf("password") >= 0) return true;
@@ -107,6 +96,57 @@ function payloadLooksUnsafe(text) {
   if (blob.indexOf("secret") >= 0) return true;
   if (blob.indexOf("apikey") >= 0 || blob.indexOf("api_key") >= 0) return true;
   return false;
+}
+
+function safeDiagnostic(result) {
+  if (!result || typeof result !== "object") return null;
+  var out = {
+    loginPwd: result.loginPwd ? String(result.loginPwd) : "",
+    rootDirs: Array.isArray(result.rootDirs) ? result.rootDirs.slice() : [],
+    publicHtmlHints: Array.isArray(result.publicHtmlHints) ? result.publicHtmlHints.slice() : []
+  };
+  if (!out.loginPwd && !out.rootDirs.length && !out.publicHtmlHints.length) return null;
+  if (payloadLooksUnsafe(JSON.stringify(out))) return null;
+  return out;
+}
+
+function logSafePayload(payload) {
+  var dumped = JSON.stringify(payload);
+  if (payloadLooksUnsafe(dumped)) {
+    console.log(JSON.stringify({
+      at: new Date().toISOString(),
+      stage: payload && payload.stage ? payload.stage : "site-ftp-probe",
+      writeOps: 0,
+      omitted: true
+    }));
+    return;
+  }
+  console.log(dumped);
+}
+
+function logProbe(result) {
+  var diag = safeDiagnostic(result) || {};
+  logSafePayload({
+    at: new Date().toISOString(),
+    stage: "site-ftp-probe",
+    loginPwd: diag.loginPwd || null,
+    rootDirs: diag.rootDirs || [],
+    publicHtmlHints: diag.publicHtmlHints || [],
+    writeOps: 0
+  });
+}
+
+function logCwd550(info) {
+  var diag = safeDiagnostic(info && info.diagnostic) || {};
+  logSafePayload({
+    at: new Date().toISOString(),
+    stage: "site-ftp-cwd-550",
+    requestedCwd: sanitizePwd(info && info.requestedCwd) || null,
+    loginPwd: diag.loginPwd || null,
+    rootDirs: diag.rootDirs || [],
+    publicHtmlHints: diag.publicHtmlHints || [],
+    writeOps: 0
+  });
 }
 
 /**
@@ -142,16 +182,19 @@ async function probeLoginLayout(ftp) {
   }
 
   var i;
-  for (i = 0; i < rootDirs.length; i++) {
-    var parent = rootDirs[i];
-    if (parent.toLowerCase() === "diary") continue;
-    try {
-      var childDirs = dirNamesOnly(await ro.list(parent));
-      if (childDirs.indexOf("public_html") >= 0) {
-        publicHtmlHints.push({ at: "one-level", parent: parent, name: "public_html" });
+  if (!publicHtmlHints.length) {
+    for (i = 0; i < rootDirs.length; i++) {
+      var parent = rootDirs[i];
+      if (parent.toLowerCase() === "diary") continue;
+      try {
+        var childDirs = dirNamesOnly(await ro.list(parent));
+        if (childDirs.indexOf("public_html") >= 0) {
+          publicHtmlHints.push({ at: "one-level", parent: parent, name: "public_html" });
+          break;
+        }
+      } catch (eChild) {
+        /* skip unreadable folder */
       }
-    } catch (eChild) {
-      /* skip unreadable folder */
     }
   }
 
@@ -162,8 +205,7 @@ async function probeLoginLayout(ftp) {
     publicHtmlHints: publicHtmlHints,
     writeOps: 0
   };
-  var dumped = JSON.stringify(result);
-  if (payloadLooksUnsafe(dumped)) {
+  if (payloadLooksUnsafe(JSON.stringify(result))) {
     return fail("probe_unsafe", "診断結果に出せない文字が含まれます");
   }
   logProbe(result);
@@ -176,5 +218,7 @@ module.exports = {
   dirNamesOnly: dirNamesOnly,
   sanitizeName: sanitizeName,
   sanitizePwd: sanitizePwd,
-  logProbe: logProbe
+  safeDiagnostic: safeDiagnostic,
+  logProbe: logProbe,
+  logCwd550: logCwd550
 };

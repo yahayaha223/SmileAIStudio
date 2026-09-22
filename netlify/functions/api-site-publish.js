@@ -205,7 +205,8 @@ async function handler(event, guard) {
       meta: {
         ftpCwd: siteFtpPaths.readConfiguredSiteCwd() || null,
         loginPwd: e.diagnostic && e.diagnostic.loginPwd ? e.diagnostic.loginPwd : null,
-        rootDirs: e.diagnostic && e.diagnostic.rootDirs ? e.diagnostic.rootDirs : null
+        rootDirs: e.diagnostic && e.diagnostic.rootDirs ? e.diagnostic.rootDirs : null,
+        publicHtmlHints: e.diagnostic && e.diagnostic.publicHtmlHints ? e.diagnostic.publicHtmlHints : null
       }
     });
     return http.json(503, {

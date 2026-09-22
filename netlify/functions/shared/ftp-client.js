@@ -207,8 +207,32 @@ async function connectLoginOnlyFromEnv() {
   return connectFromEnv(cfg);
 }
 
-async function connectSiteFromEnv() {
+/**
+ * After login: pwd/list first, then cd. Never STOR/rename/remove here.
+ * On ftp_cwd_550, return the pre-cd diagnostic and stop.
+ */
+async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
   var siteFtpProbe = require("./site-ftp-probe");
+  var diagnostic = null;
+  try {
+    diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
+  } catch (eProbe) {
+    diagnostic = null;
+  }
+  var safe = siteFtpProbe.safeDiagnostic(diagnostic);
+  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, requestedCwd);
+  if (entered.ok) return entered;
+  if (entered.code === "ftp_cwd_550") {
+    siteFtpProbe.logCwd550({
+      requestedCwd: entered.ftpCwd || requestedCwd,
+      diagnostic: safe || diagnostic
+    });
+  }
+  entered.diagnostic = safe;
+  return entered;
+}
+
+async function connectSiteFromEnv() {
   var cfg = getSiteFtpConfig();
   var root = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
   if (!root.ok) {
@@ -225,26 +249,12 @@ async function connectSiteFromEnv() {
   cfg.remoteDir = "";
   cfg.allowEmptyRemoteDir = true;
   var ftp = await connectFromEnv(cfg);
-  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, cwd.cwd);
+  var entered = await enterSiteCwdAfterLoginProbe(ftp, cwd.cwd);
   if (!entered.ok) {
-    var diagnostic = null;
-    if (entered.code === "ftp_cwd_550") {
-      try {
-        diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
-      } catch (eProbe) {
-        diagnostic = { ok: false, code: "probe_failed" };
-      }
-    }
     try { await ftp.close(); } catch (eClose) { /* ignore */ }
     var badCwd = new Error(entered.userMessage);
     badCwd.code = entered.code || "ftp_cwd_failed";
-    if (diagnostic && diagnostic.ok) {
-      badCwd.diagnostic = {
-        loginPwd: diagnostic.loginPwd,
-        rootDirs: diagnostic.rootDirs,
-        publicHtmlHints: diagnostic.publicHtmlHints
-      };
-    }
+    if (entered.diagnostic) badCwd.diagnostic = entered.diagnostic;
     throw badCwd;
   }
   return ftp;
@@ -258,5 +268,6 @@ module.exports = {
   createMemoryFtp: createMemoryFtp,
   connectFromEnv: connectFromEnv,
   connectLoginOnlyFromEnv: connectLoginOnlyFromEnv,
+  enterSiteCwdAfterLoginProbe: enterSiteCwdAfterLoginProbe,
   connectSiteFromEnv: connectSiteFromEnv
 };
