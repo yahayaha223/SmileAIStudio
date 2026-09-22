@@ -55,6 +55,22 @@ function pathHasDiarySegment(p) {
   return false;
 }
 
+/**
+ * True when the homepage FTP cwd is the diary article folder.
+ * SITE_FTP_CWD=/ and FTP_REMOTE_DIR=/ both mean the FTP chroot (public_html
+ * on this host). Diary articles live in the child folder diary/, so that
+ * pair is not a reuse.
+ */
+function siteCwdReusesDiaryFolder(siteCwd, diaryRaw) {
+  var n = normalizeAbs(siteCwd);
+  var diary = normalizeAbs(diaryRaw);
+  if (!n || !diary) return false;
+  if (n === "/" && diary === "/") return false;
+  if (n === diary) return true;
+  if (n.indexOf(diary + "/") === 0) return true;
+  return false;
+}
+
 function readConfiguredSiteRoot() {
   return env.getEnv("SITE_FTP_REMOTE_DIR") || env.getEnv("FTP_SITE_REMOTE_DIR") || "";
 }
@@ -112,8 +128,7 @@ function validateSiteFtpCwd(raw) {
     );
   }
   if (n === "/") {
-    var diaryAtRoot = normalizeAbs(readDiaryRemoteDir());
-    if (diaryAtRoot === "/") {
+    if (siteCwdReusesDiaryFolder(n, readDiaryRemoteDir())) {
       return fail(
         "site_cwd_reuses_diary_dir",
         "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
@@ -145,7 +160,7 @@ function validateSiteFtpCwd(raw) {
     );
   }
   var diary = normalizeAbs(readDiaryRemoteDir());
-  if (diary && (n === diary || n.indexOf(diary + "/") === 0)) {
+  if (siteCwdReusesDiaryFolder(n, diary)) {
     return fail(
       "site_cwd_reuses_diary_dir",
       "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
@@ -398,6 +413,7 @@ module.exports = {
   RELATIVE_FROM_SITE_ROOT: RELATIVE_FROM_SITE_ROOT,
   normalizeAbs: normalizeAbs,
   pathHasDiarySegment: pathHasDiarySegment,
+  siteCwdReusesDiaryFolder: siteCwdReusesDiaryFolder,
   readConfiguredSiteRoot: readConfiguredSiteRoot,
   readConfiguredSiteCwd: readConfiguredSiteCwd,
   readDiaryRemoteDir: readDiaryRemoteDir,

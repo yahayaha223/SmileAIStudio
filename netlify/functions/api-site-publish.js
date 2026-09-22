@@ -132,6 +132,8 @@ async function handler(event, guard) {
     return http.json(409, {
       ok: false,
       error: plan.code,
+      requestId: requestId,
+      reasonCode: plan.code,
       userMessage: plan.userMessage || "公開先パスが不正です",
       productionUntouched: true
     }, event);
@@ -146,15 +148,26 @@ async function handler(event, guard) {
       actorUserId: userId,
       role: guard && guard.session ? guard.session.roleSnapshot : null,
       target: "api-site-publish",
+      requestId: requestId,
       ipHash: ipHash,
       meta: {
+        requestId: requestId,
+        issueNumber: issueNumber,
         prNumber: prNumber,
         ftpCwd: cwdPlan.ftpCwd || null
       }
     });
+    sitePublishLog.logEvent(Object.assign({}, logBase, {
+      stage: "site-publish-reject",
+      reasonCode: cwdPlan.code || "invalid_ftp_cwd",
+      ftpCwd: cwdPlan.ftpCwd || siteFtpPaths.readConfiguredSiteCwd() || null,
+      selectedMode: cwdPlan.loginRoot ? "loginRoot" : "publicHtmlCwd"
+    }));
     return http.json(409, {
       ok: false,
       error: cwdPlan.code,
+      requestId: requestId,
+      reasonCode: cwdPlan.code,
       userMessage: cwdPlan.userMessage || "FTP作業フォルダが不正です",
       productionUntouched: true
     }, event);
