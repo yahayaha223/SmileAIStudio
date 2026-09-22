@@ -18,6 +18,9 @@
 [functions."api-site-publish"]
   timeout = 26
 
+[functions."api-site-ftp-probe"]
+  timeout = 26
+
 # Evening task check (DISABLED until LINE_EVENING_TASKS_ENABLED=1)
 # Japan 19:00 = UTC 10:00 — enable schedule only after morning is stable
 # [functions."line-send-evening"]
@@ -48,6 +51,12 @@
 [[redirects]]
   from = "/api/site-publish"
   to = "/.netlify/functions/api-site-publish"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/site-ftp-probe"
+  to = "/.netlify/functions/api-site-ftp-probe"
   status = 200
   force = true
 

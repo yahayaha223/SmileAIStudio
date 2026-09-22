@@ -79,8 +79,11 @@ function createMemoryFtp(initialFiles) {
       delete files[from];
       ops.push({ op: "rename", from: from, to: to });
     },
-    list: async function () {
-      ops.push({ op: "list" });
+    list: async function (dir) {
+      ops.push({ op: "list", dir: dir || "." });
+      if (typeof this.listEntries === "function") {
+        return this.listEntries(dir || ".");
+      }
       return Object.keys(files).map(function (name) {
         return { name: name, size: files[name].length };
       });
@@ -121,7 +124,10 @@ function createMemoryFtp(initialFiles) {
 async function connectFromEnv(cfg) {
   cfg = cfg || getFtpConfig();
   var allowEmptyDir = !!(cfg && cfg.allowEmptyRemoteDir);
-  var ready = allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg);
+  var probeOnly = !!(cfg && cfg.probeOnly);
+  var ready = probeOnly
+    ? !!(cfg.host && cfg.user && cfg.password)
+    : (allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg));
   if (!ready) {
     var missing = new Error("FTP接続設定が必要です");
     missing.code = "ftp_not_configured";
@@ -193,6 +199,39 @@ async function connectFromEnv(cfg) {
   };
 }
 
+async function connectLoginOnlyFromEnv() {
+  var cfg = getFtpConfig();
+  cfg.remoteDir = "";
+  cfg.allowEmptyRemoteDir = true;
+  cfg.probeOnly = true;
+  return connectFromEnv(cfg);
+}
+
+/**
+ * After login: pwd/list first, then cd. Never STOR/rename/remove here.
+ * On ftp_cwd_550, return the pre-cd diagnostic and stop.
+ */
+async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
+  var siteFtpProbe = require("./site-ftp-probe");
+  var diagnostic = null;
+  try {
+    diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
+  } catch (eProbe) {
+    diagnostic = null;
+  }
+  var safe = siteFtpProbe.safeDiagnostic(diagnostic);
+  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, requestedCwd);
+  if (entered.ok) return entered;
+  if (entered.code === "ftp_cwd_550") {
+    siteFtpProbe.logCwd550({
+      requestedCwd: entered.ftpCwd || requestedCwd,
+      diagnostic: safe || diagnostic
+    });
+  }
+  entered.diagnostic = safe;
+  return entered;
+}
+
 async function connectSiteFromEnv() {
   var cfg = getSiteFtpConfig();
   var root = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
@@ -210,11 +249,12 @@ async function connectSiteFromEnv() {
   cfg.remoteDir = "";
   cfg.allowEmptyRemoteDir = true;
   var ftp = await connectFromEnv(cfg);
-  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, cwd.cwd);
+  var entered = await enterSiteCwdAfterLoginProbe(ftp, cwd.cwd);
   if (!entered.ok) {
     try { await ftp.close(); } catch (eClose) { /* ignore */ }
     var badCwd = new Error(entered.userMessage);
     badCwd.code = entered.code || "ftp_cwd_failed";
+    if (entered.diagnostic) badCwd.diagnostic = entered.diagnostic;
     throw badCwd;
   }
   return ftp;
@@ -227,5 +267,7 @@ module.exports = {
   isSiteConfigured: isSiteConfigured,
   createMemoryFtp: createMemoryFtp,
   connectFromEnv: connectFromEnv,
+  connectLoginOnlyFromEnv: connectLoginOnlyFromEnv,
+  enterSiteCwdAfterLoginProbe: enterSiteCwdAfterLoginProbe,
   connectSiteFromEnv: connectSiteFromEnv
 };
