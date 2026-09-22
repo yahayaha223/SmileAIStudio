@@ -154,6 +154,8 @@ async function run() {
     var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
     var api = fs.readFileSync(path.join(__dirname, "..", "netlify", "functions", "api-github-issues.js"), "utf8");
     assert.ok(/hp-edit-github-ready/.test(html));
+    assert.ok(/smile-hp-edit-github-ready\.js/.test(html));
+    assert.ok(html.indexOf("id=\"hp-edit-github-ready\"") < html.indexOf("id=\"hp-edit-request\""));
     assert.ok(/承認済みの変更があります/.test(script));
     assert.ok(/find-ready-site-publish/.test(script));
     assert.ok(/find-ready-site-publish/.test(api));
@@ -171,6 +173,46 @@ async function run() {
       script.indexOf("action: \"find-ready-site-publish\"") + 80
     );
     assert.ok(!/issueNumbers/.test(findBody));
+  });
+
+  test("API items=[] hides card, items=[Issue6/PR7] shows card", function () {
+    var ui = require(path.join(__dirname, "..", "js", "smile-hp-edit-github-ready.js"));
+    assert.deepStrictEqual(ui.parseReadyItems({ ok: true, items: [] }), []);
+    assert.deepStrictEqual(ui.parseReadyItems({ ok: false, items: [{ prNumber: 7 }] }), []);
+    var parsed = ui.parseReadyItems({
+      ok: true,
+      items: [{
+        issueNumber: 6,
+        issueUrl: "https://github.com/yahayaha223/SmileAIStudio/issues/6",
+        prNumber: 7,
+        prUrl: "https://github.com/yahayaha223/SmileAIStudio/pull/7"
+      }]
+    });
+    assert.strictEqual(parsed.length, 1);
+    var html = ui.cardHtml(parsed[0]);
+    assert.ok(/承認済みの変更があります/.test(html));
+    assert.ok(/GitHub Issue #6/.test(html));
+    assert.ok(/PR #7/.test(html));
+    assert.ok(/本番へ反映する/.test(html));
+
+    var hidden = false;
+    var box = {
+      innerHTML: "x",
+      hidden: false,
+      classList: { add: function () {}, remove: function () {} },
+      setAttribute: function (name, val) { if (name === "hidden") hidden = true; },
+      removeAttribute: function (name) { if (name === "hidden") hidden = false; }
+    };
+    var empty = ui.render(box, []);
+    assert.strictEqual(empty.shown, false);
+    assert.strictEqual(box.innerHTML, "");
+    assert.strictEqual(box.hidden, true);
+    var shown = ui.render(box, parsed);
+    assert.strictEqual(shown.shown, true);
+    assert.strictEqual(shown.count, 1);
+    assert.strictEqual(box.hidden, false);
+    assert.ok(/承認済みの変更があります/.test(box.innerHTML));
+    assert.ok(/本番へ反映する/.test(box.innerHTML));
   });
 
   console.log("\nPassed " + passed + " hp-edit-jobs tests");

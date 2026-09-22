@@ -718,6 +718,161 @@ async function run() {
     }
   });
 
+  await test("PR extra package.json/test files still ready if allowlist 2 files exist", function () {
+    var evaln = github.evaluateHomepagePublishCandidate({
+      githubIssueNumber: 6,
+      githubPrNumber: 7,
+      prMerged: true,
+      prBaseRef: "main",
+      jobKind: "homepage-edit",
+      changedFiles: [
+        "CorporateSite/index.htm",
+        "CorporateSite/css/top-diary-notice.css",
+        "package.json",
+        "scripts/test-corporate-site-top-diary-notice.js"
+      ]
+    });
+    assert.strictEqual(evaln.excluded, false);
+    assert.strictEqual(github.isReadyForSitePublish({
+      githubPrNumber: 7,
+      prMerged: true,
+      prBaseRef: "main",
+      jobKind: "homepage-edit",
+      changedFiles: [
+        "CorporateSite/index.htm",
+        "CorporateSite/css/top-diary-notice.css",
+        "package.json",
+        "scripts/test-corporate-site-top-diary-notice.js"
+      ]
+    }), true);
+  });
+
+  await test("Issue #6 / PR #7 real payload with extra files returns 1 item", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "yahayaha223";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    var issueBody = [
+      "# AI DEVELOPMENT TASK",
+      "",
+      "## Job Kind",
+      "homepage-edit",
+      "",
+      "## Pull Request",
+      "#7",
+      "",
+      "## Agent Status",
+      "READY_FOR_AGENT"
+    ].join("\r\n");
+    global.fetch = async function (url) {
+      var u = String(url);
+      if (u.indexOf("/search/issues") >= 0) {
+        return jsonRes(true, 200, { items: [] });
+      }
+      if (u.indexOf("/pulls/7/files") >= 0) {
+        return jsonRes(true, 200, [
+          { filename: "CorporateSite/css/top-diary-notice.css" },
+          { filename: "CorporateSite/index.htm" },
+          { filename: "package.json" },
+          { filename: "scripts/test-corporate-site-top-diary-notice.js" }
+        ]);
+      }
+      if (u.indexOf("/pulls/7") >= 0) {
+        return jsonRes(true, 200, {
+          number: 7,
+          merged: true,
+          merged_at: "2026-08-20T03:43:28Z",
+          html_url: "https://github.com/yahayaha223/SmileAIStudio/pull/7",
+          base: { ref: "main" },
+          merge_commit_sha: "abc123",
+          head: { sha: "def456" },
+          body: "Related: https://github.com/yahayaha223/SmileAIStudio/issues/6"
+        });
+      }
+      if (u.indexOf("/issues/6") >= 0) {
+        return jsonRes(true, 200, {
+          number: 6,
+          html_url: "https://github.com/yahayaha223/SmileAIStudio/issues/6",
+          title: "HP編集",
+          state: "open",
+          body: issueBody
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 1);
+      assert.strictEqual(r.debug.itemsCount, 1);
+      assert.ok(r.debug.candidateIssueNumbers.indexOf(6) >= 0);
+      assert.strictEqual(r.items[0].issueNumber, 6);
+      assert.strictEqual(r.items[0].prNumber, 7);
+      assert.strictEqual(r.items[0].files.length, 2);
+      assert.ok(r.items[0].files.indexOf("CorporateSite/index.htm") >= 0);
+      assert.ok(r.items[0].files.indexOf("CorporateSite/css/top-diary-notice.css") >= 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("GET /pulls 403 with token still reads public PR without auth", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "restricted-token-not-real";
+    process.env.GITHUB_OWNER = "yahayaha223";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = async function (url, opts) {
+      var u = String(url);
+      var headers = (opts && opts.headers) || {};
+      var hasAuth = !!(headers.Authorization || headers.authorization);
+      if (u.indexOf("/pulls/") >= 0 && hasAuth) {
+        return jsonRes(false, 403, { message: "Resource not accessible by personal access token" });
+      }
+      if (u.indexOf("/search/issues") >= 0) return jsonRes(true, 200, { items: [] });
+      if (u.indexOf("/pulls/7/files") >= 0) {
+        return jsonRes(true, 200, [
+          { filename: "CorporateSite/index.htm" },
+          { filename: "CorporateSite/css/top-diary-notice.css" },
+          { filename: "package.json" }
+        ]);
+      }
+      if (u.indexOf("/pulls/7") >= 0) {
+        return jsonRes(true, 200, {
+          number: 7,
+          merged: true,
+          merged_at: "2026-08-20T03:43:28Z",
+          html_url: "https://github.com/yahayaha223/SmileAIStudio/pull/7",
+          base: { ref: "main" },
+          body: "Related: https://github.com/yahayaha223/SmileAIStudio/issues/6"
+        });
+      }
+      if (u.indexOf("/issues/6") >= 0) {
+        return jsonRes(true, 200, {
+          number: 6,
+          html_url: "https://github.com/yahayaha223/SmileAIStudio/issues/6",
+          title: "HP",
+          state: "open",
+          body: "## Job Kind\nhomepage-edit\n\n## Pull Request\n#7\n\n## Agent Status\nREADY_FOR_AGENT\n"
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 1);
+      assert.strictEqual(r.items[0].prNumber, 7);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
   console.log("\nPassed " + passed + " github-issues tests");
 }
 
