@@ -2,7 +2,7 @@
 
 /**
  * /.netlify/functions/api-github-issues
- * actions: create | sync | sync-batch | update-agent-status
+ * actions: create | sync | sync-batch | find-ready-site-publish | update-agent-status
  * Token stays server-side. Owner + CSRF required.
  */
 var http = require("./shared/http");
@@ -25,6 +25,7 @@ function permissionKey(event) {
   var action = String(body.action || "create").trim();
   if (action === "create") return "api-github-issues:POST:create";
   if (action === "sync" || action === "sync-batch") return "api-github-issues:POST:sync";
+  if (action === "find-ready-site-publish") return "api-github-issues:POST:find-ready-site-publish";
   if (action === "update-agent-status") return "api-github-issues:POST:update-agent-status";
   return null;
 }
@@ -137,6 +138,47 @@ async function handleSync(event, guard, body) {
   }, event);
 }
 
+async function handleFindReadySitePublish(event, guard, body) {
+  var userId = (guard && guard.session && guard.session.userId) || "anon";
+  var ipHash = audit.ipHashForEvent(event);
+  var rl = await rateLimit.rateLimit("github-ready-site-publish:user:" + userId, 40, 10 * 60 * 1000);
+  if (!rl.ok) {
+    return http.json(429, { ok: false, error: "rate_limited" }, event);
+  }
+
+  var extraNumbers = Array.isArray(body && body.issueNumbers) ? body.issueNumbers : [];
+  var result = await githubIssues.findReadyHomepagePublishes({
+    issueNumbers: extraNumbers
+  });
+  await audit.recordAudit({
+    event: "github_ready_site_publish",
+    success: !!result.ok,
+    reasonCode: result.ok ? "ok" : (result.error || "failed"),
+    actorUserId: userId,
+    role: guard && guard.session ? guard.session.roleSnapshot : null,
+    target: "api-github-issues",
+    ipHash: ipHash,
+    meta: {
+      count: result.items ? result.items.length : 0
+    }
+  });
+
+  if (!result.ok) {
+    var status = result.error === "github_not_configured" ? 503 : 502;
+    return http.json(status, {
+      ok: false,
+      error: result.error,
+      userMessage: result.userMessage || "承認済みの変更を取得できませんでした",
+      items: []
+    }, event);
+  }
+
+  return http.json(200, {
+    ok: true,
+    items: result.items || []
+  }, event);
+}
+
 async function handleUpdateAgentStatus(event, guard, body) {
   var userId = (guard && guard.session && guard.session.userId) || "anon";
   var ipHash = audit.ipHashForEvent(event);
@@ -200,6 +242,7 @@ async function handler(event, guard) {
 
   if (action === "create") return handleCreate(event, guard, body);
   if (action === "sync" || action === "sync-batch") return handleSync(event, guard, body);
+  if (action === "find-ready-site-publish") return handleFindReadySitePublish(event, guard, body);
   if (action === "update-agent-status") return handleUpdateAgentStatus(event, guard, body);
   return http.json(400, { ok: false, error: "unknown_action" }, event);
 }

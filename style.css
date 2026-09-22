@@ -253,6 +253,14 @@ body::before {
   color: #dc2626;
 }
 
+.hp-edit-github-ready[hidden] {
+  display: none;
+}
+
+.hp-edit-github-ready-card p {
+  margin: 6px 0;
+}
+
 .simple-diary__result {
   margin: 8px 0 12px;
   padding: 12px;

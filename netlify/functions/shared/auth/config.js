@@ -91,6 +91,7 @@ function isAlwaysEnforcedPermission(permissionKey) {
   var key = String(permissionKey || "");
   return key === "api-github-issues:POST:create" ||
     key === "api-github-issues:POST:update-agent-status" ||
+    key === "api-github-issues:POST:find-ready-site-publish" ||
     key === "api-diary-publish:POST" ||
     key === "api-site-publish:POST" ||
     key === "api-site-ftp-probe:POST";
