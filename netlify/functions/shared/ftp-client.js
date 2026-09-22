@@ -72,21 +72,32 @@ async function enterDiaryRemoteDir(client, remoteDir) {
 }
 
 function getSiteFtpConfig() {
-  var diary = getFtpConfig();
   return {
-    host: diary.host,
-    user: diary.user,
-    password: diary.password,
-    port: diary.port,
-    secure: diary.secure,
-    timeoutMs: diary.timeoutMs,
-    remoteDir: siteFtpPaths.readConfiguredSiteCwd()
+    host: env.getEnv("SITE_FTP_HOST"),
+    user: env.getEnv("SITE_FTP_USER"),
+    password: env.getEnv("SITE_FTP_PASSWORD"),
+    port: Number(env.getEnv("SITE_FTP_PORT", "21")) || 21,
+    secure: /^(1|true|yes)$/i.test(env.getEnv("SITE_FTP_SECURE", "1")),
+    remoteDir: siteFtpPaths.readConfiguredSiteCwd(),
+    timeoutMs: Number(env.getEnv("SITE_FTP_TIMEOUT_MS", "20000")) || 20000,
+    siteAccount: true
   };
+}
+
+function hasSiteFtpCredentials(cfg) {
+  cfg = cfg || getSiteFtpConfig();
+  return !!(cfg.host && cfg.user && cfg.password && siteFtpPaths.readConfiguredSiteCwd());
+}
+
+function siteFtpNotConfiguredError() {
+  var err = new Error("公式サイトFTP接続設定が必要です");
+  err.code = "site_ftp_not_configured";
+  return err;
 }
 
 function isSiteConfigured(cfg) {
   cfg = cfg || getSiteFtpConfig();
-  if (!(cfg.host && cfg.user && cfg.password)) return false;
+  if (!hasSiteFtpCredentials(cfg)) return false;
   var logical = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
   var cwd = siteFtpPaths.validateSiteFtpCwd(cfg.remoteDir || siteFtpPaths.readConfiguredSiteCwd());
   return !!(logical.ok && cwd.ok);
@@ -304,8 +315,11 @@ async function connectFromEnv(cfg) {
     ? !!(cfg.host && cfg.user && cfg.password)
     : (allowEmptyDir ? isSiteConfigured(cfg) : isConfigured(cfg));
   if (!ready) {
-    var missing = new Error("FTP接続設定が必要です");
-    missing.code = "ftp_not_configured";
+    var isSite = !!(cfg && (cfg.siteAccount || cfg.probeOnly || cfg.allowEmptyRemoteDir));
+    var missing = isSite
+      ? siteFtpNotConfiguredError()
+      : new Error("FTP接続設定が必要です");
+    if (!isSite) missing.code = "ftp_not_configured";
     throw missing;
   }
   var ftpMod;
@@ -390,10 +404,14 @@ async function connectFromEnv(cfg) {
 }
 
 async function connectLoginOnlyFromEnv() {
-  var cfg = getFtpConfig();
+  var cfg = getSiteFtpConfig();
+  if (!hasSiteFtpCredentials(cfg)) {
+    throw siteFtpNotConfiguredError();
+  }
   cfg.remoteDir = "";
   cfg.allowEmptyRemoteDir = true;
   cfg.probeOnly = true;
+  cfg.siteAccount = true;
   return connectFromEnv(cfg);
 }
 
@@ -466,16 +484,19 @@ async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
 
 async function connectSiteFromEnv() {
   var cfg = getSiteFtpConfig();
+  if (!hasSiteFtpCredentials(cfg)) {
+    throw siteFtpNotConfiguredError();
+  }
   var root = siteFtpPaths.validateSiteRoot(siteFtpPaths.readConfiguredSiteRoot());
   if (!root.ok) {
     var missingRoot = new Error(root.userMessage);
-    missingRoot.code = root.code || "ftp_not_configured";
+    missingRoot.code = root.code || "site_ftp_not_configured";
     throw missingRoot;
   }
   var cwd = siteFtpPaths.validateSiteFtpCwd(cfg.remoteDir);
   if (!cwd.ok) {
     var missingCwd = new Error(cwd.userMessage);
-    missingCwd.code = cwd.code || "ftp_not_configured";
+    missingCwd.code = cwd.code || "site_ftp_not_configured";
     throw missingCwd;
   }
   cfg.remoteDir = "";
@@ -504,6 +525,7 @@ module.exports = {
   getFtpConfig: getFtpConfig,
   isConfigured: isConfigured,
   getSiteFtpConfig: getSiteFtpConfig,
+  hasSiteFtpCredentials: hasSiteFtpCredentials,
   isSiteConfigured: isSiteConfigured,
   createMemoryFtp: createMemoryFtp,
   connectFromEnv: connectFromEnv,
