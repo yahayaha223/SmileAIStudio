@@ -96,6 +96,39 @@ function listDirectoryNames(list) {
   return out;
 }
 
+function dirNamesHave(dirs, want) {
+  var w = String(want || "").toLowerCase();
+  if (!w) return false;
+  var src = Array.isArray(dirs) ? dirs : [];
+  var i;
+  for (i = 0; i < src.length; i++) {
+    if (String(src[i] || "").toLowerCase() === w) return true;
+  }
+  return false;
+}
+
+/**
+ * SITE_FTP_CWD=/ is only safe when login root is the homepage (has diary/).
+ * image/css without diary is the diary folder itself.
+ */
+function assertLoginRootIsHomepage(rootDirs) {
+  if (dirNamesHave(rootDirs, "public_html")) {
+    return fail(
+      "ftp_login_has_public_html",
+      "ログイン直後の / の直下に public_html があるため、SITE_FTP_CWD=/ は使えません",
+      { ftpCwd: "/" }
+    );
+  }
+  if (!dirNamesHave(rootDirs, "diary")) {
+    return fail(
+      "ftp_login_missing_diary_dir",
+      "ログイン直後の直下に diary フォルダが見えないため、公式サイト公開を中止しました",
+      { ftpCwd: "/" }
+    );
+  }
+  return { ok: true };
+}
+
 function validateSiteFtpCwd(raw) {
   var n = normalizeAbs(raw);
   if (!n) {
@@ -112,14 +145,6 @@ function validateSiteFtpCwd(raw) {
     );
   }
   if (n === "/") {
-    var diaryAtRoot = normalizeAbs(readDiaryRemoteDir());
-    if (diaryAtRoot === "/") {
-      return fail(
-        "site_cwd_reuses_diary_dir",
-        "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
-        { ftpCwd: n }
-      );
-    }
     return { ok: true, cwd: "/", loginRoot: true };
   }
   if (!/\/public_html$/i.test(n)) {
@@ -342,12 +367,10 @@ async function confirmLoginRoot(ftp, extra) {
       });
     }
   }
-  if (rootDirs && rootDirs.indexOf("public_html") >= 0) {
-    return fail(
-      "ftp_login_has_public_html",
-      "ログイン直後の / の直下に public_html があるため、SITE_FTP_CWD=/ は使えません",
-      { ftpCwd: "/", loginPwd: loginPwd }
-    );
+  var loginGate = assertLoginRootIsHomepage(rootDirs || []);
+  if (!loginGate.ok) {
+    loginGate.loginPwd = loginPwd;
+    return loginGate;
   }
   return { ok: true, cwd: "/", loginRoot: true, skippedCd: true };
 }
@@ -404,6 +427,8 @@ module.exports = {
   validateSiteRoot: validateSiteRoot,
   validateSiteFtpCwd: validateSiteFtpCwd,
   listDirectoryNames: listDirectoryNames,
+  dirNamesHave: dirNamesHave,
+  assertLoginRootIsHomepage: assertLoginRootIsHomepage,
   joinFtpPath: joinFtpPath,
   resolveOneTarget: resolveOneTarget,
   resolvePublishPlan: resolvePublishPlan,

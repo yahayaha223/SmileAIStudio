@@ -32,12 +32,12 @@ async function handler(event, guard) {
     }, event);
   }
 
-  var cfg = ftpClient.getFtpConfig();
-  if (!(cfg.host && cfg.user && cfg.password)) {
+  var cfg = ftpClient.getSiteFtpConfig();
+  if (!ftpClient.hasSiteFtpCredentials(cfg)) {
     await audit.recordAudit({
       event: "site_ftp_probe",
       success: false,
-      reasonCode: "ftp_not_configured",
+      reasonCode: "site_ftp_not_configured",
       actorUserId: userId,
       role: guard && guard.session ? guard.session.roleSnapshot : null,
       target: "api-site-ftp-probe",
@@ -45,8 +45,9 @@ async function handler(event, guard) {
     });
     return http.json(503, {
       ok: false,
-      error: "ftp_not_configured",
-      userMessage: "FTP接続設定が必要です"
+      error: "site_ftp_not_configured",
+      reasonCode: "site_ftp_not_configured",
+      userMessage: "公式サイトFTP接続設定が必要です"
     }, event);
   }
 

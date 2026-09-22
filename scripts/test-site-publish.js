@@ -80,6 +80,7 @@ function loginRootFtp(initialFiles) {
       return [
         { name: "image", type: 2 },
         { name: "css", type: 2 },
+        { name: "diary", type: 2 },
         { name: "index.htm", type: 1 }
       ];
     }
@@ -111,6 +112,12 @@ function xserverFtp(initialFiles) {
 async function run() {
   process.env.SITE_FTP_REMOTE_DIR = "/public_html";
   process.env.SITE_FTP_CWD = "/egaonokiroku.co.jp/public_html";
+  process.env.SITE_FTP_HOST = "site.example.com";
+  process.env.SITE_FTP_USER = "site-ftp-user";
+  process.env.SITE_FTP_PASSWORD = "site-ftp-password";
+  process.env.FTP_HOST = "diary.example.com";
+  process.env.FTP_USER = "diary-ftp-user";
+  process.env.FTP_PASSWORD = "diary-ftp-password";
   process.env.FTP_REMOTE_DIR = "/public_html/diary";
 
   await test("CorporateSite/index.htm → /public_html/index.htm", function () {
@@ -188,20 +195,43 @@ async function run() {
       path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"),
       "utf8"
     );
+    var siteFn = ftpSrc.slice(
+      ftpSrc.indexOf("function getSiteFtpConfig"),
+      ftpSrc.indexOf("function isSiteConfigured")
+    );
+    var diaryFn = ftpSrc.slice(
+      ftpSrc.indexOf("function getFtpConfig"),
+      ftpSrc.indexOf("function isConfigured")
+    );
     assert.ok(/var INDEX_NAME = "index.htm"/.test(diarySrc));
     assert.ok(/connectFromEnv\(\)/.test(diaryApi));
     assert.ok(!/connectSiteFromEnv/.test(diaryApi));
     assert.ok(!/connectSiteFromEnv/.test(diarySrc));
+    assert.ok(!/SITE_FTP_USER/.test(diarySrc));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diarySrc));
+    assert.ok(!/SITE_FTP_USER/.test(diaryApi));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diaryApi));
     assert.ok(/remoteDir:\s*env\.getEnv\("FTP_REMOTE_DIR"\)/.test(ftpSrc));
-    assert.ok(/readConfiguredSiteCwd\(\)/.test(ftpSrc));
-    assert.ok(/readConfiguredSiteRoot\(\)/.test(ftpSrc));
-    assert.ok(!/cfg\.remoteDir = env\.getEnv\("FTP_REMOTE_DIR"\)/.test(
-      ftpSrc.slice(ftpSrc.indexOf("function getSiteFtpConfig"))
-    ));
+    assert.ok(/SITE_FTP_USER/.test(siteFn));
+    assert.ok(/SITE_FTP_PASSWORD/.test(siteFn));
+    assert.ok(/SITE_FTP_HOST/.test(siteFn));
+    assert.ok(/readConfiguredSiteCwd\(\)/.test(siteFn));
+    assert.ok(!/getFtpConfig\(/.test(siteFn));
+    assert.ok(!/env\.getEnv\("FTP_USER"\)/.test(siteFn));
+    assert.ok(!/env\.getEnv\("FTP_PASSWORD"\)/.test(siteFn));
+    assert.ok(!/env\.getEnv\("FTP_HOST"\)/.test(siteFn));
+    assert.ok(/env\.getEnv\("FTP_USER"\)/.test(diaryFn) || /FTP_USER/.test(diaryFn));
+    assert.ok(/env\.getEnv\("FTP_PASSWORD"\)/.test(diaryFn));
+    assert.ok(!/SITE_FTP_USER/.test(diaryFn));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diaryFn));
     var diaryCfg = ftpClient.getFtpConfig();
+    var siteCfg = ftpClient.getSiteFtpConfig();
     assert.strictEqual(diaryCfg.remoteDir, "/public_html/diary");
-    assert.strictEqual(ftpClient.getSiteFtpConfig().remoteDir, "/egaonokiroku.co.jp/public_html");
-    assert.notStrictEqual(ftpClient.getSiteFtpConfig().remoteDir, diaryCfg.remoteDir);
+    assert.strictEqual(siteCfg.remoteDir, "/egaonokiroku.co.jp/public_html");
+    assert.notStrictEqual(siteCfg.remoteDir, diaryCfg.remoteDir);
+    assert.notStrictEqual(siteCfg.user, diaryCfg.user);
+    assert.notStrictEqual(siteCfg.password, diaryCfg.password);
+    assert.notStrictEqual(siteCfg.host, diaryCfg.host);
     assert.strictEqual(siteFtpPaths.readConfiguredSiteRoot(), "/public_html");
   });
 
@@ -435,6 +465,232 @@ async function run() {
     assert.strictEqual(denied.ok, false);
     assert.strictEqual(denied.code, "ftp_login_has_public_html");
     assert.ok(!ftp.ops.some(function (op) { return op.op === "cd" || op.op === "stor"; }));
+  });
+
+  await test("SITE_FTP_* 未設定なら homepage publish 拒否", function () {
+    var prev = {
+      SITE_FTP_HOST: process.env.SITE_FTP_HOST,
+      SITE_FTP_USER: process.env.SITE_FTP_USER,
+      SITE_FTP_PASSWORD: process.env.SITE_FTP_PASSWORD,
+      SITE_FTP_CWD: process.env.SITE_FTP_CWD
+    };
+    delete process.env.SITE_FTP_HOST;
+    delete process.env.SITE_FTP_USER;
+    delete process.env.SITE_FTP_PASSWORD;
+    delete process.env.SITE_FTP_CWD;
+    try {
+      assert.strictEqual(ftpClient.hasSiteFtpCredentials(), false);
+      assert.strictEqual(ftpClient.isSiteConfigured(), false);
+      var api = fs.readFileSync(
+        path.join(__dirname, "..", "netlify", "functions", "api-site-publish.js"),
+        "utf8"
+      );
+      assert.ok(/site_ftp_not_configured/.test(api));
+    } finally {
+      Object.keys(prev).forEach(function (k) {
+        if (prev[k]) process.env[k] = prev[k];
+        else delete process.env[k];
+      });
+    }
+  });
+
+  await test("FTP_* が正しくても SITE_FTP_* 未設定なら homepage publish 拒否", function () {
+    var prev = {
+      SITE_FTP_HOST: process.env.SITE_FTP_HOST,
+      SITE_FTP_USER: process.env.SITE_FTP_USER,
+      SITE_FTP_PASSWORD: process.env.SITE_FTP_PASSWORD,
+      SITE_FTP_CWD: process.env.SITE_FTP_CWD
+    };
+    delete process.env.SITE_FTP_HOST;
+    delete process.env.SITE_FTP_USER;
+    delete process.env.SITE_FTP_PASSWORD;
+    delete process.env.SITE_FTP_CWD;
+    process.env.FTP_HOST = "diary.example.com";
+    process.env.FTP_USER = "diary-ftp-user";
+    process.env.FTP_PASSWORD = "diary-ftp-password";
+    process.env.FTP_REMOTE_DIR = "/public_html/diary";
+    try {
+      assert.strictEqual(ftpClient.isConfigured(), true);
+      assert.strictEqual(ftpClient.isSiteConfigured(), false);
+      assert.strictEqual(ftpClient.getSiteFtpConfig().user, "");
+      assert.strictEqual(ftpClient.getSiteFtpConfig().password, "");
+      assert.notStrictEqual(ftpClient.getSiteFtpConfig().user, process.env.FTP_USER);
+      assert.strictEqual(ftpClient.getFtpConfig().user, "diary-ftp-user");
+    } finally {
+      Object.keys(prev).forEach(function (k) {
+        if (prev[k]) process.env[k] = prev[k];
+        else delete process.env[k];
+      });
+    }
+  });
+
+  await test("homepage publish は FTP_USER / FTP_PASSWORD を参照しない", function () {
+    var files = [
+      "netlify/functions/shared/ftp-client.js",
+      "netlify/functions/api-site-publish.js",
+      "netlify/functions/api-site-ftp-probe.js",
+      "netlify/functions/shared/site-publish.js"
+    ];
+    var ftpSrc = fs.readFileSync(path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"), "utf8");
+    var siteFn = ftpSrc.slice(
+      ftpSrc.indexOf("function getSiteFtpConfig"),
+      ftpSrc.indexOf("async function connectFromEnv")
+    );
+    assert.ok(!/env\.getEnv\("FTP_USER"\)/.test(siteFn));
+    assert.ok(!/env\.getEnv\("FTP_PASSWORD"\)/.test(siteFn));
+    assert.ok(/getSiteFtpConfig\(\)/.test(fs.readFileSync(path.join(__dirname, "..", files[1]), "utf8")) ||
+      /isSiteConfigured\(\)/.test(fs.readFileSync(path.join(__dirname, "..", files[1]), "utf8")));
+    var probe = fs.readFileSync(path.join(__dirname, "..", files[2]), "utf8");
+    assert.ok(/getSiteFtpConfig/.test(probe));
+    assert.ok(!/getFtpConfig\(/.test(probe));
+    var loginOnly = ftpSrc.slice(
+      ftpSrc.indexOf("async function connectLoginOnlyFromEnv"),
+      ftpSrc.indexOf("async function enterSiteCwdAfterLoginProbe")
+    );
+    assert.ok(/getSiteFtpConfig\(\)/.test(loginOnly));
+    assert.ok(!/getFtpConfig\(\)/.test(loginOnly));
+  });
+
+  await test("diary publish は SITE_FTP_USER / SITE_FTP_PASSWORD を参照しない", function () {
+    var diarySrc = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "shared", "diary-publish.js"),
+      "utf8"
+    );
+    var diaryApi = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "api-diary-publish.js"),
+      "utf8"
+    );
+    var ftpSrc = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"),
+      "utf8"
+    );
+    var diaryFn = ftpSrc.slice(
+      ftpSrc.indexOf("function getFtpConfig"),
+      ftpSrc.indexOf("function getSiteFtpConfig")
+    );
+    assert.ok(!/SITE_FTP_USER/.test(diarySrc + diaryApi + diaryFn));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diarySrc + diaryApi + diaryFn));
+    assert.ok(/connectFromEnv\(\)/.test(diaryApi));
+    assert.ok(!/connectSiteFromEnv/.test(diaryApi));
+  });
+
+  await test("SITE_FTP_CWD=/ で homepage root 判定", function () {
+    var prevCwd = process.env.SITE_FTP_CWD;
+    var prevDiary = process.env.FTP_REMOTE_DIR;
+    process.env.SITE_FTP_CWD = "/";
+    process.env.FTP_REMOTE_DIR = "/";
+    try {
+      var cwd = siteFtpPaths.validateSiteFtpCwd("/");
+      assert.strictEqual(cwd.ok, true, cwd.userMessage || cwd.code);
+      assert.strictEqual(cwd.loginRoot, true);
+      assert.strictEqual(ftpClient.getSiteFtpConfig().remoteDir, "/");
+      assert.strictEqual(ftpClient.getFtpConfig().remoteDir, "/");
+      assert.notStrictEqual(ftpClient.getSiteFtpConfig().user, ftpClient.getFtpConfig().user);
+    } finally {
+      process.env.SITE_FTP_CWD = prevCwd;
+      process.env.FTP_REMOTE_DIR = prevDiary || "/public_html/diary";
+    }
+  });
+
+  await test("diary/ が見えない接続先では homepage publish 拒否", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "diary/index.htm": Buffer.from("DIARY-LIVE")
+    });
+    ftp.listEntries = async function () {
+      return [
+        { name: "image", type: 2 },
+        { name: "css", type: 2 }
+      ];
+    };
+    var denied = await siteFtpPaths.enterSiteFtpCwd(ftp, "/");
+    assert.strictEqual(denied.ok, false);
+    assert.strictEqual(denied.code, "ftp_login_missing_diary_dir");
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.code, "ftp_login_missing_diary_dir");
+    assert.strictEqual(r.productionUntouched, true);
+    assert.strictEqual(ftp.files["index.htm"].toString(), OLD_INDEX);
+    assert.strictEqual(ftp.files["diary/index.htm"].toString(), "DIARY-LIVE");
+    assert.ok(!ftp.ops.some(function (op) { return op.op === "stor" || op.op === "rename" || op.op === "remove"; }));
+  });
+
+  await test("homepage publish で diary SHA-256 不変", async function () {
+    var crypto = require("crypto");
+    function sha(buf) {
+      return crypto.createHash("sha256").update(buf).digest("hex");
+    }
+    var diarySjis = Buffer.from([0x82, 0xa0, 0x82, 0xa2, 0x0a]);
+    var before = sha(diarySjis);
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS),
+      "diary/index.htm": Buffer.from(diarySjis)
+    });
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, true, r.userMessage || r.code);
+    assert.ok(ftp.files["diary/index.htm"].equals(diarySjis));
+    assert.strictEqual(sha(ftp.files["diary/index.htm"]), before);
+    assert.ok(!ftp.ops.some(function (op) {
+      var p = String(op.name || op.from || op.to || op.dir || "");
+      return /(^|\/)diary(\/|$)/i.test(p);
+    }));
+  });
+
+  await test("rollbackでも diary SHA-256 不変", async function () {
+    var crypto = require("crypto");
+    var diaryBytes = Buffer.from("DIARY-LIVE-SJIS-\x82\xa0");
+    var before = crypto.createHash("sha256").update(diaryBytes).digest("hex");
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS),
+      "diary/index.htm": Buffer.from(diaryBytes)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) {
+        throw new Error("STOR failed");
+      }
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.ok(ftp.files["diary/index.htm"].equals(diaryBytes));
+    assert.strictEqual(
+      crypto.createHash("sha256").update(ftp.files["diary/index.htm"]).digest("hex"),
+      before
+    );
+    assert.ok(!ftp.ops.some(function (op) {
+      var p = String(op.name || op.from || op.to || "");
+      return /(^|\/)diary(\/|$)/i.test(p);
+    }));
   });
 
   await test("pwd が / 以外なら SITE_FTP_CWD=/ を拒否", async function () {

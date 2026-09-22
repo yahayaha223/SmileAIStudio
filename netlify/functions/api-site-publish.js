@@ -199,7 +199,7 @@ async function handler(event, guard) {
     await audit.recordAudit({
       event: "site_publish",
       success: false,
-      reasonCode: "ftp_not_configured",
+      reasonCode: "site_ftp_not_configured",
       actorUserId: userId,
       role: guard && guard.session ? guard.session.roleSnapshot : null,
       target: "api-site-publish",
@@ -207,8 +207,11 @@ async function handler(event, guard) {
     });
     return http.json(503, {
       ok: false,
-      error: "ftp_not_configured",
-      userMessage: "公式サイト公開先 SITE_FTP_REMOTE_DIR=/public_html と SITE_FTP_CWD の設定が必要です"
+      error: "site_ftp_not_configured",
+      requestId: requestId,
+      reasonCode: "site_ftp_not_configured",
+      userMessage: "公式サイトFTP接続設定が必要です",
+      productionUntouched: true
     }, event);
   }
 

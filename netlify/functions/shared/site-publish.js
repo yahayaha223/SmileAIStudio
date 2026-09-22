@@ -240,6 +240,39 @@ async function publishSiteFiles(opts) {
       }
       return fail(cwdCheck.code, cwdCheck.userMessage, { ftpCwd: cwdCheck.ftpCwd || cwd });
     }
+    if (siteFtpPaths.normalizeAbs(cwd) === "/") {
+      if (!ftp || typeof ftp.list !== "function") {
+        if (ftp && typeof ftp.close === "function") {
+          try { await ftp.close(); } catch (eCloseListFtp) { /* ignore */ }
+        }
+        return fail("ftp_list_failed", "ログイン直後のフォルダ一覧を取得できませんでした", {
+          ftpCwd: "/",
+          productionUntouched: true
+        });
+      }
+      var loginDirs = null;
+      try {
+        loginDirs = siteFtpPaths.listDirectoryNames(await ftp.list("."));
+      } catch (eListHome) {
+        if (ftp && typeof ftp.close === "function") {
+          try { await ftp.close(); } catch (eCloseList) { /* ignore */ }
+        }
+        return fail("ftp_list_failed", "ログイン直後のフォルダ一覧を取得できませんでした", {
+          ftpCwd: "/",
+          productionUntouched: true
+        });
+      }
+      var loginGate = siteFtpPaths.assertLoginRootIsHomepage(loginDirs);
+      if (!loginGate.ok) {
+        if (ftp && typeof ftp.close === "function") {
+          try { await ftp.close(); } catch (eCloseGate) { /* ignore */ }
+        }
+        return fail(loginGate.code, loginGate.userMessage, {
+          ftpCwd: "/",
+          productionUntouched: true
+        });
+      }
+    }
   }
 
   var enter = ftp && ftp.siteEnter ? ftp.siteEnter : {};

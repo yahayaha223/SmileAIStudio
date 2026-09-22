@@ -224,6 +224,8 @@ async function run() {
     );
     assert.ok(/cfg\.remoteDir = ""/.test(loginOnly));
     assert.ok(/cfg\.probeOnly = true/.test(loginOnly));
+    assert.ok(/getSiteFtpConfig\(\)/.test(loginOnly));
+    assert.ok(!/getFtpConfig\(\)/.test(loginOnly));
   });
 
   await test("owner以外拒否 / CSRF拒否", async function () {
@@ -287,7 +289,7 @@ async function run() {
     var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
     var script = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
     assert.ok(/id="btn-hp-edit-ftp-probe"/.test(html));
-    assert.ok(/FTP公開先を診断/.test(html));
+    assert.ok(/公式サイトFTPを診断/.test(html));
     assert.ok(/id="hp-edit-ftp-probe-result"/.test(html));
     assert.ok(/smile-site-ftp-probe-ui\.js/.test(html));
     var start = script.indexOf("function runHpFtpProbe(");

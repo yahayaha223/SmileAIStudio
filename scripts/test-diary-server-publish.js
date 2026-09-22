@@ -314,7 +314,13 @@ async function run() {
   });
 
   await test("日記公開は FTP_REMOTE_DIR=/public_html/diary の index.htm のまま", function () {
+    process.env.FTP_HOST = "diary.example.com";
+    process.env.FTP_USER = "diary-ftp-user";
+    process.env.FTP_PASSWORD = "diary-ftp-password";
     process.env.FTP_REMOTE_DIR = "/public_html/diary";
+    process.env.SITE_FTP_HOST = "site.example.com";
+    process.env.SITE_FTP_USER = "site-ftp-user";
+    process.env.SITE_FTP_PASSWORD = "site-ftp-password";
     process.env.SITE_FTP_REMOTE_DIR = "/public_html";
     process.env.SITE_FTP_CWD = "/egaonokiroku.co.jp/public_html";
     var diaryCfg = ftpClient.getFtpConfig();
@@ -322,9 +328,14 @@ async function run() {
     assert.strictEqual(diaryCfg.remoteDir, "/public_html/diary");
     assert.strictEqual(siteCfg.remoteDir, "/egaonokiroku.co.jp/public_html");
     assert.notStrictEqual(siteCfg.remoteDir, diaryCfg.remoteDir);
+    assert.notStrictEqual(siteCfg.user, diaryCfg.user);
+    assert.notStrictEqual(siteCfg.password, diaryCfg.password);
+    assert.notStrictEqual(siteCfg.host, diaryCfg.host);
     var api = fs.readFileSync(path.join(__dirname, "..", "netlify", "functions", "api-diary-publish.js"), "utf8");
     assert.ok(/connectFromEnv\(\)/.test(api));
     assert.ok(!/connectSiteFromEnv/.test(api));
+    assert.ok(!/SITE_FTP_USER/.test(api));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(api));
   });
 
   console.log("\nPassed " + passed + " diary-server-publish tests" + (failed ? (" failed=" + failed) : ""));

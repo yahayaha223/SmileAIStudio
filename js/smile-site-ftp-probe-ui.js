@@ -1,6 +1,7 @@
 /**
  * Homepage FTP layout probe UI helpers.
- * Read-only display. Never logs or shows FTP_USER / FTP_PASSWORD / API keys / secrets.
+ * Read-only display. Diagnoses SITE_FTP_* login. Never logs or shows
+ * SITE_FTP_USER / SITE_FTP_PASSWORD / FTP_USER / FTP_PASSWORD / API keys / secrets.
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
