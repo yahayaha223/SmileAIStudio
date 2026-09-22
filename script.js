@@ -15638,6 +15638,12 @@
     var job = pending.jobId && DevJobs ? DevJobs.getById(pending.jobId) : null;
     hpSitePublishBusy = true;
     if (status) status.textContent = "本番へ反映しています…";
+    var failUi = (typeof SmileHpEditPublishResult !== "undefined") ? SmileHpEditPublishResult : null;
+    var failBox = failUi && failUi.ensureBox
+      ? failUi.ensureBox(document)
+      : document.getElementById("hp-edit-publish-result");
+    if (failUi && failUi.clear) failUi.clear(failBox);
+    else if (failBox) failBox.hidden = true;
     var csrf = getStudioCsrfToken();
     var headers = {
       Accept: "application/json",
@@ -15667,6 +15673,7 @@
           DevJobs.upsert(job);
         }
         if (status) status.textContent = "公開済み";
+        if (failUi && failUi.clear) failUi.clear(failBox);
         showToast("公式サイトへ反映しました");
       } else {
         if (job) {
@@ -15675,6 +15682,7 @@
           DevJobs.upsert(job);
         }
         if (status) status.textContent = "公開失敗";
+        if (failUi && failUi.render) failUi.render(failBox, data, escapeHtml);
         showToast(data.userMessage || "公開失敗");
       }
       renderHpEditJobs();
@@ -15687,6 +15695,13 @@
         DevJobs.upsert(job);
       }
       if (status) status.textContent = "公開失敗";
+      if (failUi && failUi.render) {
+        failUi.render(failBox, {
+          reasonCode: "pipeline_error",
+          userMessage: "通信に失敗しました",
+          productionUntouched: true
+        }, escapeHtml);
+      }
       renderHpEditJobs();
     }).finally(function () {
       hpSitePublishBusy = false;
@@ -16023,6 +16038,19 @@
     publishHpEditToSite(id);
   });
   onClick("btn-hp-edit-publish-no", hideHpPublishConfirm);
+  onClick("btn-hp-edit-publish-copy", function () {
+    var ui = (typeof SmileHpEditPublishResult !== "undefined") ? SmileHpEditPublishResult : null;
+    var text = ui && ui.copiedPayload ? ui.copiedPayload() : "";
+    if (!text || (ui.looksUnsafe && ui.looksUnsafe(text))) {
+      showToast("コピーできる診断がありません");
+      return;
+    }
+    copyText(text).then(function () {
+      notifyCopied("診断内容をコピーしました");
+    }).catch(function () {
+      showToast("コピーできませんでした");
+    });
+  });
 
   var hpEditGithubReadyEl = document.getElementById("hp-edit-github-ready");
   var hpEditModalEl = document.getElementById("hp-edit-modal");
