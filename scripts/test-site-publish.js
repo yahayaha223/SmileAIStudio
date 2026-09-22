@@ -627,6 +627,16 @@ async function run() {
     assert.strictEqual(staffDenied.ok, false);
     assert.strictEqual(staffDenied.response.statusCode, 403);
 
+    var staffReady = await middleware.enforceAccess(fakeEvent({
+      headers: {
+        cookie: authConfig.COOKIE_SESSION + "=" + encodeURIComponent(staff.rawId) + "; " +
+          authConfig.COOKIE_CSRF + "=" + encodeURIComponent(staff.session.csrfToken),
+        "x-csrf-token": staff.session.csrfToken
+      }
+    }), { permissionKey: "api-github-issues:POST:find-ready-site-publish" });
+    assert.strictEqual(staffReady.ok, false);
+    assert.strictEqual(staffReady.response.statusCode, 403);
+
     authKv.resetAuthMemoryForTests();
     var ownerUser = await users.createUser({ email: "owner-site@example.com", role: "owner", status: "active" });
     var owner = await sessions.createSession(ownerUser.user, { purpose: "full", deviceName: "O" });
@@ -640,6 +650,16 @@ async function run() {
     assert.strictEqual(badCsrf.ok, false);
     assert.strictEqual(badCsrf.response.statusCode, 403);
 
+    var badReadyCsrf = await middleware.enforceAccess(fakeEvent({
+      headers: {
+        cookie: authConfig.COOKIE_SESSION + "=" + encodeURIComponent(owner.rawId) + "; " +
+          authConfig.COOKIE_CSRF + "=" + encodeURIComponent(owner.session.csrfToken),
+        "x-csrf-token": "wrong"
+      }
+    }), { permissionKey: "api-github-issues:POST:find-ready-site-publish" });
+    assert.strictEqual(badReadyCsrf.ok, false);
+    assert.strictEqual(badReadyCsrf.response.statusCode, 403);
+
     process.env.AUTH_ENVIRONMENT = "local";
     process.env.AUTH_ENFORCEMENT_MODE = "enforce";
   });
@@ -650,6 +670,14 @@ async function run() {
     assert.deepStrictEqual(perm.roles, ["owner"]);
     assert.strictEqual(authConfig.isAlwaysEnforcedPermission("api-site-publish:POST"), true);
     assert.strictEqual(authConfig.isProductionOnlyPermission("api-site-publish:POST"), true);
+
+    var readyPerm = permissions.resolvePermission("api-github-issues:POST:find-ready-site-publish");
+    assert.ok(readyPerm);
+    assert.deepStrictEqual(readyPerm.roles, ["owner"]);
+    assert.strictEqual(
+      authConfig.isAlwaysEnforcedPermission("api-github-issues:POST:find-ready-site-publish"),
+      true
+    );
   });
 
   await test("本番公開を勝手に実行しない", function () {
@@ -675,6 +703,28 @@ async function run() {
     assert.ok(/showHpPublishConfirm/.test(republishClick));
     assert.ok(!/publishHpEditToSite/.test(republishClick));
     assert.ok(/userConfirmed: true/.test(script));
+    assert.ok(/find-ready-site-publish/.test(script));
+    assert.ok(/hp-edit-github-ready/.test(html));
+    assert.ok(/承認済みの変更があります/.test(script));
+    var readyIdx = script.lastIndexOf("btn-hp-github-ready-publish");
+    var readyClick = script.slice(readyIdx, readyIdx + 420);
+    assert.ok(/showHpPublishConfirm/.test(readyClick));
+    assert.ok(!/publishHpEditToSite/.test(readyClick));
+  });
+
+  await test("server rejects unmerged PR and missing userConfirmed", function () {
+    var gate = github.assertPrMergedToMain({ ok: true, merged: false, baseRef: "main" });
+    assert.strictEqual(gate.ok, false);
+    assert.strictEqual(gate.error, "pr_not_merged");
+    var merged = github.assertPrMergedToMain({ ok: true, merged: true, baseRef: "main" });
+    assert.strictEqual(merged.ok, true);
+    var apiSrc = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "api-site-publish.js"),
+      "utf8"
+    );
+    assert.ok(/assertPrMergedToMain/.test(apiSrc));
+    assert.ok(/if \(!body\.userConfirmed\)/.test(apiSrc));
+    assert.ok(/getPullRequest\(prNumber\)/.test(apiSrc));
   });
 
   await test("merged PR sync becomes ready_for_publish", async function () {

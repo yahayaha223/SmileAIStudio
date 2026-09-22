@@ -15390,7 +15390,9 @@
 
   var currentHpEditJobId = null;
   var pendingHpPublishJobId = null;
+  var pendingHpPublish = null;
   var hpSitePublishBusy = false;
+  var githubReadyPublishes = [];
   var hpFtpProbeBusy = false;
   var aiJobsSyncTimer = null;
   var aiJobsSyncInFlight = false;
@@ -15413,12 +15415,14 @@
   function startAiJobsSyncLoop() {
     stopAiJobsSyncLoop();
     syncAiJobsFromGithub();
+    loadGithubReadySitePublishes();
     aiJobsSyncTimer = setInterval(function () {
       if (!isDevJobProgressModalOpen()) {
         stopAiJobsSyncLoop();
         return;
       }
       syncAiJobsFromGithub();
+      loadGithubReadySitePublishes();
     }, 20000);
   }
 
@@ -15577,6 +15581,29 @@
     var box = document.getElementById("hp-edit-publish-confirm");
     if (box) box.hidden = true;
     pendingHpPublishJobId = null;
+    pendingHpPublish = null;
+  }
+
+  function parseHpPublishSource(source) {
+    if (source && typeof source === "object") {
+      var prFromObj = Number(source.prNumber);
+      if (!isFinite(prFromObj) || prFromObj < 1) return null;
+      return {
+        prNumber: prFromObj,
+        issueNumber: source.issueNumber != null ? Number(source.issueNumber) : null,
+        jobId: source.jobId || null
+      };
+    }
+    if (!source || !DevJobs) return null;
+    var job = DevJobs.getById(source);
+    if (!canRequestHpSitePublish(job)) return null;
+    var prFromJob = Number(job.githubPrNumber);
+    if (!isFinite(prFromJob) || prFromJob < 1) return null;
+    return {
+      prNumber: prFromJob,
+      issueNumber: job.githubIssueNumber != null ? Number(job.githubIssueNumber) : null,
+      jobId: job.id
+    };
   }
 
   function canRequestHpSitePublish(job) {
@@ -15587,30 +15614,28 @@
     return !!(DevJobs.canPublishToProduction && DevJobs.canPublishToProduction(job));
   }
 
-  function showHpPublishConfirm(jobId) {
-    var job = DevJobs && DevJobs.getById(jobId);
-    if (!canRequestHpSitePublish(job)) {
+  function showHpPublishConfirm(source) {
+    var pending = parseHpPublishSource(source);
+    if (!pending) {
       showToast("まだ本番へ反映できません");
       return;
     }
-    pendingHpPublishJobId = job.id;
-    currentHpEditJobId = job.id;
+    pendingHpPublish = pending;
+    pendingHpPublishJobId = pending.jobId || null;
+    if (pending.jobId) currentHpEditJobId = pending.jobId;
     var box = document.getElementById("hp-edit-publish-confirm");
     if (box) box.hidden = false;
   }
 
-  function publishHpEditToSite(jobId) {
+  function publishHpEditToSite(source) {
     var status = document.getElementById("hp-edit-status");
     if (hpSitePublishBusy) return;
-    var job = DevJobs && DevJobs.getById(jobId);
-    if (!job) {
-      if (status) status.textContent = "公開する依頼が見つかりません。";
+    var pending = parseHpPublishSource(source) || pendingHpPublish;
+    if (!pending || !pending.prNumber) {
+      if (status) status.textContent = "公開するPRがありません。";
       return;
     }
-    if (!canRequestHpSitePublish(job)) {
-      if (status) status.textContent = "PRがmainへmergeされるまで本番反映できません。";
-      return;
-    }
+    var job = pending.jobId && DevJobs ? DevJobs.getById(pending.jobId) : null;
     hpSitePublishBusy = true;
     if (status) status.textContent = "本番へ反映しています…";
     var csrf = getStudioCsrfToken();
@@ -15626,8 +15651,9 @@
       cache: "no-store",
       body: JSON.stringify({
         userConfirmed: true,
-        jobId: job.id,
-        prNumber: job.githubPrNumber
+        jobId: pending.jobId || null,
+        prNumber: pending.prNumber,
+        issueNumber: pending.issueNumber || null
       })
     }).then(function (res) {
       return res.json().catch(function () {
@@ -15636,28 +15662,99 @@
     }).then(function (data) {
       data = data || {};
       if (data.ok) {
-        job.status = "published";
-        DevJobs.upsert(job);
+        if (job) {
+          job.status = "published";
+          DevJobs.upsert(job);
+        }
         if (status) status.textContent = "公開済み";
         showToast("公式サイトへ反映しました");
       } else {
-        job.status = "publish_failed";
-        job.failureReason = data.userMessage || "公開失敗";
-        DevJobs.upsert(job);
+        if (job) {
+          job.status = "publish_failed";
+          job.failureReason = data.userMessage || "公開失敗";
+          DevJobs.upsert(job);
+        }
         if (status) status.textContent = "公開失敗";
         showToast(data.userMessage || "公開失敗");
       }
       renderHpEditJobs();
+      loadGithubReadySitePublishes();
       refreshHpEditStatus();
     }).catch(function () {
-      job.status = "publish_failed";
-      job.failureReason = "通信に失敗しました";
-      DevJobs.upsert(job);
+      if (job) {
+        job.status = "publish_failed";
+        job.failureReason = "通信に失敗しました";
+        DevJobs.upsert(job);
+      }
       if (status) status.textContent = "公開失敗";
       renderHpEditJobs();
     }).finally(function () {
       hpSitePublishBusy = false;
       hideHpPublishConfirm();
+    });
+  }
+
+  function renderGithubReadyPublishes() {
+    var box = document.getElementById("hp-edit-github-ready");
+    if (!box) return;
+    var items = Array.isArray(githubReadyPublishes) ? githubReadyPublishes : [];
+    if (!items.length) {
+      box.innerHTML = "";
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = items.map(function (it) {
+      var issueNo = Number(it.issueNumber);
+      var prNo = Number(it.prNumber);
+      var issueLabel = "GitHub Issue #" + issueNo;
+      var prLabel = "PR #" + prNo;
+      var issueHtml = it.issueUrl
+        ? "<a href=\"" + escapeHtml(it.issueUrl) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+          escapeHtml(issueLabel) + "</a>"
+        : escapeHtml(issueLabel);
+      var prHtml = it.prUrl
+        ? "<a href=\"" + escapeHtml(it.prUrl) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" +
+          escapeHtml(prLabel) + "</a>"
+        : escapeHtml(prLabel);
+      return "<div class=\"ai-job-card hp-edit-github-ready-card\">" +
+        "<p class=\"ai-job-card__attention\">承認済みの変更があります</p>" +
+        "<p>" + issueHtml + "</p>" +
+        "<p>" + prHtml + "</p>" +
+        "<p><button type=\"button\" class=\"btn btn--primary btn--block btn--touch btn-hp-github-ready-publish\" data-pr-number=\"" +
+        escapeHtml(String(prNo)) + "\" data-issue-number=\"" + escapeHtml(String(issueNo)) +
+        "\">本番へ反映する</button></p>" +
+        "</div>";
+    }).join("");
+  }
+
+  function loadGithubReadySitePublishes() {
+    var box = document.getElementById("hp-edit-github-ready");
+    var csrf = getStudioCsrfToken();
+    var headers = {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    };
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return fetch("/.netlify/functions/api-github-issues", {
+      method: "POST",
+      headers: headers,
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify({
+        action: "find-ready-site-publish"
+      })
+    }).then(function (res) {
+      return res.json().catch(function () {
+        return { ok: false, items: [] };
+      });
+    }).then(function (data) {
+      githubReadyPublishes = (data && data.ok && Array.isArray(data.items)) ? data.items : [];
+      renderGithubReadyPublishes();
+    }).catch(function () {
+      if (!githubReadyPublishes.length && box) {
+        box.hidden = true;
+      }
     });
   }
 
@@ -15667,6 +15764,8 @@
     if (ta) setTimeout(function () { ta.focus(); }, 40);
     setHpFtpProbeResult("", false);
     renderHpEditJobs();
+    renderGithubReadyPublishes();
+    loadGithubReadySitePublishes();
     refreshHpEditStatus();
     startAiJobsSyncLoop();
   }
@@ -15895,11 +15994,27 @@
   });
 
   onClick("btn-hp-edit-publish-yes", function () {
+    if (pendingHpPublish && pendingHpPublish.prNumber) {
+      publishHpEditToSite(pendingHpPublish);
+      return;
+    }
     var id = pendingHpPublishJobId;
     if (!id) return;
     publishHpEditToSite(id);
   });
   onClick("btn-hp-edit-publish-no", hideHpPublishConfirm);
+
+  var hpEditGithubReadyEl = document.getElementById("hp-edit-github-ready");
+  if (hpEditGithubReadyEl) {
+    hpEditGithubReadyEl.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains("btn-hp-github-ready-publish")) return;
+      showHpPublishConfirm({
+        prNumber: t.getAttribute("data-pr-number"),
+        issueNumber: t.getAttribute("data-issue-number")
+      });
+    });
+  }
 
   var hpEditJobsListEl = document.getElementById("hp-edit-jobs-list");
   if (hpEditJobsListEl) {

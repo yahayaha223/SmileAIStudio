@@ -347,14 +347,89 @@ function parseJobKind(body) {
 }
 
 function hasHomepagePublishFiles(filenames) {
+  return filterHomepagePublishFiles(filenames).length > 0;
+}
+
+function filterHomepagePublishFiles(filenames) {
   var allow = {
     "CorporateSite/index.htm": true,
     "CorporateSite/css/top-diary-notice.css": true
   };
-  return (filenames || []).some(function (n) {
+  var out = [];
+  var seen = {};
+  (filenames || []).forEach(function (n) {
     var key = String(n || "").replace(/\\/g, "/").replace(/^\.\//, "").trim();
-    return !!allow[key];
+    if (!allow[key] || seen[key]) return;
+    seen[key] = true;
+    out.push(key);
   });
+  return out;
+}
+
+/** Known homepage-edit Issue numbers still publishable after localStorage is gone. */
+var DEFAULT_HOMEPAGE_ISSUE_SEEDS = [6];
+
+function uniquePositiveInts(list, max) {
+  var out = [];
+  var seen = {};
+  (list || []).forEach(function (n) {
+    var v = Number(n);
+    if (!isFinite(v) || v < 1 || seen[v]) return;
+    seen[v] = true;
+    out.push(v);
+  });
+  return out.slice(0, max || 12);
+}
+
+function homepageIssueSeeds() {
+  var extra = readEnv("SITE_PUBLISH_ISSUE_SEEDS");
+  var raw = DEFAULT_HOMEPAGE_ISSUE_SEEDS.slice();
+  if (extra) {
+    extra.split(",").forEach(function (s) { raw.push(s); });
+  }
+  return uniquePositiveInts(raw, 12);
+}
+
+function isMainBaseRef(ref) {
+  var base = String(ref || "").toLowerCase();
+  return base === "main" || base === "master";
+}
+
+function assertPrMergedToMain(pr) {
+  if (!pr || !pr.ok) {
+    return {
+      ok: false,
+      error: (pr && pr.error) || "pr_fetch_failed",
+      userMessage: (pr && pr.userMessage) || "PRを確認できませんでした",
+      httpStatus: 502
+    };
+  }
+  if (!pr.merged) {
+    return {
+      ok: false,
+      error: "pr_not_merged",
+      userMessage: "PRがmainへmergeされるまで本番反映できません",
+      httpStatus: 409
+    };
+  }
+  if (!isMainBaseRef(pr.baseRef)) {
+    return {
+      ok: false,
+      error: "pr_base_not_main",
+      userMessage: "mainへmergeされたPRのみ公開できます",
+      httpStatus: 409
+    };
+  }
+  return { ok: true };
+}
+
+function isReadyForSitePublish(sync) {
+  if (!sync) return false;
+  if (!sync.prMerged) return false;
+  if (!sync.githubPrNumber) return false;
+  if (!isMainBaseRef(sync.prBaseRef)) return false;
+  if (sync.jobKind && String(sync.jobKind).trim() !== "homepage-edit") return false;
+  return hasHomepagePublishFiles(sync.changedFiles);
 }
 
 async function getPullRequest(number) {
@@ -553,9 +628,7 @@ async function syncIssueState(number) {
   var jobStatus = mapAgentStatusToJobStatus(agentStatus, {
     githubPrNumber: prInfo && prInfo.number
   }) || "waiting_for_agent";
-  var baseOk = String(prBaseRef || "").toLowerCase() === "main" ||
-    String(prBaseRef || "").toLowerCase() === "master";
-  if (prMerged && baseOk && hasHomepagePublishFiles(changedFiles)) {
+  if (prMerged && isMainBaseRef(prBaseRef) && hasHomepagePublishFiles(changedFiles)) {
     jobStatus = "ready_for_publish";
   }
 
@@ -581,6 +654,61 @@ async function syncIssueState(number) {
   };
 }
 
+async function searchHomepageEditIssueNumbers() {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) return [];
+  var q = "repo:" + cfg.owner + "/" + cfg.repo + " is:issue homepage-edit in:body";
+  var path = "/search/issues?q=" + encodeURIComponent(q) + "&per_page=10";
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json || !Array.isArray(res.json.items)) return [];
+  return res.json.items.map(function (it) { return it && it.number; }).filter(Boolean);
+}
+
+/**
+ * Restore approved homepage publishes from GitHub without localStorage Job cards.
+ * Merge-to-main is verified with getPullRequest (never trusted from the client).
+ */
+async function findReadyHomepagePublishes(opts) {
+  opts = opts || {};
+  if (!isConfigured()) {
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です", items: [] };
+  }
+  var numbers = uniquePositiveInts(
+    homepageIssueSeeds().concat(opts.issueNumbers || []).concat(await searchHomepageEditIssueNumbers()),
+    12
+  );
+  var items = [];
+  var seenPr = {};
+  for (var i = 0; i < numbers.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    var one = await syncIssueState(numbers[i]);
+    if (!one.ok || !one.sync) continue;
+    if (!isReadyForSitePublish(one.sync)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    var pull = await getPullRequest(one.sync.githubPrNumber);
+    var mergeGate = assertPrMergedToMain(pull);
+    if (!mergeGate.ok) continue;
+    var prNumber = Number(pull.number || one.sync.githubPrNumber);
+    if (!isFinite(prNumber) || prNumber < 1 || seenPr[prNumber]) continue;
+    seenPr[prNumber] = true;
+    var files = filterHomepagePublishFiles(one.sync.changedFiles);
+    if (!files.length) continue;
+    items.push({
+      issueNumber: one.sync.githubIssueNumber,
+      issueUrl: one.sync.githubIssueUrl || "",
+      issueTitle: one.sync.issueTitle || "",
+      prNumber: prNumber,
+      prUrl: pull.htmlUrl || one.sync.githubPrUrl || "",
+      prMerged: true,
+      prBaseRef: pull.baseRef || one.sync.prBaseRef || "",
+      mergeCommitSha: pull.mergeCommitSha || one.sync.mergeCommitSha || "",
+      files: files,
+      status: "ready_for_publish"
+    });
+  }
+  return { ok: true, items: items };
+}
+
 module.exports = {
   getGithubConfig: getGithubConfig,
   isConfigured: isConfigured,
@@ -593,6 +721,10 @@ module.exports = {
   shouldStartAgent: shouldStartAgent,
   parseJobId: parseJobId,
   parseJobKind: parseJobKind,
+  hasHomepagePublishFiles: hasHomepagePublishFiles,
+  filterHomepagePublishFiles: filterHomepagePublishFiles,
+  assertPrMergedToMain: assertPrMergedToMain,
+  isReadyForSitePublish: isReadyForSitePublish,
   parseBranchName: parseBranchName,
   parsePrFromBody: parsePrFromBody,
   ensureAgentStatus: ensureAgentStatus,
@@ -607,6 +739,8 @@ module.exports = {
   findRelatedPullRequest: findRelatedPullRequest,
   updateIssueAgentStatus: updateIssueAgentStatus,
   syncIssueState: syncIssueState,
+  findReadyHomepagePublishes: findReadyHomepagePublishes,
+  DEFAULT_HOMEPAGE_ISSUE_SEEDS: DEFAULT_HOMEPAGE_ISSUE_SEEDS,
   ALLOWED_AGENT_STATUS: ALLOWED_AGENT_STATUS,
   AGENT_STATUS_TO_JOB: AGENT_STATUS_TO_JOB,
   AGENT_KICKOFF_COMMENT: AGENT_KICKOFF_COMMENT,

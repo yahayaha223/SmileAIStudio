@@ -63,26 +63,12 @@ async function handler(event, guard) {
   }
 
   var pr = await githubIssues.getPullRequest(prNumber);
-  if (!pr.ok) {
-    return http.json(502, {
+  var mergeGate = githubIssues.assertPrMergedToMain(pr);
+  if (!mergeGate.ok) {
+    return http.json(mergeGate.httpStatus || 502, {
       ok: false,
-      error: pr.error || "pr_fetch_failed",
-      userMessage: pr.userMessage || "PRを確認できませんでした"
-    }, event);
-  }
-  if (!pr.merged) {
-    return http.json(409, {
-      ok: false,
-      error: "pr_not_merged",
-      userMessage: "PRがmainへmergeされるまで本番反映できません"
-    }, event);
-  }
-  var baseRef = String(pr.baseRef || "").toLowerCase();
-  if (baseRef !== "main" && baseRef !== "master") {
-    return http.json(409, {
-      ok: false,
-      error: "pr_base_not_main",
-      userMessage: "mainへmergeされたPRのみ公開できます"
+      error: mergeGate.error || "pr_fetch_failed",
+      userMessage: mergeGate.userMessage || "PRを確認できませんでした"
     }, event);
   }
 

@@ -149,6 +149,30 @@ async function run() {
     assert.strictEqual(DevJobs.canRepublishToProduction(published), false);
   });
 
+  test("Studio restores approved homepage change from GitHub without localStorage jobs", function () {
+    var script = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
+    var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+    var api = fs.readFileSync(path.join(__dirname, "..", "netlify", "functions", "api-github-issues.js"), "utf8");
+    assert.ok(/hp-edit-github-ready/.test(html));
+    assert.ok(/承認済みの変更があります/.test(script));
+    assert.ok(/find-ready-site-publish/.test(script));
+    assert.ok(/find-ready-site-publish/.test(api));
+    assert.ok(/loadGithubReadySitePublishes/.test(script));
+    assert.ok(/btn-hp-github-ready-publish/.test(script));
+    assert.ok(/公式サイトへ本番反映します/.test(html));
+    assert.ok(/btn-hp-edit-publish-yes/.test(html));
+    assert.ok(/反映する/.test(html));
+    var readyIdx = script.lastIndexOf("btn-hp-github-ready-publish");
+    var readyClick = script.slice(readyIdx, readyIdx + 420);
+    assert.ok(/showHpPublishConfirm/.test(readyClick));
+    assert.ok(!/publishHpEditToSite/.test(readyClick));
+    var findBody = script.slice(
+      script.indexOf("action: \"find-ready-site-publish\""),
+      script.indexOf("action: \"find-ready-site-publish\"") + 80
+    );
+    assert.ok(!/issueNumbers/.test(findBody));
+  });
+
   console.log("\nPassed " + passed + " hp-edit-jobs tests");
 }
 
