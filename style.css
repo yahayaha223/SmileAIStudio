@@ -265,6 +265,32 @@ body::before {
   margin: 6px 0;
 }
 
+.hp-edit-publish-result[hidden] {
+  display: none !important;
+}
+
+.hp-edit-publish-result__title {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.hp-edit-publish-result__dl {
+  margin: 0 0 12px;
+}
+
+.hp-edit-publish-result__row {
+  margin: 8px 0;
+}
+
+.hp-edit-publish-result__row dt {
+  font-weight: 600;
+}
+
+.hp-edit-publish-result__row dd {
+  margin: 2px 0 0;
+  word-break: break-all;
+}
+
 .simple-diary__result {
   margin: 8px 0 12px;
   padding: 12px;

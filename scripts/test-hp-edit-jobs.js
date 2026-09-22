@@ -215,6 +215,86 @@ async function run() {
     assert.ok(/本番へ反映する/.test(box.innerHTML));
   });
 
+  test("homepage publish failure UI shows Japanese diagnostics and Cursor copy text", function () {
+    var ui = require(path.join(__dirname, "..", "js", "smile-hp-edit-publish-result.js"));
+    var script = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
+    var html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+    assert.ok(/smile-hp-edit-publish-result\.js/.test(html));
+    assert.ok(/id="hp-edit-publish-result"/.test(html));
+    assert.ok(/Cursorに渡す診断内容をコピー/.test(html));
+    assert.ok(/btn-hp-edit-publish-copy/.test(html));
+    assert.ok(/SmileHpEditPublishResult/.test(script));
+    assert.ok(/failUi\.render/.test(script));
+    var publishFn = script.slice(
+      script.indexOf("function publishHpEditToSite"),
+      script.indexOf("function hpGithubReadyUi")
+    );
+    var okIdx = publishFn.indexOf("if (data.ok)");
+    var elseIdx = publishFn.indexOf("} else {", okIdx);
+    var okBlock = publishFn.slice(okIdx, elseIdx);
+    assert.ok(/公開済み/.test(okBlock));
+    assert.ok(/failUi\.clear/.test(okBlock));
+    assert.ok(!/公開失敗/.test(okBlock));
+
+    assert.strictEqual(ui.explainReasonCode("upload_failed"), "新しいファイルをアップロードできませんでした");
+    assert.strictEqual(ui.explainReasonCode("ftp_cwd_550"), "FTPの作業フォルダへ移動できませんでした");
+    assert.strictEqual(ui.explainReasonCode("backup_failed"), "公開前バックアップを作成できませんでした");
+    assert.strictEqual(ui.explainReasonCode("swap_failed"), "新しいファイルへの切替に失敗しました");
+    assert.strictEqual(ui.explainReasonCode("unknown_reason_xyz"), "公開処理でエラーが発生しました");
+    assert.strictEqual(ui.explainReasonCode(""), "公開処理でエラーが発生しました");
+
+    var data = {
+      ok: false,
+      reasonCode: "upload_failed",
+      failedFile: "css/top-diary-notice.css",
+      ftpErrorCode: "550",
+      requestId: "spub_test123",
+      userMessage: "公開に失敗したため、元のホームページを維持しました",
+      productionUntouched: true,
+      password: "nope",
+      FTP_USER: "hidden",
+      buffer: "FILE BODY SHOULD NOT APPEAR"
+    };
+    var vm = ui.viewModel(data);
+    assert.strictEqual(vm.title, "公開失敗");
+    assert.strictEqual(vm.reasonJa, "新しいファイルをアップロードできませんでした");
+    assert.strictEqual(vm.failedFile, "css/top-diary-notice.css");
+    assert.strictEqual(vm.ftpErrorCode, "550");
+    assert.strictEqual(vm.productionLine, "元のホームページは維持されています");
+    assert.strictEqual(vm.requestId, "spub_test123");
+    var shown = ui.failureHtml(data);
+    assert.ok(/公開失敗/.test(shown));
+    assert.ok(/新しいファイルをアップロードできませんでした/.test(shown));
+    assert.ok(/css\/top-diary-notice\.css/.test(shown));
+    assert.ok(/>550</.test(shown) || /FTPエラー[\s\S]*550/.test(shown));
+    assert.ok(/元のホームページは維持されています/.test(shown));
+    assert.ok(/spub_test123/.test(shown));
+    assert.ok(shown.toLowerCase().indexOf("password") < 0);
+    assert.ok(shown.indexOf("FILE BODY") < 0);
+
+    var copy = ui.copyHandoff(data);
+    assert.ok(copy.indexOf("Smile AI Studio ホームページ公開失敗") >= 0);
+    assert.ok(copy.indexOf("requestId:\nspub_test123") >= 0);
+    assert.ok(copy.indexOf("reasonCode:\nupload_failed") >= 0);
+    assert.ok(copy.indexOf("failedFile:\ncss/top-diary-notice.css") >= 0);
+    assert.ok(copy.indexOf("ftpErrorCode:\n550") >= 0);
+    assert.ok(copy.indexOf("userMessage:\n公開に失敗したため、元のホームページを維持しました") >= 0);
+    assert.ok(copy.indexOf("productionUntouched:\ntrue") >= 0);
+    assert.ok(copy.indexOf("この情報を使って原因を調査してください。") >= 0);
+    assert.ok(copy.indexOf("本番FTPは再実行せず、feature branchで修正・テスト・PR作成まで行ってください。") >= 0);
+    assert.ok(copy.toLowerCase().indexOf("password") < 0);
+    assert.ok(copy.toLowerCase().indexOf("ftp_user") < 0);
+    assert.ok(copy.indexOf("FILE BODY") < 0);
+    assert.ok(copy.indexOf("nope") < 0);
+    assert.ok(copy.indexOf("hidden") < 0);
+
+    var restored = ui.viewModel({
+      reasonCode: "rollback_failed",
+      productionUntouched: false
+    });
+    assert.notStrictEqual(restored.productionLine, "元のホームページは維持されています");
+  });
+
   console.log("\nPassed " + passed + " hp-edit-jobs tests");
 }
 
