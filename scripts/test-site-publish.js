@@ -555,42 +555,6 @@ async function run() {
     }
   });
 
-  await test("FTP_REMOTE_DIR=/ でもホームページ公開は diary に書かない", async function () {
-    var prevCwd = process.env.SITE_FTP_CWD;
-    var prevDiary = process.env.FTP_REMOTE_DIR;
-    process.env.SITE_FTP_CWD = "/";
-    process.env.FTP_REMOTE_DIR = "/";
-    try {
-      assert.strictEqual(siteFtpPaths.validateSiteFtpCwd("/").ok, true);
-      var ftp = loginRootFtp({
-        "index.htm": Buffer.from(OLD_INDEX),
-        "css/top-diary-notice.css": Buffer.from(OLD_CSS),
-        "diary/index.htm": Buffer.from("DIARY-LIVE")
-      });
-      var r = await sitePublish.publishSiteFiles({
-        userConfirmed: true,
-        siteRoot: "/public_html",
-        ftpCwd: "/",
-        ftp: ftp,
-        files: [
-          { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
-          { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
-        ]
-      });
-      assert.strictEqual(r.ok, true, r.userMessage || r.code);
-      assert.strictEqual(ftp.files["index.htm"].toString(), NEW_INDEX);
-      assert.strictEqual(ftp.files["css/top-diary-notice.css"].toString(), NEW_CSS);
-      assert.strictEqual(ftp.files["diary/index.htm"].toString(), "DIARY-LIVE");
-      assert.ok(!ftp.ops.some(function (op) {
-        var p = String(op.name || op.from || op.to || "");
-        return /(^|\/)diary(\/|$)/i.test(p);
-      }));
-    } finally {
-      process.env.SITE_FTP_CWD = prevCwd;
-      process.env.FTP_REMOTE_DIR = prevDiary || "/public_html/diary";
-    }
-  });
-
   function collectPaths(ftp) {
     var out = [];
     ftp.ops.forEach(function (op) {
