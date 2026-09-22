@@ -158,13 +158,45 @@ function parseBranchName(body) {
 }
 
 function parsePrFromBody(body) {
-  var m = String(body || "").match(/##\s*Pull Request\s*\n\s*#?(\d+)/i);
-  if (!m) {
-    m = String(body || "").match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/i);
+  var text = String(body || "");
+  var section = text.match(/##\s*Pull Request\s*\n\s*([^\n]+)/i);
+  if (section) {
+    var line = String(section[1] || "").trim();
+    if (!/none yet/i.test(line)) {
+      var numbered = line.match(/^#?(\d+)\s*$/);
+      if (numbered) {
+        var fromSection = Number(numbered[1]);
+        if (isFinite(fromSection) && fromSection > 0) return fromSection;
+      }
+      var sectionUrl = line.match(/\/pull\/(\d+)/i);
+      if (sectionUrl) {
+        var fromSectionUrl = Number(sectionUrl[1]);
+        if (isFinite(fromSectionUrl) && fromSectionUrl > 0) return fromSectionUrl;
+      }
+    }
   }
+  var m = text.match(/https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/(\d+)/i);
   if (!m) return null;
   var n = Number(m[1]);
   return isFinite(n) && n > 0 ? n : null;
+}
+
+function issueHtmlUrl(cfg, issueNumber) {
+  return "https://github.com/" + cfg.owner + "/" + cfg.repo + "/issues/" + Number(issueNumber);
+}
+
+function prBodyReferencesIssue(text, issueNumber, cfg) {
+  cfg = cfg || getGithubConfig();
+  var n = Number(issueNumber);
+  if (!isFinite(n) || n < 1) return false;
+  var raw = String(text || "");
+  if (!raw.trim()) return false;
+  var url = issueHtmlUrl(cfg, n).toLowerCase();
+  if (raw.toLowerCase().indexOf(url) >= 0) return true;
+  if (new RegExp("(?:^|[\\s'\"(])Related:\\s*\\S*issues/" + n + "\\b", "i").test(raw)) return true;
+  if (new RegExp("(?:^|[\\s'\"(/])issues/" + n + "\\b", "i").test(raw)) return true;
+  if (new RegExp("(^|[^A-Za-z0-9_])#" + n + "\\b").test(raw)) return true;
+  return false;
 }
 
 function ensureAgentStatus(body, status) {
@@ -463,7 +495,8 @@ async function getPullRequest(number) {
     htmlUrl: p.html_url || p.url || "",
     baseRef: baseRef,
     mergeCommitSha: p.merge_commit_sha || "",
-    headSha: p.head && p.head.sha ? String(p.head.sha) : ""
+    headSha: p.head && p.head.sha ? String(p.head.sha) : "",
+    body: p.body || ""
   };
 }
 
@@ -525,29 +558,102 @@ async function getRepoFileContent(repoPath, ref) {
   return { ok: true, buffer: buf, path: p, sha: res.json.sha || null };
 }
 
+async function githubSearchIssueItems(query) {
+  var cfg = getGithubConfig();
+  var path = "/search/issues?q=" + encodeURIComponent(query) + "&per_page=10";
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !res.json || !Array.isArray(res.json.items)) return [];
+  return res.json.items;
+}
+
+async function listCrossReferencedPullNumbers(issueNumber) {
+  var cfg = getGithubConfig();
+  var n = Number(issueNumber);
+  if (!isFinite(n) || n < 1) return [];
+  var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+    "/issues/" + encodeURIComponent(String(n)) + "/timeline?per_page=50";
+  var res = await githubFetch(cfg, path, "GET");
+  if (!res.ok || !Array.isArray(res.json)) return [];
+  var out = [];
+  res.json.forEach(function (ev) {
+    if (!ev || ev.event !== "cross-referenced") return;
+    var src = ev.source && ev.source.issue;
+    if (!src || !src.pull_request || !src.number) return;
+    if (Number(src.number) === n) return;
+    out.push(src.number);
+  });
+  return uniquePositiveInts(out, 8);
+}
+
+async function searchPullNumbersReferencingIssue(issueNumber) {
+  var cfg = getGithubConfig();
+  var n = Number(issueNumber);
+  if (!isFinite(n) || n < 1) return [];
+  var issueUrl = issueHtmlUrl(cfg, n);
+  var queries = [
+    "repo:" + cfg.owner + "/" + cfg.repo + " is:pr \"" + issueUrl + "\"",
+    "repo:" + cfg.owner + "/" + cfg.repo + " is:pr in:body " + issueUrl,
+    "repo:" + cfg.owner + "/" + cfg.repo + " is:pr Related issues/" + n
+  ];
+  var numbers = [];
+  for (var i = 0; i < queries.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    var items = await githubSearchIssueItems(queries[i]);
+    items.forEach(function (it) {
+      if (!it || !it.pull_request) return;
+      if (Number(it.number) === n) return;
+      numbers.push(it.number);
+    });
+    if (uniquePositiveInts(numbers, 8).length) break;
+  }
+  return uniquePositiveInts(numbers, 8);
+}
+
+function relatedPrSummary(pull) {
+  return {
+    number: pull.number,
+    url: pull.htmlUrl || "",
+    title: pull.title || "",
+    state: pull.state || "",
+    merged: !!pull.merged,
+    baseRef: pull.baseRef || "",
+    body: pull.body || ""
+  };
+}
+
+/**
+ * Resolve Issue N → related PR from GitHub data, not Issue "Pull Request" section.
+ * Candidates come from timeline cross-references and issue-URL search.
+ * A candidate is kept only if its PR body mentions the Issue URL or #N.
+ */
 async function findRelatedPullRequest(issueNumber) {
   var cfg = getGithubConfig();
   if (!isConfigured(cfg)) return { ok: false, pr: null };
   var n = Number(issueNumber);
-  var q = "repo:" + cfg.owner + "/" + cfg.repo + " is:pr " + n;
-  var path = "/search/issues?q=" + encodeURIComponent(q) + "&per_page=5";
-  var res = await githubFetch(cfg, path, "GET");
-  if (!res.ok || !res.json || !Array.isArray(res.json.items)) {
-    return { ok: true, pr: null };
+  if (!isFinite(n) || n < 1) return { ok: true, pr: null };
+
+  var candidates = uniquePositiveInts(
+    (await listCrossReferencedPullNumbers(n)).concat(await searchPullNumbersReferencingIssue(n)),
+    8
+  );
+  var verified = [];
+  for (var i = 0; i < candidates.length; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    var pull = await getPullRequest(candidates[i]);
+    if (!pull || !pull.ok) continue;
+    if (Number(pull.number) === n) continue;
+    if (!prBodyReferencesIssue(pull.body, n, cfg)) continue;
+    verified.push(pull);
   }
-  var hit = res.json.items.find(function (it) {
-    return it && it.pull_request && Number(it.number) !== n;
-  }) || res.json.items[0];
-  if (!hit || !hit.number) return { ok: true, pr: null };
-  return {
-    ok: true,
-    pr: {
-      number: hit.number,
-      url: hit.html_url || hit.url,
-      title: hit.title || "",
-      state: hit.state || ""
-    }
-  };
+  if (!verified.length) return { ok: true, pr: null };
+
+  verified.sort(function (a, b) {
+    var aReady = a.merged && isMainBaseRef(a.baseRef) ? 1 : 0;
+    var bReady = b.merged && isMainBaseRef(b.baseRef) ? 1 : 0;
+    if (bReady !== aReady) return bReady - aReady;
+    return (Number(b.number) || 0) - (Number(a.number) || 0);
+  });
+  return { ok: true, pr: relatedPrSummary(verified[0]) };
 }
 
 async function updateIssueAgentStatus(number, agentStatus) {
@@ -727,6 +833,7 @@ module.exports = {
   isReadyForSitePublish: isReadyForSitePublish,
   parseBranchName: parseBranchName,
   parsePrFromBody: parsePrFromBody,
+  prBodyReferencesIssue: prBodyReferencesIssue,
   ensureAgentStatus: ensureAgentStatus,
   mapAgentStatusToJobStatus: mapAgentStatusToJobStatus,
   createIssue: createIssue,

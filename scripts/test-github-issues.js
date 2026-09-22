@@ -72,6 +72,7 @@ async function run() {
     var body = "## Job Id\njob_abc\n\n## Pull Request\n#99\n";
     assert.strictEqual(github.parseJobId(body), "job_abc");
     assert.strictEqual(github.parsePrFromBody(body), 99);
+    assert.strictEqual(github.parsePrFromBody("## Pull Request\n(none yet)\n"), null);
   });
 
   await test("assertRepoAllowed enforces allowlist", function () {
@@ -469,6 +470,243 @@ async function run() {
     process.env.GITHUB_REPO = "SmileAIStudio";
     global.fetch = mockHomepageGithub({ merged: true, baseRef: "feature/x" });
     try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  function decodeSearchQuery(url) {
+    try {
+      var q = String(url).split("q=")[1] || "";
+      q = q.split("&")[0] || "";
+      return decodeURIComponent(q.replace(/\+/g, " "));
+    } catch (e) {
+      return String(url);
+    }
+  }
+
+  function jsonRes(ok, status, payload) {
+    return {
+      ok: ok,
+      status: status,
+      text: async function () { return JSON.stringify(payload); }
+    };
+  }
+
+  function mockIssue6NoneYetRelatedPr7(opts) {
+    opts = opts || {};
+    var merged = opts.merged !== false;
+    var baseRef = opts.baseRef || "main";
+    var files = opts.files !== undefined ? opts.files : [
+      { filename: "CorporateSite/index.htm" },
+      { filename: "CorporateSite/css/top-diary-notice.css" }
+    ];
+    var prBody = opts.prBody !== undefined
+      ? opts.prBody
+      : "Related: https://github.com/egao/SmileAIStudio/issues/6\n";
+    var issueBody = "## Job Kind\nhomepage-edit\n\n## Pull Request\n(none yet)\n\n## Agent Status\nREADY_FOR_REVIEW\n";
+    return async function (url) {
+      var u = String(url);
+      if (u.indexOf("/search/issues") >= 0) {
+        var q = decodeSearchQuery(u);
+        var isPr = /\bis:pr\b/.test(q);
+        var mentionsIssue = /issues\/6/.test(q);
+        var items = [];
+        if (isPr && mentionsIssue && opts.searchEmpty !== true) {
+          items = [{
+            number: 7,
+            pull_request: { url: "https://api.github.com/repos/egao/SmileAIStudio/pulls/7" },
+            html_url: "https://github.com/egao/SmileAIStudio/pull/7",
+            title: "HP",
+            body: prBody
+          }];
+        }
+        if (opts.extraSearchItems && isPr) {
+          items = (opts.extraSearchItems || []).concat(items);
+        }
+        return jsonRes(true, 200, { items: items });
+      }
+      if (u.indexOf("/issues/6/timeline") >= 0) {
+        if (opts.noTimeline) return jsonRes(true, 200, []);
+        return jsonRes(true, 200, [{
+          event: "cross-referenced",
+          source: {
+            type: "issue",
+            issue: {
+              number: 7,
+              pull_request: { url: "https://api.github.com/repos/egao/SmileAIStudio/pulls/7" },
+              html_url: "https://github.com/egao/SmileAIStudio/pull/7",
+              body: prBody
+            }
+          }
+        }]);
+      }
+      if (u.indexOf("/pulls/7/files") >= 0) {
+        return jsonRes(true, 200, files);
+      }
+      if (u.indexOf("/pulls/7") >= 0) {
+        return jsonRes(true, 200, {
+          number: 7,
+          merged: merged,
+          merged_at: merged ? "2026-08-20T00:00:00Z" : null,
+          html_url: "https://github.com/egao/SmileAIStudio/pull/7",
+          base: { ref: baseRef },
+          merge_commit_sha: merged ? "abc123" : null,
+          head: { sha: "def456" },
+          body: prBody
+        });
+      }
+      if (u.indexOf("/pulls/99") >= 0) {
+        return jsonRes(true, 200, {
+          number: 99,
+          merged: true,
+          merged_at: "2026-08-20T00:00:00Z",
+          html_url: "https://github.com/egao/SmileAIStudio/pull/99",
+          base: { ref: "main" },
+          body: "unrelated PR, no issue link"
+        });
+      }
+      if (u.indexOf("/issues/6") >= 0) {
+        return jsonRes(true, 200, {
+          number: 6,
+          html_url: "https://github.com/egao/SmileAIStudio/issues/6",
+          title: "HP",
+          state: "open",
+          body: issueBody
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+  }
+
+  await test("Issue #6 (none yet) still resolves merged PR #7 via Related URL", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = mockIssue6NoneYetRelatedPr7({
+      merged: true,
+      baseRef: "main",
+      noTimeline: true
+    });
+    try {
+      assert.strictEqual(
+        github.parsePrFromBody("## Job Kind\nhomepage-edit\n\n## Pull Request\n(none yet)\n"),
+        null
+      );
+      assert.strictEqual(
+        github.prBodyReferencesIssue(
+          "Related: https://github.com/egao/SmileAIStudio/issues/6",
+          6,
+          { owner: "egao", repo: "SmileAIStudio" }
+        ),
+        true
+      );
+      var related = await github.findRelatedPullRequest(6);
+      assert.strictEqual(related.ok, true);
+      assert.strictEqual(related.pr.number, 7);
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 1);
+      assert.strictEqual(r.items[0].issueNumber, 6);
+      assert.strictEqual(r.items[0].prNumber, 7);
+      assert.strictEqual(r.items[0].prMerged, true);
+      assert.strictEqual(r.items[0].status, "ready_for_publish");
+      assert.deepStrictEqual(r.items[0].files, [
+        "CorporateSite/index.htm",
+        "CorporateSite/css/top-diary-notice.css"
+      ]);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("Issue #6 (none yet) unmerged PR #7 is not ready", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = mockIssue6NoneYetRelatedPr7({ merged: false });
+    try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("Issue #6 (none yet) PR #7 not on main is not ready", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = mockIssue6NoneYetRelatedPr7({ merged: true, baseRef: "develop" });
+    try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("Issue #6 (none yet) without allowlist files is not ready", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = mockIssue6NoneYetRelatedPr7({
+      merged: true,
+      files: [{ filename: "README.md" }]
+    });
+    try {
+      var r = await github.findReadyHomepagePublishes();
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.items.length, 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("search hit without Issue #6 in PR body is ignored", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = mockIssue6NoneYetRelatedPr7({
+      merged: true,
+      noTimeline: true,
+      searchEmpty: true,
+      extraSearchItems: [{
+        number: 99,
+        pull_request: { url: "https://api.github.com/repos/egao/SmileAIStudio/pulls/99" },
+        html_url: "https://github.com/egao/SmileAIStudio/pull/99",
+        body: "unrelated"
+      }]
+    });
+    try {
+      var related = await github.findRelatedPullRequest(6);
+      assert.strictEqual(related.ok, true);
+      assert.strictEqual(related.pr, null);
       var r = await github.findReadyHomepagePublishes();
       assert.strictEqual(r.ok, true);
       assert.strictEqual(r.items.length, 0);
