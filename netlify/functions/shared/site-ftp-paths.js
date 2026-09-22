@@ -112,6 +112,70 @@ function listDirectoryNames(list) {
   return out;
 }
 
+function dirNamesHave(dirs, want) {
+  var w = String(want || "").toLowerCase();
+  if (!w) return false;
+  var src = Array.isArray(dirs) ? dirs : [];
+  var i;
+  for (i = 0; i < src.length; i++) {
+    if (String(src[i] || "").toLowerCase() === w) return true;
+  }
+  return false;
+}
+
+/**
+ * SITE_FTP_CWD=/ is only safe when login root is public_html (has a diary/
+ * child). A listing of image/css without diary is the diary folder itself.
+ */
+function assertLoginRootIsHomepage(rootDirs) {
+  if (dirNamesHave(rootDirs, "public_html")) {
+    return fail(
+      "ftp_login_has_public_html",
+      "ログイン直後の / の直下に public_html があるため、SITE_FTP_CWD=/ は使えません",
+      { ftpCwd: "/" }
+    );
+  }
+  if (!dirNamesHave(rootDirs, "diary")) {
+    return fail(
+      "ftp_login_missing_diary_dir",
+      "ログイン直後の直下に diary フォルダが見えないため、公式サイト公開を中止しました",
+      { ftpCwd: "/" }
+    );
+  }
+  return { ok: true };
+}
+
+/**
+ * Diary FTP workdir. FTP_REMOTE_DIR=/ means login root, not CWD /.
+ * If a diary/ child exists, enter it so homepage index.htm is not overwritten.
+ */
+function resolveDiaryFtpEnter(remoteDir, rootDirs) {
+  var n = normalizeAbs(remoteDir);
+  if (!n) {
+    return fail(
+      "diary_remote_required",
+      "日記FTP先 FTP_REMOTE_DIR が必要です"
+    );
+  }
+  if (n === "/") {
+    if (!Array.isArray(rootDirs)) {
+      return { needsRootDirs: true, remoteDir: n };
+    }
+    if (dirNamesHave(rootDirs, "diary")) {
+      return { ok: true, cd: "diary", skippedCdSlash: true };
+    }
+    return { ok: true, cd: "", skippedCdSlash: true, alreadyDiaryRoot: true };
+  }
+  if (!pathHasDiarySegment(n)) {
+    return fail(
+      "diary_remote_not_diary",
+      "日記FTP先は diary 配下である必要があります",
+      { ftpCwd: n }
+    );
+  }
+  return { ok: true, cd: n };
+}
+
 function validateSiteFtpCwd(raw) {
   var n = normalizeAbs(raw);
   if (!n) {
@@ -357,12 +421,10 @@ async function confirmLoginRoot(ftp, extra) {
       });
     }
   }
-  if (rootDirs && rootDirs.indexOf("public_html") >= 0) {
-    return fail(
-      "ftp_login_has_public_html",
-      "ログイン直後の / の直下に public_html があるため、SITE_FTP_CWD=/ は使えません",
-      { ftpCwd: "/", loginPwd: loginPwd }
-    );
+  var loginGate = assertLoginRootIsHomepage(rootDirs || []);
+  if (!loginGate.ok) {
+    loginGate.loginPwd = loginPwd;
+    return loginGate;
   }
   return { ok: true, cwd: "/", loginRoot: true, skippedCd: true };
 }
@@ -420,6 +482,9 @@ module.exports = {
   validateSiteRoot: validateSiteRoot,
   validateSiteFtpCwd: validateSiteFtpCwd,
   listDirectoryNames: listDirectoryNames,
+  dirNamesHave: dirNamesHave,
+  assertLoginRootIsHomepage: assertLoginRootIsHomepage,
+  resolveDiaryFtpEnter: resolveDiaryFtpEnter,
   joinFtpPath: joinFtpPath,
   resolveOneTarget: resolveOneTarget,
   resolvePublishPlan: resolvePublishPlan,

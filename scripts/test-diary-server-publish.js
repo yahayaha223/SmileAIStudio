@@ -327,6 +327,35 @@ async function run() {
     assert.ok(!/connectSiteFromEnv/.test(api));
   });
 
+  await test("FTP_REMOTE_DIR=/ でも日記は homepage の index.htm を上書きしない", async function () {
+    var siteFtpPaths = require(path.join(__dirname, "..", "netlify", "functions", "shared", "site-ftp-paths.js"));
+    process.env.FTP_REMOTE_DIR = "/";
+    process.env.SITE_FTP_CWD = "/";
+    var ftp = ftpClient.createMemoryFtp({
+      "index.htm": Buffer.from("HOME"),
+      "diary/index.htm": Buffer.from("DIARY")
+    });
+    ftp.cwd = "/";
+    ftp.listEntries = async function () {
+      return [
+        { name: "css", type: 2 },
+        { name: "image", type: 2 },
+        { name: "diary", type: 2 }
+      ];
+    };
+    var entered = await ftpClient.enterDiaryRemoteDir(ftp, "/");
+    assert.strictEqual(entered.ok, true, entered.userMessage || entered.code);
+    assert.strictEqual(entered.cd, "diary");
+    assert.ok(ftp.ops.some(function (op) { return op.op === "cd" && op.dir === "diary"; }));
+    assert.ok(!ftp.ops.some(function (op) {
+      return op.op === "cd" && (op.dir === "/" || op.target === "/");
+    }));
+    assert.strictEqual(ftp.cwd, "/diary");
+    var homeRoot = siteFtpPaths.resolveDiaryFtpEnter("/", ["css", "image", "diary"]);
+    assert.strictEqual(homeRoot.cd, "diary");
+    assert.notStrictEqual(homeRoot.cd, "/");
+  });
+
   console.log("\nPassed " + passed + " diary-server-publish tests" + (failed ? (" failed=" + failed) : ""));
   if (failed) process.exit(1);
 }
