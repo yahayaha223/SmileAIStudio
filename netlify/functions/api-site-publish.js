@@ -13,6 +13,7 @@ var sitePublish = require("./shared/site-publish");
 var siteFtpPaths = require("./shared/site-ftp-paths");
 var ftpClient = require("./shared/ftp-client");
 var githubIssues = require("./shared/github-issues");
+var sitePublishLog = require("./shared/site-publish-log");
 
 function parseBody(event) {
   try {
@@ -36,6 +37,13 @@ async function handler(event, guard) {
 
   var userId = (guard && guard.session && guard.session.userId) || "anon";
   var ipHash = audit.ipHashForEvent(event);
+  var requestId = sitePublishLog.newRequestId();
+  var issueNumber = Number(body.issueNumber);
+  if (!isFinite(issueNumber) || issueNumber < 1) issueNumber = null;
+  var logBase = {
+    requestId: requestId,
+    issueNumber: issueNumber
+  };
   var rl = await rateLimit.rateLimit("site-publish:user:" + userId, 4, 10 * 60 * 1000);
   if (!rl.ok) {
     return http.json(429, {
@@ -55,19 +63,33 @@ async function handler(event, guard) {
 
   var prNumber = Number(body.prNumber);
   if (!isFinite(prNumber) || prNumber < 1) {
+    sitePublishLog.logEvent(Object.assign({}, logBase, {
+      stage: "site-publish-reject",
+      reasonCode: "invalid_pr"
+    }));
     return http.json(400, {
       ok: false,
       error: "invalid_pr",
+      requestId: requestId,
       userMessage: "公開するPRがありません"
     }, event);
   }
+  logBase.prNumber = prNumber;
+  sitePublishLog.logEvent(Object.assign({}, logBase, {
+    stage: "site-publish-start"
+  }));
 
   var pr = await githubIssues.getPullRequest(prNumber);
   var mergeGate = githubIssues.assertPrMergedToMain(pr);
   if (!mergeGate.ok) {
+    sitePublishLog.logEvent(Object.assign({}, logBase, {
+      stage: "site-publish-reject",
+      reasonCode: mergeGate.error || "pr_fetch_failed"
+    }));
     return http.json(mergeGate.httpStatus || 502, {
       ok: false,
       error: mergeGate.error || "pr_fetch_failed",
+      requestId: requestId,
       userMessage: mergeGate.userMessage || "PRを確認できませんでした"
     }, event);
   }
@@ -138,6 +160,13 @@ async function handler(event, guard) {
     }, event);
   }
   siteFtpPaths.logPathPlan(plan, { ftpCwd: cwdPlan.cwd });
+  sitePublishLog.logEvent(Object.assign({}, logBase, {
+    stage: "site-publish-plan",
+    siteRoot: plan.siteRoot,
+    ftpCwd: cwdPlan.cwd,
+    selectedMode: cwdPlan.loginRoot ? "loginRoot" : "publicHtmlCwd",
+    finalFtpPath: plan.files.map(function (f) { return f.absolutePath; }).join(",")
+  }));
 
   var ref = pr.mergeCommitSha || pr.headSha || "";
   var files = [];
@@ -146,9 +175,16 @@ async function handler(event, guard) {
     // eslint-disable-next-line no-await-in-loop
     var got = await githubIssues.getRepoFileContent(one.repoPath, ref);
     if (!got.ok || !got.buffer) {
+      sitePublishLog.logEvent(Object.assign({}, logBase, {
+        stage: "site-publish-file-fetch-fail",
+        reasonCode: got.error || "file_fetch_failed",
+        failedFile: one.repoPath
+      }));
       return http.json(502, {
         ok: false,
         error: got.error || "file_fetch_failed",
+        requestId: requestId,
+        failedFile: one.repoPath,
         userMessage: "公開ファイルを取得できませんでした"
       }, event);
     }
@@ -180,6 +216,15 @@ async function handler(event, guard) {
   try {
     ftp = await ftpClient.connectSiteFromEnv();
   } catch (e) {
+    var connErr = sitePublishLog.describeFtpError(e);
+    sitePublishLog.logEvent(Object.assign({}, logBase, {
+      stage: "site-publish-ftp-connect-fail",
+      reasonCode: e.code || "ftp_connect_failed",
+      ftpCwd: siteFtpPaths.readConfiguredSiteCwd() || null,
+      pwdBeforeCwd: e.diagnostic && e.diagnostic.loginPwd ? e.diagnostic.loginPwd : null,
+      ftpErrorCode: connErr.ftpErrorCode,
+      ftpErrorMessage: connErr.ftpErrorMessage
+    }));
     await audit.recordAudit({
       event: "site_publish",
       success: false,
@@ -187,17 +232,24 @@ async function handler(event, guard) {
       actorUserId: userId,
       role: guard && guard.session ? guard.session.roleSnapshot : null,
       target: "api-site-publish",
+      requestId: requestId,
       ipHash: ipHash,
       meta: {
+        requestId: requestId,
+        issueNumber: issueNumber,
+        prNumber: prNumber,
         ftpCwd: siteFtpPaths.readConfiguredSiteCwd() || null,
         loginPwd: e.diagnostic && e.diagnostic.loginPwd ? e.diagnostic.loginPwd : null,
         rootDirs: e.diagnostic && e.diagnostic.rootDirs ? e.diagnostic.rootDirs : null,
-        publicHtmlHints: e.diagnostic && e.diagnostic.publicHtmlHints ? e.diagnostic.publicHtmlHints : null
+        publicHtmlHints: e.diagnostic && e.diagnostic.publicHtmlHints ? e.diagnostic.publicHtmlHints : null,
+        ftpErrorCode: connErr.ftpErrorCode,
+        ftpErrorMessage: connErr.ftpErrorMessage
       }
     });
     return http.json(503, {
       ok: false,
       error: e.code || "ftp_connect_failed",
+      requestId: requestId,
       userMessage: e.code === "ftp_cwd_550"
         ? (e.message || "公式サイトのFTP作業フォルダに入れません。SITE_FTP_CWD を確認してください")
         : "公開先に接続できませんでした",
@@ -206,28 +258,56 @@ async function handler(event, guard) {
     }, event);
   }
 
+  var enter = ftp && ftp.siteEnter ? ftp.siteEnter : {};
+  sitePublishLog.logEvent(Object.assign({}, logBase, {
+    stage: "site-publish-ftp-ready",
+    siteRoot: plan.siteRoot,
+    ftpCwd: cwdPlan.cwd,
+    selectedMode: enter.selectedMode || (cwdPlan.loginRoot ? "loginRoot" : "publicHtmlCwd"),
+    pwdBeforeCwd: enter.pwdBeforeCwd || null,
+    pwdAfterCwd: enter.pwdAfterCwd || null,
+    skippedCd: !!enter.skippedCd,
+    finalFtpPath: plan.files.map(function (f) { return f.absolutePath; }).join(",")
+  }));
+
   var result = await sitePublish.publishSiteFiles({
     userConfirmed: true,
     files: files,
     ftp: ftp,
     siteRoot: plan.siteRoot,
-    ftpCwd: cwdPlan.cwd
+    ftpCwd: cwdPlan.cwd,
+    requestId: requestId,
+    issueNumber: issueNumber,
+    prNumber: prNumber,
+    selectedMode: enter.selectedMode || (cwdPlan.loginRoot ? "loginRoot" : "publicHtmlCwd"),
+    pwdBeforeCwd: enter.pwdBeforeCwd || null,
+    pwdAfterCwd: enter.pwdAfterCwd || null
   });
 
   await audit.recordAudit({
     event: "site_publish",
     success: !!result.ok,
-    reasonCode: result.ok ? "ok" : (result.code || "failed"),
+    reasonCode: result.ok ? "ok" : (result.reasonCode || result.code || "failed"),
     actorUserId: userId,
     role: guard && guard.session ? guard.session.roleSnapshot : null,
     target: "api-site-publish",
+    requestId: requestId,
     ipHash: ipHash,
     meta: {
+      requestId: requestId,
+      issueNumber: issueNumber,
       prNumber: prNumber,
       jobId: body.jobId || null,
       files: result.publishedFiles || allowed.map(function (f) { return f.remotePath; }),
       finalFtpPaths: result.publishedAbsolutePaths || plan.files.map(function (f) { return f.absolutePath; }),
       ftpCwd: cwdPlan.cwd,
+      selectedMode: enter.selectedMode || (cwdPlan.loginRoot ? "loginRoot" : "publicHtmlCwd"),
+      pwdBeforeCwd: enter.pwdBeforeCwd || null,
+      pwdAfterCwd: enter.pwdAfterCwd || null,
+      skippedCd: !!enter.skippedCd,
+      failedFile: result.failedFile || null,
+      ftpErrorCode: result.ftpErrorCode || null,
+      ftpErrorMessage: result.ftpErrorMessage || null,
       productionUntouched: result.productionUntouched !== false
     }
   });
@@ -237,6 +317,10 @@ async function handler(event, guard) {
     return http.json(status, {
       ok: false,
       error: result.code,
+      requestId: requestId,
+      reasonCode: result.reasonCode || result.code,
+      failedFile: result.failedFile || null,
+      ftpErrorCode: result.ftpErrorCode || null,
       userMessage: result.userMessage || "公開できませんでした",
       productionUntouched: result.productionUntouched !== false
     }, event);
@@ -245,6 +329,7 @@ async function handler(event, guard) {
   return http.json(200, {
     ok: true,
     code: result.code,
+    requestId: requestId,
     userMessage: result.userMessage,
     publishedFiles: result.publishedFiles,
     publishedAbsolutePaths: result.publishedAbsolutePaths,

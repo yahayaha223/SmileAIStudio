@@ -18,6 +18,7 @@ var sitePublish = require(path.join(__dirname, "..", "netlify", "functions", "sh
 var siteFtpPaths = require(path.join(__dirname, "..", "netlify", "functions", "shared", "site-ftp-paths.js"));
 var ftpClient = require(path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"));
 var github = require(path.join(__dirname, "..", "netlify", "functions", "shared", "github-issues.js"));
+var sitePublishLog = require(path.join(__dirname, "..", "netlify", "functions", "shared", "site-publish-log.js"));
 var DevJobs = require(path.join(__dirname, "..", "js", "smile-dev-jobs.js"));
 var permissions = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "permissions.js"));
 var authConfig = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "config.js"));
@@ -73,6 +74,7 @@ function homepageFtp(initialFiles) {
 function loginRootFtp(initialFiles) {
   var ftp = ftpClient.createMemoryFtp(initialFiles);
   ftp.cwd = "/";
+  ftp.rejectCdSlash = true;
   ftp.listEntries = async function (dir) {
     if (dir === "." || dir === "/") {
       return [
@@ -381,6 +383,12 @@ async function run() {
       userConfirmed: true,
       siteRoot: "/public_html",
       ftpCwd: "/",
+      requestId: "spub_test_login_root",
+      issueNumber: 6,
+      prNumber: 7,
+      selectedMode: "loginRoot",
+      pwdBeforeCwd: "/",
+      pwdAfterCwd: "/",
       ftp: ftp,
       files: [
         { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
@@ -409,6 +417,10 @@ async function run() {
     }));
     assert.ok(!written.some(function (n) { return /(^|\/)diary(\/|$)/i.test(n); }));
     assert.ok(!written.some(function (n) { return n.indexOf("..") >= 0; }));
+    assert.strictEqual(ftp.cwd, "/", "must stay at login root after css ensureDir");
+    assert.ok(!ftp.ops.some(function (op) {
+      return op.op === "cd" && (op.dir === "/" || op.target === "/" || op.rejected);
+    }), "must not CWD /");
   });
 
   await test("pwd=/ でも直下に public_html があれば SITE_FTP_CWD=/ を拒否", async function () {
@@ -480,6 +492,325 @@ async function run() {
       process.env.SITE_FTP_CWD = prevCwd;
       process.env.FTP_REMOTE_DIR = "/public_html/diary";
     }
+  });
+
+  function collectPaths(ftp) {
+    var out = [];
+    ftp.ops.forEach(function (op) {
+      if (op.op !== "stor" && op.op !== "retr" && op.op !== "rename") return;
+      if (op.name) out.push(op.name);
+      if (op.from) out.push(op.from);
+      if (op.to) out.push(op.to);
+    });
+    return out;
+  }
+
+  function assertSafeLoginRootPaths(ftp) {
+    collectPaths(ftp).forEach(function (p) {
+      assert.ok(String(p).charAt(0) !== "/", "must not use absolute FTP path: " + p);
+      assert.ok(String(p).indexOf("//") < 0, "must not join onto /: " + p);
+      assert.ok(String(p).indexOf("..") < 0, "must not traverse: " + p);
+      assert.ok(!/(^|\/)diary(\/|$)/i.test(p), "must not write diary: " + p);
+    });
+  }
+
+  await test("pwd=/ のまま index.htm と css/top-diary-notice.css を相対パスで操作", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, true, r.userMessage || r.code);
+    assert.strictEqual(ftp.cwd, "/");
+    var stor = ftp.ops.filter(function (op) { return op.op === "stor"; }).map(function (op) { return op.name; });
+    var renamed = ftp.ops.filter(function (op) { return op.op === "rename"; });
+    assert.ok(stor.indexOf("index.htm" + sitePublish.BAK_SUFFIX) >= 0);
+    assert.ok(stor.indexOf("css/top-diary-notice.css" + sitePublish.BAK_SUFFIX) >= 0);
+    assert.ok(stor.indexOf("index.htm" + sitePublish.PUBLISHING_SUFFIX) >= 0);
+    assert.ok(stor.indexOf("css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) >= 0);
+    assert.ok(renamed.some(function (op) {
+      return op.from === "index.htm" && op.to === "index.htm" + sitePublish.PREPUB_SUFFIX;
+    }));
+    assert.ok(renamed.some(function (op) {
+      return op.from === "index.htm" + sitePublish.PUBLISHING_SUFFIX && op.to === "index.htm";
+    }));
+    assert.ok(renamed.some(function (op) {
+      return op.from === "css/top-diary-notice.css" &&
+        op.to === "css/top-diary-notice.css" + sitePublish.PREPUB_SUFFIX;
+    }));
+    assert.ok(renamed.some(function (op) {
+      return op.from === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX &&
+        op.to === "css/top-diary-notice.css";
+    }));
+    assert.ok(!ftp.ops.some(function (op) {
+      return op.op === "cd" && (op.dir === "/" || op.rejected);
+    }));
+    assertSafeLoginRootPaths(ftp);
+  });
+
+  await test("CWD / が 550 でも css ensureDir 後に pwd=/ のまま公開できる", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    ftp.rejectCdSlash = true;
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, true, r.userMessage || r.code);
+    assert.strictEqual(ftp.cwd, "/");
+    assert.ok(ftp.ops.some(function (op) { return op.op === "ensureDir" && op.dir === "css"; }));
+    assert.ok(ftp.ops.some(function (op) { return op.op === "cdup"; }));
+    assert.ok(!ftp.ops.some(function (op) {
+      return op.op === "cd" && (op.dir === "/" || op.rejected);
+    }));
+  });
+
+  await test("backup / rename / restore パスが相対のまま", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) {
+        var err = new Error("550 STOR failed");
+        err.code = 550;
+        throw err;
+      }
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.failedFile, "css/top-diary-notice.css");
+    assert.strictEqual(r.ftpErrorCode, "550");
+    assert.strictEqual(ftp.files["index.htm"].toString(), OLD_INDEX);
+    var restored = ftp.ops.filter(function (op) {
+      return op.op === "rename" && op.to === "index.htm";
+    });
+    assert.ok(restored.some(function (op) {
+      return op.from === "index.htm" + sitePublish.PREPUB_SUFFIX;
+    }));
+    assertSafeLoginRootPaths(ftp);
+    assert.ok(sitePublish.isAllowedOpPath("index.htm" + sitePublish.BAK_SUFFIX));
+    assert.ok(sitePublish.isAllowedOpPath("css/top-diary-notice.css" + sitePublish.PREPUB_SUFFIX));
+    assert.ok(!sitePublish.isAllowedOpPath("/index.htm"));
+    assert.ok(!sitePublish.isAllowedOpPath("/public_html/index.htm"));
+    assert.ok(!sitePublish.isAllowedOpPath("../index.htm"));
+    assert.ok(!sitePublish.isAllowedOpPath("diary/index.htm"));
+    assert.strictEqual(
+      siteFtpPaths.joinFtpPath("/public_html", "css/top-diary-notice.css"),
+      "/public_html/css/top-diary-notice.css"
+    );
+    assert.notStrictEqual(siteFtpPaths.joinFtpPath("/", "index.htm"), "index.htm");
+  });
+
+  await test("1ファイル目失敗では本番を触らない", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "index.htm" + sitePublish.PUBLISHING_SUFFIX) {
+        var err = new Error("550 first file");
+        err.code = 550;
+        throw err;
+      }
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.failedFile, "index.htm");
+    assert.strictEqual(r.productionUntouched, true);
+    assert.strictEqual(ftp.files["index.htm"].toString(), OLD_INDEX);
+    assert.strictEqual(ftp.files["css/top-diary-notice.css"].toString(), OLD_CSS);
+    assert.strictEqual(ftp.cwd, "/");
+  });
+
+  await test("backup失敗で公開を中止する", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "index.htm" + sitePublish.BAK_SUFFIX) {
+        var err = new Error("550 backup");
+        err.code = 550;
+        throw err;
+      }
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.failedFile, "index.htm");
+    assert.strictEqual(r.ftpErrorCode, "550");
+    assert.strictEqual(ftp.files["index.htm"].toString(), OLD_INDEX);
+    assert.ok(!ftp.ops.some(function (op) {
+      return op.op === "rename" && op.to === "index.htm" + sitePublish.PREPUB_SUFFIX;
+    }));
+  });
+
+  await test("rollback失敗を reasonCode 付きで返す", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var failRestore = false;
+    var origStor = ftp.stor.bind(ftp);
+    var origRename = ftp.rename.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) {
+        failRestore = true;
+        var err = new Error("550 second file");
+        err.code = 550;
+        throw err;
+      }
+      if (failRestore && name === "index.htm") {
+        var errStor = new Error("550 restore stor");
+        errStor.code = 550;
+        throw errStor;
+      }
+      return origStor(name, buf);
+    };
+    ftp.rename = async function (from, to) {
+      if (failRestore && to === "index.htm") {
+        var errRn = new Error("550 restore rename");
+        errRn.code = 550;
+        throw errRn;
+      }
+      return origRename(from, to);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.productionUntouched, false);
+    assert.ok(ftp.ops.some(function (op) { return op.op === "rename" && op.rejected !== true; }));
+  });
+
+  await test("公開失敗ログに stage / requestId / FTP エラーを出し secret は出さない", async function () {
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(OLD_INDEX),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) {
+        var err = new Error("550 STOR css/top-diary-notice.css password=SHOULD_NOT_APPEAR");
+        err.code = 550;
+        throw err;
+      }
+      return origStor(name, buf);
+    };
+    var lines = [];
+    var origLog = console.log;
+    console.log = function (msg) { lines.push(String(msg)); };
+    try {
+      await sitePublish.publishSiteFiles({
+        userConfirmed: true,
+        siteRoot: "/public_html",
+        ftpCwd: "/",
+        requestId: "spub_test_fail_log",
+        issueNumber: 6,
+        prNumber: 7,
+        selectedMode: "loginRoot",
+        pwdBeforeCwd: "/",
+        pwdAfterCwd: "/",
+        ftp: ftp,
+        files: [
+          { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(NEW_INDEX) },
+          { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+        ]
+      });
+    } finally {
+      console.log = origLog;
+    }
+    var blob = lines.join("\n");
+    assert.ok(blob.indexOf("spub_test_fail_log") >= 0);
+    assert.ok(blob.indexOf("backup-start") >= 0);
+    assert.ok(blob.indexOf("backup-success") >= 0);
+    assert.ok(blob.indexOf("upload-fail") >= 0);
+    assert.ok(blob.indexOf("rollback-start") >= 0);
+    assert.ok(blob.indexOf("\"prNumber\":\"7\"") >= 0 || blob.indexOf("\"prNumber\":7") >= 0);
+    assert.ok(blob.indexOf("\"issueNumber\":6") >= 0 || blob.indexOf("\"issueNumber\":\"6\"") >= 0);
+    assert.ok(blob.indexOf("loginRoot") >= 0);
+    assert.ok(blob.indexOf("css/top-diary-notice.css") >= 0);
+    assert.ok(blob.toLowerCase().indexOf("should_not_appear") < 0);
+    assert.ok(blob.toLowerCase().indexOf("ftp_user") < 0);
+    assert.ok(blob.indexOf(NEW_INDEX) < 0);
+    assert.ok(blob.indexOf(NEW_CSS) < 0);
+    var parsed = lines.map(function (line) {
+      try { return JSON.parse(line); } catch (e) { return null; }
+    }).filter(Boolean);
+    var failLog = parsed.filter(function (row) { return row.stage === "upload-fail"; })[0];
+    assert.ok(failLog);
+    assert.strictEqual(failLog.requestId, "spub_test_fail_log");
+    assert.strictEqual(failLog.failedFile, "css/top-diary-notice.css");
+    assert.strictEqual(failLog.ftpErrorCode, "550");
+    assert.ok(!Object.prototype.hasOwnProperty.call(failLog, "password"));
+    assert.ok(!Object.prototype.hasOwnProperty.call(failLog, "buffer"));
+    var safe = sitePublishLog.pickSafe({
+      stage: "upload-fail",
+      requestId: "spub_x",
+      password: "nope",
+      FTP_USER: "hidden",
+      buffer: Buffer.from("body")
+    });
+    assert.ok(!Object.prototype.hasOwnProperty.call(safe, "password"));
+    assert.ok(!Object.prototype.hasOwnProperty.call(safe, "FTP_USER"));
+    assert.ok(!Object.prototype.hasOwnProperty.call(safe, "buffer"));
   });
 
   await test("明示確認なしは拒否 / 2ファイル公開成功mock", async function () {

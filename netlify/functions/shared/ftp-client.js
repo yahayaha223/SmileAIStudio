@@ -46,16 +46,118 @@ function isSiteConfigured(cfg) {
   return !!(logical.ok && cwd.ok);
 }
 
+function relativePathDepth(dir) {
+  return String(dir || "").replace(/\\/g, "/").split("/").filter(Boolean).length;
+}
+
+function parentAbsPath(cwd) {
+  var n = siteFtpPaths.normalizeAbs(cwd);
+  if (!n || n === "/") return "/";
+  var parts = n.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length ? "/" + parts.join("/") : "/";
+}
+
+/**
+ * Restore FTP CWD without sending CWD /. Many chroot hosts (Xserver) report
+ * PWD=/ but reject CWD / with 550. Use CDUP / ".." instead.
+ */
+async function restoreFtpWorkingDir(ftp, targetCwd, depth) {
+  var targetN = siteFtpPaths.normalizeAbs(targetCwd);
+  if (!ftp) {
+    var missing = new Error("FTP接続がありません");
+    missing.code = "ftp_missing";
+    throw missing;
+  }
+  async function currentPwd() {
+    if (typeof ftp.pwd !== "function") return "";
+    try {
+      return siteFtpPaths.normalizeAbs(await ftp.pwd());
+    } catch (ePwd) {
+      return "";
+    }
+  }
+  var cur = await currentPwd();
+  if (targetN && cur === targetN) {
+    return { ok: true, cwd: cur, skippedCdSlash: true };
+  }
+  if (targetN === "/") {
+    var steps = depth > 0 ? depth : 1;
+    var i;
+    for (i = 0; i < steps + 2; i++) {
+      cur = await currentPwd();
+      if (cur === "/") {
+        return { ok: true, cwd: "/", used: "cdup", skippedCdSlash: true };
+      }
+      if (typeof ftp.cdup === "function") {
+        await ftp.cdup();
+      } else if (typeof ftp.cd === "function") {
+        await ftp.cd("..");
+      } else {
+        var noCd = new Error("FTP作業フォルダを元に戻せませんでした");
+        noCd.code = "ftp_cwd_restore_failed";
+        throw noCd;
+      }
+    }
+    cur = await currentPwd();
+    if (cur === "/") {
+      return { ok: true, cwd: "/", used: "cdup", skippedCdSlash: true };
+    }
+    var stuck = new Error("FTP作業フォルダを元に戻せませんでした");
+    stuck.code = "ftp_cwd_restore_failed";
+    throw stuck;
+  }
+  if (typeof ftp.cd !== "function") {
+    var noRestore = new Error("FTP作業フォルダを元に戻せませんでした");
+    noRestore.code = "ftp_cwd_restore_failed";
+    throw noRestore;
+  }
+  await ftp.cd(targetCwd);
+  return { ok: true, cwd: targetN || targetCwd, skippedCdSlash: targetN === "/" };
+}
+
+async function ensureDirKeepingCwd(ftp, dir) {
+  if (!ftp || typeof ftp.ensureDir !== "function" || !dir) {
+    return { ok: true, skipped: true };
+  }
+  var rel = String(dir).replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!rel || rel.indexOf("..") >= 0) {
+    var badDir = new Error("FTPフォルダが不正です");
+    badDir.code = "invalid_ftp_path";
+    throw badDir;
+  }
+  var before = "";
+  if (typeof ftp.pwd === "function") {
+    before = await ftp.pwd();
+  }
+  await ftp.ensureDir(rel);
+  var after = "";
+  if (typeof ftp.pwd === "function") {
+    try {
+      after = await ftp.pwd();
+    } catch (eAfter) {
+      after = "";
+    }
+  }
+  var beforeN = siteFtpPaths.normalizeAbs(before);
+  var afterN = siteFtpPaths.normalizeAbs(after);
+  if (!afterN || afterN === beforeN) {
+    return { ok: true, cwd: beforeN || before || null, skippedRestore: true };
+  }
+  return restoreFtpWorkingDir(ftp, before, relativePathDepth(rel));
+}
+
 function createMemoryFtp(initialFiles) {
   var files = {};
   Object.keys(initialFiles || {}).forEach(function (k) {
     files[k] = Buffer.from(initialFiles[k]);
   });
   var ops = [];
-  return {
+  var ftp = {
     files: files,
     ops: ops,
     cwd: "/",
+    rejectCdSlash: false,
     retr: async function (name) {
       if (!Object.prototype.hasOwnProperty.call(files, name)) {
         var err = new Error("not found: " + name);
@@ -89,7 +191,18 @@ function createMemoryFtp(initialFiles) {
       });
     },
     ensureDir: async function (dir) {
-      ops.push({ op: "ensureDir", dir: dir });
+      var raw = String(dir || "");
+      ops.push({ op: "ensureDir", dir: raw });
+      if (!raw) return;
+      // Mimic basic-ftp: absolute paths CWD /, then CWD each segment.
+      if (raw.charAt(0) === "/") {
+        await this.cd("/");
+      }
+      var names = raw.split("/").filter(Boolean);
+      var i;
+      for (i = 0; i < names.length; i++) {
+        await this.cd(names[i]);
+      }
     },
     remove: async function (name) {
       delete files[name];
@@ -99,11 +212,26 @@ function createMemoryFtp(initialFiles) {
       ops.push({ op: "pwd" });
       return this.cwd || "/";
     },
+    cdup: async function () {
+      var from = this.cwd || "/";
+      var target = parentAbsPath(from);
+      ops.push({ op: "cdup", from: from, target: target });
+      this.cwd = target;
+    },
     cd: async function (dir) {
       var raw = String(dir || "");
+      if (raw === ".." || raw === "../") {
+        return this.cdup();
+      }
       var target = raw.charAt(0) === "/"
         ? siteFtpPaths.normalizeAbs(raw)
         : siteFtpPaths.normalizeAbs((this.cwd || "/") + "/" + raw);
+      if (this.rejectCdSlash && (raw === "/" || target === "/")) {
+        ops.push({ op: "cd", dir: raw, target: "/", rejected: true });
+        var slashErr = new Error("550 Failed to change directory.");
+        slashErr.code = 550;
+        throw slashErr;
+      }
       ops.push({ op: "cd", dir: raw, target: target });
       if (typeof this.resolveCd === "function") {
         await this.resolveCd(target, raw);
@@ -119,6 +247,7 @@ function createMemoryFtp(initialFiles) {
       ops.push({ op: "close" });
     }
   };
+  return ftp;
 }
 
 async function connectFromEnv(cfg) {
@@ -177,10 +306,16 @@ async function connectFromEnv(cfg) {
     },
     ensureDir: async function (dir) {
       if (!dir) return;
-      // basic-ftp ensureDir() cds into the created folder; restore CWD.
+      // basic-ftp ensureDir() cds into the folder. Never restore with CWD /
+      // (Xserver chroot reports PWD=/ but CWD / often returns 550).
       var cwd = await client.pwd();
-      await client.ensureDir(dir);
-      await client.cd(cwd);
+      var rel = String(dir).replace(/\\/g, "/").replace(/^\/+/, "");
+      await client.ensureDir(rel);
+      await restoreFtpWorkingDir({
+        pwd: function () { return client.pwd(); },
+        cd: function (d) { return client.cd(d); },
+        cdup: function () { return client.cdup(); }
+      }, cwd, relativePathDepth(rel));
     },
     remove: async function (name) {
       try {
@@ -192,6 +327,9 @@ async function connectFromEnv(cfg) {
     },
     cd: async function (dir) {
       await client.cd(dir);
+    },
+    cdup: async function () {
+      await client.cdup();
     },
     close: async function () {
       client.close();
@@ -213,6 +351,7 @@ async function connectLoginOnlyFromEnv() {
  */
 async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
   var siteFtpProbe = require("./site-ftp-probe");
+  var sitePublishLog = require("./site-publish-log");
   var diagnostic = null;
   try {
     diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
@@ -220,10 +359,49 @@ async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
     diagnostic = null;
   }
   var safe = siteFtpProbe.safeDiagnostic(diagnostic);
+  var pwdBefore = siteFtpProbe.sanitizePwd(
+    (safe && safe.loginPwd) || ""
+  );
+  if (!pwdBefore && ftp && typeof ftp.pwd === "function") {
+    try {
+      pwdBefore = siteFtpProbe.sanitizePwd(await ftp.pwd());
+    } catch (ePwdBefore) {
+      pwdBefore = "";
+    }
+  }
   var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, requestedCwd, {
     rootDirs: safe && safe.rootDirs ? safe.rootDirs : null
   });
-  if (entered.ok) return entered;
+  var pwdAfter = "";
+  if (ftp && typeof ftp.pwd === "function") {
+    try {
+      pwdAfter = siteFtpProbe.sanitizePwd(await ftp.pwd());
+    } catch (ePwdAfter) {
+      pwdAfter = "";
+    }
+  }
+  entered.pwdBeforeCwd = pwdBefore || null;
+  entered.pwdAfterCwd = pwdAfter || null;
+  entered.selectedMode = entered.loginRoot ? "loginRoot" : "publicHtmlCwd";
+  if (entered.ok) {
+    sitePublishLog.logEvent({
+      stage: "site-ftp-enter-cwd",
+      ftpCwd: entered.cwd || requestedCwd || null,
+      pwdBeforeCwd: entered.pwdBeforeCwd,
+      pwdAfterCwd: entered.pwdAfterCwd,
+      selectedMode: entered.selectedMode,
+      skippedCd: !!entered.skippedCd
+    });
+    return entered;
+  }
+  sitePublishLog.logEvent({
+    stage: "site-ftp-enter-cwd-failed",
+    reasonCode: entered.code || "ftp_cwd_failed",
+    ftpCwd: entered.ftpCwd || requestedCwd || null,
+    pwdBeforeCwd: entered.pwdBeforeCwd,
+    pwdAfterCwd: entered.pwdAfterCwd,
+    selectedMode: entered.selectedMode
+  });
   if (entered.code === "ftp_cwd_550") {
     siteFtpProbe.logCwd550({
       requestedCwd: entered.ftpCwd || requestedCwd,
@@ -259,6 +437,14 @@ async function connectSiteFromEnv() {
     if (entered.diagnostic) badCwd.diagnostic = entered.diagnostic;
     throw badCwd;
   }
+  ftp.siteEnter = {
+    cwd: entered.cwd,
+    loginRoot: !!entered.loginRoot,
+    skippedCd: !!entered.skippedCd,
+    selectedMode: entered.selectedMode,
+    pwdBeforeCwd: entered.pwdBeforeCwd,
+    pwdAfterCwd: entered.pwdAfterCwd
+  };
   return ftp;
 }
 
@@ -271,5 +457,8 @@ module.exports = {
   connectFromEnv: connectFromEnv,
   connectLoginOnlyFromEnv: connectLoginOnlyFromEnv,
   enterSiteCwdAfterLoginProbe: enterSiteCwdAfterLoginProbe,
-  connectSiteFromEnv: connectSiteFromEnv
+  connectSiteFromEnv: connectSiteFromEnv,
+  restoreFtpWorkingDir: restoreFtpWorkingDir,
+  ensureDirKeepingCwd: ensureDirKeepingCwd,
+  relativePathDepth: relativePathDepth
 };
