@@ -74,6 +74,28 @@ function isPlausibleHostname(part) {
   return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(s);
 }
 
+function listDirectoryNames(list) {
+  var src = Array.isArray(list) ? list : [];
+  var out = [];
+  var seen = {};
+  src.forEach(function (entry) {
+    var name = String((entry && (entry.name || entry.Name)) || "").replace(/\\/g, "/").trim();
+    if (!name || name === "." || name === ".." || name.indexOf("/") >= 0) return;
+    var isDir = !!(entry && (
+      entry.isDirectory === true ||
+      entry.type === 2 ||
+      entry.type === "dir" ||
+      entry.type === "directory" ||
+      (typeof entry.type === "string" && String(entry.type).toLowerCase() === "directory")
+    ));
+    if (!isDir) return;
+    if (seen[name]) return;
+    seen[name] = true;
+    out.push(name);
+  });
+  return out;
+}
+
 function validateSiteFtpCwd(raw) {
   var n = normalizeAbs(raw);
   if (!n) {
@@ -88,6 +110,17 @@ function validateSiteFtpCwd(raw) {
       "FTP作業フォルダが日記配下のため、公式サイト公開を中止しました",
       { ftpCwd: n }
     );
+  }
+  if (n === "/") {
+    var diaryAtRoot = normalizeAbs(readDiaryRemoteDir());
+    if (diaryAtRoot === "/") {
+      return fail(
+        "site_cwd_reuses_diary_dir",
+        "公式サイトFTP作業フォルダに日記用 FTP_REMOTE_DIR は使えません",
+        { ftpCwd: n }
+      );
+    }
+    return { ok: true, cwd: "/", loginRoot: true };
   }
   if (!/\/public_html$/i.test(n)) {
     return fail(
@@ -242,6 +275,9 @@ function assertCwdIsHomepageRoot(cwd) {
       { ftpCwd: n }
     );
   }
+  if (n === "/") {
+    return { ok: true, cwd: "/", loginRoot: true };
+  }
   if (n !== ALLOWED_SITE_ROOT && !/\/public_html$/i.test(n)) {
     return fail(
       "ftp_cwd_not_site_root",
@@ -277,9 +313,51 @@ function ftpErrorLooksLike550(err) {
   return code === "550" || /(?:^|\D)550(?:\D|$)/.test(msg);
 }
 
-async function enterSiteFtpCwd(ftp, requestedCwd) {
+async function confirmLoginRoot(ftp, extra) {
+  extra = extra || {};
+  if (!ftp || typeof ftp.pwd !== "function") {
+    return fail("ftp_missing", "FTP接続がありません");
+  }
+  var loginPwd = "";
+  try {
+    loginPwd = normalizeAbs(await ftp.pwd());
+  } catch (ePwd) {
+    return fail("ftp_pwd_failed", "ログイン直後の位置を確認できませんでした");
+  }
+  if (loginPwd !== "/") {
+    return fail(
+      "ftp_cwd_not_login_root",
+      "SITE_FTP_CWD=/ は、ログイン直後の場所が / のときだけ使えます",
+      { ftpCwd: "/", loginPwd: loginPwd }
+    );
+  }
+  var rootDirs = Array.isArray(extra.rootDirs) ? extra.rootDirs.slice() : null;
+  if (!rootDirs && typeof ftp.list === "function") {
+    try {
+      rootDirs = listDirectoryNames(await ftp.list("."));
+    } catch (eList) {
+      return fail("ftp_list_failed", "ログイン直後のフォルダ一覧を取得できませんでした", {
+        ftpCwd: "/",
+        loginPwd: loginPwd
+      });
+    }
+  }
+  if (rootDirs && rootDirs.indexOf("public_html") >= 0) {
+    return fail(
+      "ftp_login_has_public_html",
+      "ログイン直後の / の直下に public_html があるため、SITE_FTP_CWD=/ は使えません",
+      { ftpCwd: "/", loginPwd: loginPwd }
+    );
+  }
+  return { ok: true, cwd: "/", loginRoot: true, skippedCd: true };
+}
+
+async function enterSiteFtpCwd(ftp, requestedCwd, extra) {
   var check = validateSiteFtpCwd(requestedCwd);
   if (!check.ok) return check;
+  if (check.loginRoot) {
+    return confirmLoginRoot(ftp, extra);
+  }
   if (!ftp || typeof ftp.cd !== "function") {
     return fail("ftp_missing", "FTP接続がありません");
   }
@@ -325,6 +403,7 @@ module.exports = {
   readDiaryRemoteDir: readDiaryRemoteDir,
   validateSiteRoot: validateSiteRoot,
   validateSiteFtpCwd: validateSiteFtpCwd,
+  listDirectoryNames: listDirectoryNames,
   joinFtpPath: joinFtpPath,
   resolveOneTarget: resolveOneTarget,
   resolvePublishPlan: resolvePublishPlan,

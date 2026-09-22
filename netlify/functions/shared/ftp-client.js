@@ -220,7 +220,9 @@ async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
     diagnostic = null;
   }
   var safe = siteFtpProbe.safeDiagnostic(diagnostic);
-  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, requestedCwd);
+  var entered = await siteFtpPaths.enterSiteFtpCwd(ftp, requestedCwd, {
+    rootDirs: safe && safe.rootDirs ? safe.rootDirs : null
+  });
   if (entered.ok) return entered;
   if (entered.code === "ftp_cwd_550") {
     siteFtpProbe.logCwd550({
