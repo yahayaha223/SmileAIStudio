@@ -7,6 +7,8 @@
  */
 var path = require("path");
 var siteFtpPaths = require("./site-ftp-paths");
+var ftpClient = require("./ftp-client");
+var sitePublishLog = require("./site-publish-log");
 
 var MAX_FILE_BYTES = 1500 * 1024;
 var BAK_SUFFIX = ".smile-studio-bak";
@@ -81,21 +83,111 @@ function parentDir(remotePath) {
   return dir;
 }
 
-async function restoreOne(ftp, remotePath, originalBytes) {
+function allowedOpBases() {
+  return Object.keys(ALLOWED_REPO_TO_REMOTE).map(function (k) {
+    return ALLOWED_REPO_TO_REMOTE[k];
+  });
+}
+
+function isAllowedOpPath(p) {
+  var s = String(p || "");
+  if (isUnsafePath(s)) return false;
+  var suffixes = ["", BAK_SUFFIX, PUBLISHING_SUFFIX, PREPUB_SUFFIX];
+  var bases = allowedOpBases();
+  var i;
+  var j;
+  for (i = 0; i < bases.length; i++) {
+    for (j = 0; j < suffixes.length; j++) {
+      if (s === bases[i] + suffixes[j]) return true;
+    }
+  }
+  return false;
+}
+
+function logCtxFields(ctx) {
+  ctx = ctx || {};
+  return {
+    requestId: ctx.requestId || null,
+    issueNumber: ctx.issueNumber || null,
+    prNumber: ctx.prNumber || null,
+    siteRoot: ctx.siteRoot || null,
+    ftpCwd: ctx.ftpCwd || null,
+    selectedMode: ctx.selectedMode || null,
+    pwdBeforeCwd: ctx.pwdBeforeCwd || null,
+    pwdAfterCwd: ctx.pwdAfterCwd || null
+  };
+}
+
+function logStage(ctx, extra) {
+  return sitePublishLog.logEvent(Object.assign(logCtxFields(ctx), extra || {}));
+}
+
+function failFtpPath(op, remotePath) {
+  return fail("invalid_ftp_path", "公開先パスが不正です", {
+    failedFile: remotePath || null,
+    reasonCode: "invalid_ftp_path",
+    ftpOp: op
+  });
+}
+
+async function restoreOne(ftp, remotePath, originalBytes, ctx) {
+  var prepub = remotePath + PREPUB_SUFFIX;
+  var bak = remotePath + BAK_SUFFIX;
+  if (!isAllowedOpPath(remotePath) || !isAllowedOpPath(prepub) || !isAllowedOpPath(bak)) {
+    logStage(ctx, {
+      stage: "rollback-fail",
+      failedFile: remotePath,
+      reasonCode: "invalid_ftp_path"
+    });
+    return false;
+  }
+  logStage(ctx, {
+    stage: "rollback-start",
+    failedFile: remotePath,
+    restorePath: remotePath,
+    renameFrom: prepub
+  });
   try {
-    await ftp.rename(remotePath + PREPUB_SUFFIX, remotePath);
+    await ftp.rename(prepub, remotePath);
+    logStage(ctx, {
+      stage: "rollback-success",
+      failedFile: remotePath,
+      restorePath: remotePath,
+      restoreMethod: "rename-prepub"
+    });
     return true;
   } catch (e1) {
     if (originalBytes && originalBytes.length) {
       try {
         await ftp.stor(remotePath, originalBytes);
+        logStage(ctx, {
+          stage: "rollback-success",
+          failedFile: remotePath,
+          restorePath: remotePath,
+          restoreMethod: "stor-original"
+        });
         return true;
       } catch (e2) { /* fall through */ }
     }
     try {
-      await ftp.rename(remotePath + BAK_SUFFIX, remotePath);
+      await ftp.rename(bak, remotePath);
+      logStage(ctx, {
+        stage: "rollback-success",
+        failedFile: remotePath,
+        restorePath: remotePath,
+        restoreMethod: "rename-bak"
+      });
       return true;
     } catch (e3) {
+      var desc = sitePublishLog.describeFtpError(e3);
+      logStage(ctx, {
+        stage: "rollback-fail",
+        failedFile: remotePath,
+        restorePath: remotePath,
+        reasonCode: "rollback_failed",
+        ftpErrorCode: desc.ftpErrorCode,
+        ftpErrorMessage: desc.ftpErrorMessage
+      });
       return false;
     }
   }
@@ -150,7 +242,24 @@ async function publishSiteFiles(opts) {
     }
   }
 
+  var enter = ftp && ftp.siteEnter ? ftp.siteEnter : {};
+  var logCtx = {
+    requestId: opts.requestId || null,
+    issueNumber: opts.issueNumber || null,
+    prNumber: opts.prNumber || null,
+    siteRoot: plan.siteRoot,
+    ftpCwd: cwd || enter.cwd || null,
+    selectedMode: opts.selectedMode || enter.selectedMode || (cwd === "/" ? "loginRoot" : "publicHtmlCwd"),
+    pwdBeforeCwd: opts.pwdBeforeCwd || enter.pwdBeforeCwd || null,
+    pwdAfterCwd: opts.pwdAfterCwd || enter.pwdAfterCwd || null
+  };
+
   siteFtpPaths.logPathPlan(plan, { ftpCwd: cwd || null });
+  logStage(logCtx, {
+    stage: "site-publish-path-check",
+    finalFtpPath: plan.files.map(function (f) { return f.absolutePath; }).join(","),
+    skippedCd: !!enter.skippedCd
+  });
 
   var files = [];
   for (var p = 0; p < plan.files.length; p++) {
@@ -166,6 +275,9 @@ async function publishSiteFiles(opts) {
     if (!buf || !buf.length || buf.length > MAX_FILE_BYTES) {
       return fail("no_allowed_files", "公開できるファイルがありません");
     }
+    if (!isAllowedOpPath(mapped.remotePath)) {
+      return failFtpPath("plan", mapped.remotePath);
+    }
     files.push({
       repoPath: mapped.repoPath,
       remotePath: mapped.remotePath,
@@ -179,13 +291,35 @@ async function publishSiteFiles(opts) {
 
   var originals = {};
   var swapped = [];
+  var currentFile = null;
   try {
     for (var i = 0; i < files.length; i++) {
       var item = files[i];
       var remotePath = item.remotePath;
+      currentFile = remotePath;
+      var bakPath = remotePath + BAK_SUFFIX;
+      var publishingPath = remotePath + PUBLISHING_SUFFIX;
+      var prepubPath = remotePath + PREPUB_SUFFIX;
+      if (
+        !isAllowedOpPath(remotePath) ||
+        !isAllowedOpPath(bakPath) ||
+        !isAllowedOpPath(publishingPath) ||
+        !isAllowedOpPath(prepubPath)
+      ) {
+        return failFtpPath("op", remotePath);
+      }
+
       var dir = parentDir(remotePath);
-      if (dir && typeof ftp.ensureDir === "function") {
-        await ftp.ensureDir(dir);
+      if (dir) {
+        await ftpClient.ensureDirKeepingCwd(ftp, dir);
+      }
+      if (typeof ftp.pwd === "function" && cwd === "/") {
+        var pwdNow = siteFtpPaths.normalizeAbs(await ftp.pwd());
+        if (pwdNow !== "/") {
+          var drifted = new Error("FTP作業フォルダが公開ルートからずれました");
+          drifted.code = "ftp_cwd_restore_failed";
+          throw drifted;
+        }
       }
 
       var originalBytes = null;
@@ -197,32 +331,114 @@ async function publishSiteFiles(opts) {
       originals[remotePath] = originalBytes;
 
       if (originalBytes && originalBytes.length) {
-        await ftp.stor(remotePath + BAK_SUFFIX, originalBytes);
+        logStage(logCtx, {
+          stage: "backup-start",
+          failedFile: remotePath,
+          backupPath: bakPath
+        });
+        try {
+          await ftp.stor(bakPath, originalBytes);
+          logStage(logCtx, {
+            stage: "backup-success",
+            failedFile: remotePath,
+            backupPath: bakPath
+          });
+        } catch (eBak) {
+          var bakErr = sitePublishLog.describeFtpError(eBak);
+          logStage(logCtx, {
+            stage: "backup-fail",
+            failedFile: remotePath,
+            backupPath: bakPath,
+            reasonCode: eBak.code || "backup_failed",
+            ftpErrorCode: bakErr.ftpErrorCode,
+            ftpErrorMessage: bakErr.ftpErrorMessage
+          });
+          throw eBak;
+        }
       }
 
-      await ftp.stor(remotePath + PUBLISHING_SUFFIX, item.buffer);
+      logStage(logCtx, {
+        stage: "upload-start",
+        failedFile: remotePath,
+        uploadPath: publishingPath
+      });
+      try {
+        await ftp.stor(publishingPath, item.buffer);
+        logStage(logCtx, {
+          stage: "upload-success",
+          failedFile: remotePath,
+          uploadPath: publishingPath
+        });
+      } catch (eUp) {
+        var upErr = sitePublishLog.describeFtpError(eUp);
+        logStage(logCtx, {
+          stage: "upload-fail",
+          failedFile: remotePath,
+          uploadPath: publishingPath,
+          reasonCode: eUp.code || "upload_failed",
+          ftpErrorCode: upErr.ftpErrorCode,
+          ftpErrorMessage: upErr.ftpErrorMessage
+        });
+        throw eUp;
+      }
 
       try {
         if (originalBytes && originalBytes.length) {
-          await ftp.rename(remotePath, remotePath + PREPUB_SUFFIX);
+          logStage(logCtx, {
+            stage: "rename-start",
+            failedFile: remotePath,
+            renameFrom: remotePath,
+            renameTo: prepubPath
+          });
+          await ftp.rename(remotePath, prepubPath);
         }
-        await ftp.rename(remotePath + PUBLISHING_SUFFIX, remotePath);
+        logStage(logCtx, {
+          stage: "rename-start",
+          failedFile: remotePath,
+          renameFrom: publishingPath,
+          renameTo: remotePath
+        });
+        await ftp.rename(publishingPath, remotePath);
         swapped.push(remotePath);
+        logStage(logCtx, {
+          stage: "rename-success",
+          failedFile: remotePath,
+          renameTo: remotePath
+        });
       } catch (swapErr) {
-        var restoredThis = await restoreOne(ftp, remotePath, originalBytes);
+        var swapDesc = sitePublishLog.describeFtpError(swapErr);
+        logStage(logCtx, {
+          stage: "rename-fail",
+          failedFile: remotePath,
+          reasonCode: "swap_failed",
+          ftpErrorCode: swapDesc.ftpErrorCode,
+          ftpErrorMessage: swapDesc.ftpErrorMessage
+        });
+        var restoredThis = await restoreOne(ftp, remotePath, originalBytes, logCtx);
         for (var r = swapped.length - 1; r >= 0; r--) {
-          await restoreOne(ftp, swapped[r], originals[swapped[r]]);
+          await restoreOne(ftp, swapped[r], originals[swapped[r]], logCtx);
         }
         return fail(
           "swap_failed",
           restoredThis
             ? "公開に失敗したため、元のホームページを維持しました"
             : "公開切替に失敗しました",
-          { productionUntouched: restoredThis, detail: String((swapErr && swapErr.message) || "").slice(0, 160) }
+          {
+            productionUntouched: restoredThis,
+            failedFile: remotePath,
+            reasonCode: "swap_failed",
+            ftpErrorCode: swapDesc.ftpErrorCode,
+            ftpErrorMessage: swapDesc.ftpErrorMessage
+          }
         );
       }
     }
 
+    logStage(logCtx, {
+      stage: "site-publish-success",
+      reasonCode: "ok",
+      finalFtpPath: files.map(function (f) { return f.absolutePath; }).join(",")
+    });
     return {
       ok: true,
       code: "published",
@@ -237,14 +453,24 @@ async function publishSiteFiles(opts) {
       }
     };
   } catch (e) {
+    var failDesc = sitePublishLog.describeFtpError(e);
+    var failedFile = currentFile;
+    if (!failedFile && swapped.length) failedFile = swapped[swapped.length - 1];
+    logStage(logCtx, {
+      stage: "site-publish-fail",
+      failedFile: failedFile,
+      reasonCode: e.code || "pipeline_error",
+      ftpErrorCode: failDesc.ftpErrorCode,
+      ftpErrorMessage: failDesc.ftpErrorMessage
+    });
     var allRestored = true;
     for (var j = swapped.length - 1; j >= 0; j--) {
-      var okRestore = await restoreOne(ftp, swapped[j], originals[swapped[j]]);
+      var okRestore = await restoreOne(ftp, swapped[j], originals[swapped[j]], logCtx);
       if (!okRestore) allRestored = false;
     }
-    Object.keys(originals).forEach(function (p) {
-      if (swapped.indexOf(p) >= 0) return;
-      if (originals[p] && originals[p].length) {
+    Object.keys(originals).forEach(function (pName) {
+      if (swapped.indexOf(pName) >= 0) return;
+      if (originals[pName] && originals[pName].length) {
         /* publishing file may exist; live should still be original */
       }
     });
@@ -253,7 +479,13 @@ async function publishSiteFiles(opts) {
       allRestored
         ? "公開に失敗したため、元のホームページを維持しました"
         : ((e && e.message) || "公開できませんでした"),
-      { productionUntouched: allRestored }
+      {
+        productionUntouched: allRestored,
+        failedFile: failedFile,
+        reasonCode: e.code || "pipeline_error",
+        ftpErrorCode: failDesc.ftpErrorCode,
+        ftpErrorMessage: failDesc.ftpErrorMessage
+      }
     );
   } finally {
     if (ftp && typeof ftp.close === "function") {
@@ -274,5 +506,6 @@ module.exports = {
   MAX_FILE_BYTES: MAX_FILE_BYTES,
   BAK_SUFFIX: BAK_SUFFIX,
   PUBLISHING_SUFFIX: PUBLISHING_SUFFIX,
-  PREPUB_SUFFIX: PREPUB_SUFFIX
+  PREPUB_SUFFIX: PREPUB_SUFFIX,
+  isAllowedOpPath: isAllowedOpPath
 };
