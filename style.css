@@ -254,7 +254,11 @@ body::before {
 }
 
 .hp-edit-github-ready[hidden] {
-  display: none;
+  display: none !important;
+}
+
+.hp-edit-github-ready.is-visible {
+  display: block !important;
 }
 
 .hp-edit-github-ready-card p {

@@ -15694,16 +15694,28 @@
     });
   }
 
+  function hpGithubReadyUi() {
+    return (typeof SmileHpEditGithubReady !== "undefined" && SmileHpEditGithubReady)
+      ? SmileHpEditGithubReady
+      : null;
+  }
+
   function renderGithubReadyPublishes() {
-    var box = document.getElementById("hp-edit-github-ready");
-    if (!box) return;
+    var ui = hpGithubReadyUi();
+    var box = ui && ui.ensureBox ? ui.ensureBox(document) : document.getElementById("hp-edit-github-ready");
     var items = Array.isArray(githubReadyPublishes) ? githubReadyPublishes : [];
+    if (ui && ui.render) {
+      ui.render(box, items, escapeHtml);
+      return;
+    }
+    if (!box) return;
     if (!items.length) {
       box.innerHTML = "";
       box.hidden = true;
       return;
     }
     box.hidden = false;
+    box.removeAttribute("hidden");
     box.innerHTML = items.map(function (it) {
       var issueNo = Number(it.issueNumber);
       var prNo = Number(it.prNumber);
@@ -15729,7 +15741,9 @@
   }
 
   function loadGithubReadySitePublishes() {
-    var box = document.getElementById("hp-edit-github-ready");
+    var ui = hpGithubReadyUi();
+    var box = ui && ui.ensureBox ? ui.ensureBox(document) : document.getElementById("hp-edit-github-ready");
+    var status = document.getElementById("hp-edit-status");
     var csrf = getStudioCsrfToken();
     var headers = {
       Accept: "application/json",
@@ -15749,11 +15763,17 @@
         return { ok: false, items: [] };
       });
     }).then(function (data) {
-      githubReadyPublishes = (data && data.ok && Array.isArray(data.items)) ? data.items : [];
+      githubReadyPublishes = ui && ui.parseReadyItems
+        ? ui.parseReadyItems(data)
+        : ((data && data.ok && Array.isArray(data.items)) ? data.items : []);
       renderGithubReadyPublishes();
+      if (githubReadyPublishes.length && status && !status.textContent) {
+        status.textContent = "承認済みの変更があります";
+      }
     }).catch(function () {
       if (!githubReadyPublishes.length && box) {
         box.hidden = true;
+        box.classList.remove("is-visible");
       }
     });
   }
@@ -16005,8 +16025,10 @@
   onClick("btn-hp-edit-publish-no", hideHpPublishConfirm);
 
   var hpEditGithubReadyEl = document.getElementById("hp-edit-github-ready");
-  if (hpEditGithubReadyEl) {
-    hpEditGithubReadyEl.addEventListener("click", function (ev) {
+  var hpEditModalEl = document.getElementById("hp-edit-modal");
+  var hpReadyClickRoot = hpEditModalEl || hpEditGithubReadyEl;
+  if (hpReadyClickRoot) {
+    hpReadyClickRoot.addEventListener("click", function (ev) {
       var t = ev.target;
       if (!t || !t.classList || !t.classList.contains("btn-hp-github-ready-publish")) return;
       showHpPublishConfirm({

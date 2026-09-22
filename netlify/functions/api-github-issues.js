@@ -159,7 +159,16 @@ async function handleFindReadySitePublish(event, guard, body) {
     target: "api-github-issues",
     ipHash: ipHash,
     meta: {
-      count: result.items ? result.items.length : 0
+      count: result.items ? result.items.length : 0,
+      itemsCount: result.debug && result.debug.itemsCount != null
+        ? result.debug.itemsCount
+        : (result.items ? result.items.length : 0),
+      candidateIssueNumbers: result.debug && result.debug.candidateIssueNumbers
+        ? result.debug.candidateIssueNumbers
+        : [],
+      evaluations: result.debug && result.debug.evaluations
+        ? result.debug.evaluations
+        : []
     }
   });
 
@@ -175,7 +184,8 @@ async function handleFindReadySitePublish(event, guard, body) {
 
   return http.json(200, {
     ok: true,
-    items: result.items || []
+    items: result.items || [],
+    itemsCount: result.items ? result.items.length : 0
   }, event);
 }
 

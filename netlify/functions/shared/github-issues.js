@@ -159,7 +159,7 @@ function parseBranchName(body) {
 
 function parsePrFromBody(body) {
   var text = String(body || "");
-  var section = text.match(/##\s*Pull Request\s*\n\s*([^\n]+)/i);
+  var section = text.match(/##\s*Pull Request\s*\r?\n\s*([^\n\r]+)/i);
   if (section) {
     var line = String(section[1] || "").trim();
     if (!/none yet/i.test(line)) {
@@ -222,21 +222,35 @@ function mapAgentStatusToJobStatus(agentStatus, opts) {
 
 async function githubFetch(cfg, path, method, payload) {
   var url = cfg.apiBase + path;
-  var res = await fetch(url, {
-    method: method || "GET",
-    headers: {
+  var methodName = method || "GET";
+
+  async function once(withAuth) {
+    var headers = {
       Accept: "application/vnd.github+json",
-      Authorization: "Bearer " + cfg.token,
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "SmileAIStudio-DevJobs",
       "Content-Type": "application/json"
-    },
-    body: payload == null ? undefined : JSON.stringify(payload)
-  });
-  var text = await res.text();
-  var json = null;
-  try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
-  return { ok: res.ok, status: res.status, json: json, text: text };
+    };
+    if (withAuth && cfg.token) headers.Authorization = "Bearer " + cfg.token;
+    var res = await fetch(url, {
+      method: methodName,
+      headers: headers,
+      body: payload == null ? undefined : JSON.stringify(payload)
+    });
+    var text = await res.text();
+    var json = null;
+    try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
+    return { ok: res.ok, status: res.status, json: json, text: text };
+  }
+
+  var first = await once(true);
+  if (first.ok) return first;
+  /* Restricted tokens can 403/404 public PRs that unauthenticated GET can read. */
+  if (methodName === "GET" && (first.status === 401 || first.status === 403 || first.status === 404)) {
+    var second = await once(false);
+    if (second.ok) return second;
+  }
+  return first;
 }
 
 async function createIssue(opts) {
@@ -373,9 +387,20 @@ async function getIssue(number) {
 }
 
 function parseJobKind(body) {
-  var m = String(body || "").match(/##\s*Job Kind\s*\n\s*([^\n]+)/i);
+  var m = String(body || "").match(/##\s*Job Kind\s*\r?\n\s*([^\n\r]+)/i);
   if (!m) return null;
-  return String(m[1] || "").trim() || null;
+  return String(m[1] || "").trim().replace(/^[`*_]+|[`*_]+$/g, "") || null;
+}
+
+function normalizeJobKind(kind) {
+  return String(kind || "").trim().replace(/[`*_]/g, "").toLowerCase();
+}
+
+function safeLogFilename(name) {
+  var s = String(name || "").replace(/\\/g, "/").trim();
+  if (!s) return "";
+  if (/credential|secret|password|\.env|token|apikey|api_key/i.test(s)) return "(redacted)";
+  return s.slice(0, 120);
 }
 
 function hasHomepagePublishFiles(filenames) {
@@ -456,12 +481,65 @@ function assertPrMergedToMain(pr) {
 }
 
 function isReadyForSitePublish(sync) {
-  if (!sync) return false;
-  if (!sync.prMerged) return false;
-  if (!sync.githubPrNumber) return false;
-  if (!isMainBaseRef(sync.prBaseRef)) return false;
-  if (sync.jobKind && String(sync.jobKind).trim() !== "homepage-edit") return false;
-  return hasHomepagePublishFiles(sync.changedFiles);
+  return !evaluateHomepagePublishCandidate(sync).excluded;
+}
+
+function evaluateHomepagePublishCandidate(sync) {
+  var files = filterHomepagePublishFiles(sync && sync.changedFiles);
+  var out = {
+    issueNumber: sync && sync.githubIssueNumber ? Number(sync.githubIssueNumber) : null,
+    prNumber: sync && sync.githubPrNumber ? Number(sync.githubPrNumber) : null,
+    merged: !!(sync && sync.prMerged),
+    baseRef: (sync && sync.prBaseRef) || "",
+    jobKind: (sync && sync.jobKind) || null,
+    changedFiles: ((sync && sync.changedFiles) || []).map(safeLogFilename).filter(Boolean).slice(0, 20),
+    filteredPublishFiles: files.slice(),
+    excluded: false,
+    excludeReason: null
+  };
+  if (!sync) {
+    out.excluded = true;
+    out.excludeReason = "sync_missing";
+    return out;
+  }
+  if (!sync.githubPrNumber) {
+    out.excluded = true;
+    out.excludeReason = "pr_not_found";
+    return out;
+  }
+  if (!sync.prMerged) {
+    out.excluded = true;
+    out.excludeReason = "pr_not_merged";
+    return out;
+  }
+  if (!isMainBaseRef(sync.prBaseRef)) {
+    out.excluded = true;
+    out.excludeReason = "pr_base_not_main";
+    return out;
+  }
+  if (sync.jobKind && normalizeJobKind(sync.jobKind) !== "homepage-edit") {
+    out.excluded = true;
+    out.excludeReason = "job_kind_not_homepage_edit";
+    return out;
+  }
+  if (!files.length) {
+    out.excluded = true;
+    out.excludeReason = "no_allowlist_files";
+    return out;
+  }
+  return out;
+}
+
+function logReadySitePublishDebug(payload) {
+  var safe = payload && typeof payload === "object" ? payload : {};
+  var blob = JSON.stringify({
+    stage: "github_ready_site_publish",
+    candidateIssueNumbers: safe.candidateIssueNumbers || [],
+    itemsCount: safe.itemsCount || 0,
+    evaluations: safe.evaluations || []
+  });
+  if (/ftp_user|ftp_password|github_token|authorization|apikey|api_key/i.test(blob)) return;
+  console.log(blob);
 }
 
 async function getPullRequest(number) {
@@ -777,7 +855,7 @@ async function searchHomepageEditIssueNumbers() {
 async function findReadyHomepagePublishes(opts) {
   opts = opts || {};
   if (!isConfigured()) {
-    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です", items: [] };
+    return { ok: false, error: "github_not_configured", userMessage: "GitHub接続設定が必要です", items: [], debug: { candidateIssueNumbers: [], itemsCount: 0, evaluations: [] } };
   }
   var numbers = uniquePositiveInts(
     homepageIssueSeeds().concat(opts.issueNumbers || []).concat(await searchHomepageEditIssueNumbers()),
@@ -785,20 +863,56 @@ async function findReadyHomepagePublishes(opts) {
   );
   var items = [];
   var seenPr = {};
+  var evaluations = [];
   for (var i = 0; i < numbers.length; i++) {
     // eslint-disable-next-line no-await-in-loop
     var one = await syncIssueState(numbers[i]);
-    if (!one.ok || !one.sync) continue;
-    if (!isReadyForSitePublish(one.sync)) continue;
+    if (!one.ok || !one.sync) {
+      evaluations.push({
+        issueNumber: numbers[i],
+        prNumber: null,
+        merged: false,
+        baseRef: "",
+        changedFiles: [],
+        filteredPublishFiles: [],
+        excluded: true,
+        excludeReason: (one && one.error) || "sync_failed"
+      });
+      continue;
+    }
+    var evaln = evaluateHomepagePublishCandidate(one.sync);
+    if (evaln.excluded) {
+      evaluations.push(evaln);
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
     var pull = await getPullRequest(one.sync.githubPrNumber);
     var mergeGate = assertPrMergedToMain(pull);
-    if (!mergeGate.ok) continue;
+    if (!mergeGate.ok) {
+      evaln.excluded = true;
+      evaln.excludeReason = mergeGate.error || "pr_not_merged";
+      evaln.merged = !!(pull && pull.merged);
+      evaln.baseRef = (pull && pull.baseRef) || evaln.baseRef;
+      evaluations.push(evaln);
+      continue;
+    }
     var prNumber = Number(pull.number || one.sync.githubPrNumber);
-    if (!isFinite(prNumber) || prNumber < 1 || seenPr[prNumber]) continue;
+    if (!isFinite(prNumber) || prNumber < 1 || seenPr[prNumber]) {
+      evaln.excluded = true;
+      evaln.excludeReason = seenPr[prNumber] ? "duplicate_pr" : "invalid_pr";
+      evaluations.push(evaln);
+      continue;
+    }
     seenPr[prNumber] = true;
     var files = filterHomepagePublishFiles(one.sync.changedFiles);
-    if (!files.length) continue;
+    if (!files.length) {
+      evaln.excluded = true;
+      evaln.excludeReason = "no_allowlist_files";
+      evaluations.push(evaln);
+      continue;
+    }
+    evaln.filteredPublishFiles = files.slice();
+    evaluations.push(evaln);
     items.push({
       issueNumber: one.sync.githubIssueNumber,
       issueUrl: one.sync.githubIssueUrl || "",
@@ -812,7 +926,13 @@ async function findReadyHomepagePublishes(opts) {
       status: "ready_for_publish"
     });
   }
-  return { ok: true, items: items };
+  var debug = {
+    candidateIssueNumbers: numbers.slice(),
+    itemsCount: items.length,
+    evaluations: evaluations
+  };
+  logReadySitePublishDebug(debug);
+  return { ok: true, items: items, debug: debug };
 }
 
 module.exports = {
@@ -831,6 +951,7 @@ module.exports = {
   filterHomepagePublishFiles: filterHomepagePublishFiles,
   assertPrMergedToMain: assertPrMergedToMain,
   isReadyForSitePublish: isReadyForSitePublish,
+  evaluateHomepagePublishCandidate: evaluateHomepagePublishCandidate,
   parseBranchName: parseBranchName,
   parsePrFromBody: parsePrFromBody,
   prBodyReferencesIssue: prBodyReferencesIssue,
