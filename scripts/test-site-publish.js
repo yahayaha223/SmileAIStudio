@@ -657,6 +657,101 @@ async function run() {
     }));
   });
 
+  await test("壊れた UTF-8 本番 index.htm を Shift_JIS 生バイトで上書きし SHA-256 が一致する", async function () {
+    var crypto = require("crypto");
+    var { TextDecoder } = require("util");
+    function sha(buf) {
+      return crypto.createHash("sha256").update(buf).digest("hex");
+    }
+    var sjisIndex = fs.readFileSync(path.join(__dirname, "..", "CorporateSite", "index.htm"));
+    var utf8Css = fs.readFileSync(path.join(__dirname, "..", "CorporateSite", "css", "top-diary-notice.css"));
+    var notice = "最新の日記を更新しました！";
+    var decoded = new TextDecoder("shift_jis").decode(sjisIndex);
+    assert.ok(decoded.indexOf(notice) >= 0);
+    var brokenLive = Buffer.from(decoded, "utf8");
+    assert.ok(brokenLive.length !== sjisIndex.length);
+    var gitSha = sha(sjisIndex);
+    var diarySjis = Buffer.from([0x82, 0xa0, 0x82, 0xa2, 0x0a]);
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(brokenLive),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS),
+      "diary/index.htm": Buffer.from(diarySjis)
+    });
+    var storBuffers = {};
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      assert.ok(Buffer.isBuffer(buf), "FTP STOR must receive Buffer");
+      storBuffers[name] = Buffer.from(buf);
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(sjisIndex) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(utf8Css) }
+      ]
+    });
+    assert.strictEqual(r.ok, true, r.userMessage || r.code);
+    assert.ok(ftp.files["index.htm"].equals(sjisIndex));
+    assert.ok(ftp.files["css/top-diary-notice.css"].equals(utf8Css));
+    assert.ok(ftp.files["index.htm" + sitePublish.BAK_SUFFIX].equals(brokenLive));
+    assert.ok(ftp.files["diary/index.htm"].equals(diarySjis));
+    var preFtp = storBuffers["index.htm" + sitePublish.PUBLISHING_SUFFIX];
+    assert.ok(preFtp, "publishing STOR required");
+    assert.ok(Buffer.isBuffer(preFtp));
+    assert.strictEqual(sha(preFtp), gitSha);
+    assert.strictEqual(sha(ftp.files["index.htm"]), gitSha);
+    var liveHtml = new TextDecoder("shift_jis").decode(ftp.files["index.htm"]);
+    assert.ok(liveHtml.indexOf(notice) >= 0);
+    assert.ok(/charset=Shift_JIS/i.test(liveHtml));
+    assert.ok(!ftp.ops.some(function (op) {
+      var p = String(op.name || op.from || op.to || op.dir || "");
+      return /(^|\/)diary(\/|$)/i.test(p);
+    }));
+  });
+
+  await test("壊れた現行 index.htm でも backup / rollback で安全に切替できる", async function () {
+    var { TextDecoder } = require("util");
+    var sjisIndex = fs.readFileSync(path.join(__dirname, "..", "CorporateSite", "index.htm"));
+    var brokenLive = Buffer.from(new TextDecoder("shift_jis").decode(sjisIndex), "utf8");
+    var diarySjis = Buffer.from([0x82, 0xa0, 0x82, 0xa2, 0x0a]);
+    var ftp = loginRootFtp({
+      "index.htm": Buffer.from(brokenLive),
+      "css/top-diary-notice.css": Buffer.from(OLD_CSS),
+      "diary/index.htm": Buffer.from(diarySjis)
+    });
+    var origStor = ftp.stor.bind(ftp);
+    ftp.stor = async function (name, buf) {
+      if (name === "css/top-diary-notice.css" + sitePublish.PUBLISHING_SUFFIX) {
+        throw new Error("STOR failed");
+      }
+      return origStor(name, buf);
+    };
+    var r = await sitePublish.publishSiteFiles({
+      userConfirmed: true,
+      siteRoot: "/public_html",
+      ftpCwd: "/",
+      ftp: ftp,
+      files: [
+        { repoPath: "CorporateSite/index.htm", buffer: Buffer.from(sjisIndex) },
+        { repoPath: "CorporateSite/css/top-diary-notice.css", buffer: Buffer.from(NEW_CSS) }
+      ]
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.productionUntouched, true);
+    assert.ok(ftp.files["index.htm"].equals(brokenLive), "rollback must restore broken live bytes");
+    assert.ok(ftp.files["index.htm" + sitePublish.BAK_SUFFIX].equals(brokenLive));
+    assert.strictEqual(ftp.files["css/top-diary-notice.css"].toString(), OLD_CSS);
+    assert.ok(ftp.files["diary/index.htm"].equals(diarySjis));
+    assert.ok(!ftp.ops.some(function (op) {
+      var p = String(op.name || op.from || op.to || op.dir || "");
+      return /(^|\/)diary(\/|$)/i.test(p);
+    }));
+  });
+
   await test("FTP_REMOTE_DIR=/ でも日記公開は diary/index.htm を解決する", function () {
     var prevCwd = process.env.SITE_FTP_CWD;
     var prevDiary = process.env.FTP_REMOTE_DIR;
