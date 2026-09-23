@@ -120,6 +120,15 @@ function safetyFlags() {
   };
 }
 
+function extractIssueSection(body, heading) {
+  var name = String(heading || "").trim();
+  if (!name) return "";
+  var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  var re = new RegExp("##\\s*" + escaped + "\\s*\\r?\\n([\\s\\S]*?)(?=\\n##\\s|\\s*$)", "i");
+  var m = String(body || "").match(re);
+  return m ? String(m[1] || "").trim() : "";
+}
+
 function buildStartComment(branch) {
   return [
     AGENT_STARTED_MARKER,
@@ -131,6 +140,7 @@ function buildStartComment(branch) {
 
 function buildCursorAgentPrompt(issue, branch) {
   var n = issue && issue.number;
+  var body = (issue && issue.body) || "";
   return [
     "You are the Smile AI Studio development agent.",
     "Work on GitHub Issue #" + n + " on branch `" + branch + "`.",
@@ -141,10 +151,18 @@ function buildCursorAgentPrompt(issue, branch) {
     "Never Production Deploy. Never production FTP. Never change Netlify production env.",
     "Never send secrets to the browser.",
     "",
+    "Issue number: " + n,
     "Issue title: " + ((issue && issue.title) || ""),
+    "Job Id: " + (github.parseJobId(body) || ""),
+    "",
+    "Acceptance Criteria:",
+    extractIssueSection(body, "Acceptance Criteria") || "(none)",
+    "",
+    "Safety Rules:",
+    extractIssueSection(body, "Safety Rules") || "(none)",
     "",
     "Issue body:",
-    (issue && issue.body) || ""
+    body
   ].join("\n");
 }
 
@@ -186,6 +204,40 @@ async function dispatchAiDevJob(event, api) {
   }
 
   var branch = buildFeatureBranchName(issue.number, issue.title);
+  if (!branch) {
+    return Object.assign({
+      ok: false,
+      started: false,
+      reason: "branch_name_invalid",
+      agentStatus: "READY_FOR_AGENT"
+    }, safetyFlags());
+  }
+  if (typeof api.ensureBranch !== "function") {
+    return Object.assign({
+      ok: false,
+      started: false,
+      reason: "branch_create_failed",
+      agentStatus: "READY_FOR_AGENT",
+      branch: branch
+    }, safetyFlags());
+  }
+  var branched;
+  try {
+    branched = await api.ensureBranch(branch, "main");
+  } catch (eBranch) {
+    branched = { ok: false, error: "branch_create_failed" };
+  }
+  if (!branched || branched.ok === false) {
+    return Object.assign({
+      ok: false,
+      started: false,
+      reason: (branched && branched.error) || "branch_create_failed",
+      agentStatus: "READY_FOR_AGENT",
+      branch: branch,
+      cursor: { launched: false, reason: "branch_create_failed" }
+    }, safetyFlags());
+  }
+
   var nextBody = github.ensureAgentStatus(issue.body || "", "AGENT_WORKING");
   nextBody = github.replaceIssueSection(nextBody, "Branch", branch);
 
@@ -195,15 +247,15 @@ async function dispatchAiDevJob(event, api) {
       return Object.assign({
         ok: false,
         started: false,
-        reason: updated.error || "status_update_failed"
+        reason: updated.error || "status_update_failed",
+        agentStatus: "READY_FOR_AGENT",
+        branch: branch,
+        cursor: { launched: false, reason: "status_update_failed" }
       }, safetyFlags());
     }
   }
   if (typeof api.postComment === "function") {
     await api.postComment(issue.number, buildStartComment(branch));
-  }
-  if (typeof api.ensureBranch === "function") {
-    await api.ensureBranch(branch, "main");
   }
 
   var cursor = { launched: false, reason: "cursor_key_missing" };
@@ -266,6 +318,7 @@ module.exports = {
   hasStartedMarker: hasStartedMarker,
   buildStartComment: buildStartComment,
   buildCursorAgentPrompt: buildCursorAgentPrompt,
+  extractIssueSection: extractIssueSection,
   shouldLaunchCursor: shouldLaunchCursor,
   dispatchAiDevJob: dispatchAiDevJob,
   markReadyForReview: markReadyForReview,

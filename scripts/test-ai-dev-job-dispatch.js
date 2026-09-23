@@ -13,6 +13,18 @@ var ISSUE27_BODY = [
   "## User Request",
   "公開した日記を私だけが手軽に消せないかな？",
   "",
+  "## Acceptance Criteria",
+  "- 依頼内容が満たされている",
+  "- 既存の本番安全機構を壊していない",
+  "- Passkey認証・日記公開の安全経路を維持",
+  "",
+  "## Safety Rules",
+  "- main直push禁止",
+  "- Production Deployは承認制",
+  "- FTP本番は承認制",
+  "- secretsをcommitしない",
+  "- Tokenをブラウザへ送らない",
+  "",
   "## Job Kind",
   "general",
   "",
@@ -116,6 +128,7 @@ async function run() {
     var stored = {};
     var comments = [];
     var branches = [];
+    var ops = [];
     var r = await dispatch.dispatchAiDevJob({
       eventName: "issues",
       action: "opened",
@@ -126,19 +139,23 @@ async function run() {
       },
       listComments: async function () { return []; },
       updateIssue: async function (number, patch) {
+        ops.push("update");
         stored.number = number;
         stored.body = patch.body;
         return { ok: true };
       },
       postComment: async function (number, body) {
+        ops.push("comment");
         comments.push({ number: number, body: body });
         return { ok: true };
       },
       ensureBranch: async function (branch, fromRef) {
+        ops.push("branch");
         branches.push({ branch: branch, fromRef: fromRef });
         return { ok: true };
       }
     });
+    assert.deepStrictEqual(ops, ["branch", "update", "comment"]);
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.started, true);
     assert.strictEqual(r.agentStatus, "AGENT_WORKING");
@@ -214,6 +231,84 @@ async function run() {
     }, issue27());
     assert.strictEqual(ready.update, false);
     assert.strictEqual(ready.reason, "pr_already_merged");
+  });
+
+  await test("branch作成失敗時は AGENT_WORKING にも開始コメントにもしない", async function () {
+    var stored = null;
+    var comments = [];
+    var cursorCalls = 0;
+    var r = await dispatch.dispatchAiDevJob({
+      eventName: "issues",
+      action: "opened",
+      issue: issue27()
+    }, {
+      getIssue: async function () {
+        return { ok: true, issue: issue27() };
+      },
+      listComments: async function () { return []; },
+      updateIssue: async function (number, patch) {
+        stored = patch.body;
+        return { ok: true };
+      },
+      postComment: async function (number, body) {
+        comments.push(body);
+        return { ok: true };
+      },
+      ensureBranch: async function () {
+        return { ok: false, error: "base_ref_missing" };
+      },
+      launchCursorAgent: async function () {
+        cursorCalls += 1;
+        return { launched: true, reason: "should_not_run" };
+      }
+    });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.started, false);
+    assert.strictEqual(r.reason, "base_ref_missing");
+    assert.strictEqual(r.agentStatus, "READY_FOR_AGENT");
+    assert.strictEqual(r.cursor.launched, false);
+    assert.strictEqual(cursorCalls, 0);
+    assert.strictEqual(stored, null);
+    assert.strictEqual(comments.length, 0);
+    assert.ok(!comments.some(function (c) { return String(c).indexOf("AI作業を開始しました") >= 0; }));
+  });
+
+  await test("Issue #27本文が実際の Cursor prompt に入る", async function () {
+    var captured = "";
+    var prev = process.env.CURSOR_API_KEY;
+    process.env.CURSOR_API_KEY = "test-cursor-key-not-real";
+    try {
+      var live = issue27();
+      var r = await launchCursor.run({
+        state: { started: true, issueNumber: 27, branch: "feature/issue-27" },
+        getIssue: async function (number) {
+          assert.strictEqual(Number(number), 27);
+          return { ok: true, issue: live };
+        },
+        launchWithSdk: async function (prompt, branch) {
+          captured = prompt;
+          assert.strictEqual(branch, "feature/issue-27");
+          return { launched: false, reason: "dry_run" };
+        },
+        includePrompt: true
+      });
+      assert.strictEqual(r.reason, "dry_run");
+      assert.ok(captured.indexOf("公開した日記を私だけが手軽に消せないかな？") >= 0);
+      assert.ok(captured.indexOf("Issue number: 27") >= 0);
+      assert.ok(captured.indexOf("Issue title: 公開した日記を私だけが手軽に消せないかな？") >= 0);
+      assert.ok(captured.indexOf("job_mudf05cd_k4fxhh") >= 0);
+      assert.ok(captured.indexOf("Acceptance Criteria") >= 0);
+      assert.ok(captured.indexOf("依頼内容が満たされている") >= 0);
+      assert.ok(captured.indexOf("Safety Rules") >= 0);
+      assert.ok(captured.indexOf("main直push禁止") >= 0);
+      assert.ok(captured.indexOf("title: \"\"") < 0);
+      var built = dispatch.buildCursorAgentPrompt(live, "feature/issue-27");
+      assert.ok(built.indexOf("公開した日記を私だけが手軽に消せないかな？") >= 0);
+      assert.strictEqual(dispatch.extractIssueSection(live.body, "Job Id"), "job_mudf05cd_k4fxhh");
+    } finally {
+      if (prev == null) delete process.env.CURSOR_API_KEY;
+      else process.env.CURSOR_API_KEY = prev;
+    }
   });
 
   await test("Cursor起動はキーが無いと行わない", async function () {
