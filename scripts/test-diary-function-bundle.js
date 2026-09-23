@@ -18,6 +18,8 @@ var { spawnSync } = require("child_process");
 var ROOT = path.join(__dirname, "..");
 var SRC = path.join(ROOT, "netlify", "functions", "shared", "diary-publish.js");
 var ENTRY = path.join(ROOT, "netlify", "functions", "api-diary-publish.js");
+var DELETE_SRC = path.join(ROOT, "netlify", "functions", "shared", "diary-delete.js");
+var DELETE_ENTRY = path.join(ROOT, "netlify", "functions", "api-diary-delete.js");
 var NODE = process.execPath;
 
 var SAMPLE_INDEX = [
@@ -160,6 +162,48 @@ async function run() {
       assert.strictEqual(r.ok, true, r.userMessage || r.code);
       var live = ftp.files["index.htm"].toString("utf8");
       assert.ok(live.indexOf("公園で遊びました") >= 0);
+      assert.ok(live.indexOf("旧記事です") >= 0);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  await test("delete bundle inlines charset and removes one diary-box via FTP mock", async function () {
+    var src = fs.readFileSync(DELETE_SRC, "utf8");
+    assert.ok(src.indexOf('require("../../../js/smile-cp932-map.js")') >= 0);
+    assert.ok(src.indexOf('require("../../../js/smile-charset.js")') >= 0);
+    assert.ok(!/^\s*require\(\s*path\.join\(\s*__dirname/m.test(src));
+
+    var tmp = fs.mkdtempSync(path.join(os.tmpdir(), "smile-fn-delete-bundle-"));
+    var sharedOut = path.join(tmp, "diary-delete.bundle.js");
+    var fnOut = path.join(tmp, "api-diary-delete.bundle.js");
+    try {
+      bundleFile(DELETE_SRC, sharedOut);
+      bundleFile(DELETE_ENTRY, fnOut);
+      var sharedBundle = fs.readFileSync(sharedOut, "utf8");
+      assert.ok(sharedBundle.indexOf("detectEncoding") >= 0);
+      assert.ok(sharedBundle.indexOf("removeArticle") >= 0 || sharedBundle.indexOf("diary-box") >= 0);
+
+      var bundled = require(sharedOut);
+      var ftpClient = require(path.join(ROOT, "netlify", "functions", "shared", "ftp-client.js"));
+      var twoBoxes = [
+        SAMPLE_INDEX.slice(0, SAMPLE_INDEX.lastIndexOf("</div></div></body></html>")),
+        "<div class=\"diary-box\" id=\"diary-260820\">",
+        "<div class=\"diary-date\">2026.08.20</div>",
+        "<div class=\"diary-main\">公園で遊びました</div>",
+        "</div></div></body></html>"
+      ].join("\n");
+      var ftp = ftpClient.createMemoryFtp({
+        "index.htm": Buffer.from(twoBoxes, "utf8")
+      });
+      var r = await bundled.deleteDiaryOnServer({
+        userConfirmed: true,
+        diaryId: "diary-260820",
+        ftp: ftp
+      });
+      assert.strictEqual(r.ok, true, r.userMessage || r.code);
+      var live = ftp.files["index.htm"].toString("utf8");
+      assert.ok(live.indexOf("公園で遊びました") === -1);
       assert.ok(live.indexOf("旧記事です") >= 0);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

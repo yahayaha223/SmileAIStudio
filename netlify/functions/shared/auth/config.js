@@ -72,6 +72,7 @@ function isProductionOnlyPermission(permissionKey) {
   var blocked = [
     "production-publish:POST",
     "api-diary-publish:POST",
+    "api-diary-delete:POST",
     "api-site-publish:POST",
     "api-site-ftp-probe:POST",
     "ftp-upload:POST",
@@ -93,6 +94,7 @@ function isAlwaysEnforcedPermission(permissionKey) {
     key === "api-github-issues:POST:update-agent-status" ||
     key === "api-github-issues:POST:find-ready-site-publish" ||
     key === "api-diary-publish:POST" ||
+    key === "api-diary-delete:POST" ||
     key === "api-site-publish:POST" ||
     key === "api-site-ftp-probe:POST";
 }
