@@ -15,6 +15,9 @@
 [functions."api-diary-publish"]
   timeout = 26
 
+[functions."api-diary-delete"]
+  timeout = 26
+
 [functions."api-site-publish"]
   timeout = 26
 
@@ -44,6 +47,13 @@
 [[redirects]]
   from = "/api/diary-publish"
   to = "/.netlify/functions/api-diary-publish"
+  status = 200
+  force = true
+
+# Production diary delete (owner + CSRF; FTP secrets stay server-side)
+[[redirects]]
+  from = "/api/diary-delete"
+  to = "/.netlify/functions/api-diary-delete"
   status = 200
   force = true
 
