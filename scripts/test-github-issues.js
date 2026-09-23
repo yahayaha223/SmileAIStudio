@@ -873,6 +873,187 @@ async function run() {
     }
   });
 
+  var fs = require("fs");
+  var crypto = require("crypto");
+  var { TextDecoder } = require("util");
+  var SJIS_INDEX = fs.readFileSync(path.join(__dirname, "..", "CorporateSite", "index.htm"));
+  var UTF8_CSS = fs.readFileSync(path.join(__dirname, "..", "CorporateSite", "css", "top-diary-notice.css"));
+  var NOTICE = "最新の日記を更新しました！";
+
+  function sha256(buf) {
+    return crypto.createHash("sha256").update(buf).digest("hex");
+  }
+
+  function transcodeSjisToUtf8(buf) {
+    return Buffer.from(new TextDecoder("shift_jis").decode(buf), "utf8");
+  }
+
+  await test("getRepoFileContent uses git blob raw bytes, not Contents UTF-8", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    var transcoded = transcodeSjisToUtf8(SJIS_INDEX);
+    assert.ok(transcoded.length !== SJIS_INDEX.length, "fixture must differ after UTF-8 transcode");
+    global.fetch = async function (url) {
+      var u = String(url);
+      if (u.indexOf("/contents/CorporateSite/index.htm") >= 0) {
+        return jsonRes(true, 200, {
+          type: "file",
+          sha: "sjis-blob-sha",
+          size: SJIS_INDEX.length,
+          content: transcoded.toString("base64"),
+          encoding: "base64"
+        });
+      }
+      if (u.indexOf("/git/blobs/sjis-blob-sha") >= 0) {
+        return jsonRes(true, 200, {
+          sha: "sjis-blob-sha",
+          size: SJIS_INDEX.length,
+          content: SJIS_INDEX.toString("base64"),
+          encoding: "base64"
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.getRepoFileContent("CorporateSite/index.htm", "ad8d03f");
+      assert.strictEqual(r.ok, true, r.error);
+      assert.strictEqual(r.source, "git_blob");
+      assert.ok(Buffer.isBuffer(r.buffer));
+      assert.ok(r.buffer.equals(SJIS_INDEX));
+      assert.strictEqual(sha256(r.buffer), sha256(SJIS_INDEX));
+      assert.ok(sha256(r.buffer) !== sha256(transcoded));
+      var html = new TextDecoder("shift_jis").decode(r.buffer);
+      assert.ok(html.indexOf(NOTICE) >= 0);
+      assert.ok(/charset=Shift_JIS/i.test(html));
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("getRepoFileContent falls back to Accept application/vnd.github.raw", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    var transcoded = transcodeSjisToUtf8(SJIS_INDEX);
+    global.fetch = async function (url, opts) {
+      var u = String(url);
+      var accept = (opts && opts.headers && opts.headers.Accept) || "";
+      if (u.indexOf("/contents/CorporateSite/index.htm") >= 0) {
+        if (String(accept).indexOf("raw") >= 0) {
+          return {
+            ok: true,
+            status: 200,
+            arrayBuffer: async function () {
+              return SJIS_INDEX.buffer.slice(
+                SJIS_INDEX.byteOffset,
+                SJIS_INDEX.byteOffset + SJIS_INDEX.byteLength
+              );
+            }
+          };
+        }
+        return jsonRes(true, 200, {
+          type: "file",
+          sha: "sjis-blob-sha",
+          size: SJIS_INDEX.length,
+          content: transcoded.toString("base64"),
+          encoding: "base64"
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.getRepoFileContent("CorporateSite/index.htm", "main");
+      assert.strictEqual(r.ok, true, r.error);
+      assert.strictEqual(r.source, "github_raw");
+      assert.ok(r.buffer.equals(SJIS_INDEX));
+      assert.strictEqual(sha256(r.buffer), sha256(SJIS_INDEX));
+      assert.ok(new TextDecoder("shift_jis").decode(r.buffer).indexOf(NOTICE) >= 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("getRepoFileContent keeps UTF-8 CSS bytes", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = async function (url) {
+      var u = String(url);
+      if (u.indexOf("/contents/CorporateSite/css/top-diary-notice.css") >= 0) {
+        return jsonRes(true, 200, {
+          type: "file",
+          sha: "css-blob-sha",
+          size: UTF8_CSS.length,
+          content: Buffer.from("THIS-IS-WRONG", "utf8").toString("base64"),
+          encoding: "base64"
+        });
+      }
+      if (u.indexOf("/git/blobs/css-blob-sha") >= 0) {
+        return jsonRes(true, 200, {
+          sha: "css-blob-sha",
+          size: UTF8_CSS.length,
+          content: UTF8_CSS.toString("base64"),
+          encoding: "base64"
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.getRepoFileContent("CorporateSite/css/top-diary-notice.css", "main");
+      assert.strictEqual(r.ok, true, r.error);
+      assert.ok(r.buffer.equals(UTF8_CSS));
+      assert.strictEqual(r.buffer.toString("utf8"), UTF8_CSS.toString("utf8"));
+      assert.ok(/\.top-nv-diary-update/.test(r.buffer.toString("utf8")));
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("getRepoFileContent never uses Contents JSON content as file bytes", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "egao";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    var transcoded = transcodeSjisToUtf8(SJIS_INDEX);
+    global.fetch = async function (url, opts) {
+      var u = String(url);
+      var accept = (opts && opts.headers && opts.headers.Accept) || "";
+      if (u.indexOf("/contents/") >= 0 && String(accept).indexOf("raw") < 0) {
+        return jsonRes(true, 200, {
+          type: "file",
+          sha: "missing-blob",
+          size: SJIS_INDEX.length,
+          content: transcoded.toString("base64"),
+          encoding: "base64"
+        });
+      }
+      return jsonRes(false, 404, { message: "Not Found" });
+    };
+    try {
+      var r = await github.getRepoFileContent("CorporateSite/index.htm", "main");
+      assert.strictEqual(r.ok, false);
+      assert.ok(r.buffer == null);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
   console.log("\nPassed " + passed + " github-issues tests");
 }
 

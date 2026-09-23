@@ -253,6 +253,50 @@ async function githubFetch(cfg, path, method, payload) {
   return first;
 }
 
+/**
+ * Fetch GitHub bytes without stringifying. res.text() would UTF-8-decode Shift_JIS.
+ */
+async function githubFetchBytes(cfg, path, accept) {
+  var url = cfg.apiBase + path;
+
+  async function once(withAuth) {
+    var headers = {
+      Accept: accept || "application/vnd.github.raw",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "SmileAIStudio-DevJobs"
+    };
+    if (withAuth && cfg.token) headers.Authorization = "Bearer " + cfg.token;
+    var res = await fetch(url, { method: "GET", headers: headers });
+    if (!res.ok || typeof res.arrayBuffer !== "function") {
+      return { ok: false, status: res.status, buffer: null };
+    }
+    var ab = await res.arrayBuffer();
+    if (!ab) return { ok: false, status: res.status, buffer: null };
+    return { ok: true, status: res.status, buffer: Buffer.from(ab) };
+  }
+
+  var first = await once(true);
+  if (first.ok) return first;
+  if (first.status === 401 || first.status === 403 || first.status === 404) {
+    var second = await once(false);
+    if (second.ok) return second;
+  }
+  return first;
+}
+
+function decodeGitBlobBase64(json) {
+  if (!json) return null;
+  if (json.encoding && json.encoding !== "base64") return null;
+  var b64 = String(json.content || "").replace(/\s+/g, "");
+  if (!b64) return null;
+  try {
+    var buf = Buffer.from(b64, "base64");
+    return buf.length ? buf : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function createIssue(opts) {
   opts = opts || {};
   var cfg = getGithubConfig();
@@ -614,26 +658,63 @@ async function getRepoFileContent(repoPath, ref) {
   var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
     "/contents/" + p.split("/").map(encodeURIComponent).join("/");
   if (ref) path += "?ref=" + encodeURIComponent(String(ref));
-  var res = await githubFetch(cfg, path, "GET");
-  if (!res.ok || !res.json) {
+  /* Metadata only. Never decode json.content — Contents API transcodes Shift_JIS to UTF-8. */
+  var meta = await githubFetch(cfg, path, "GET");
+  if (!meta.ok || !meta.json) {
     return {
       ok: false,
       error: "github_api_failed",
       userMessage: "ファイルを取得できませんでした"
     };
   }
-  if (res.json.type && res.json.type !== "file") {
+  if (meta.json.type && meta.json.type !== "file") {
     return { ok: false, error: "not_a_file" };
   }
-  var b64 = String(res.json.content || "").replace(/\s+/g, "");
-  var buf;
-  try {
-    buf = Buffer.from(b64, "base64");
-  } catch (e) {
-    return { ok: false, error: "decode_failed" };
+  var sha = meta.json.sha || null;
+  var expectedSize = Number(meta.json.size);
+  var buf = null;
+  var source = null;
+
+  if (sha) {
+    var blobPath = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) +
+      "/git/blobs/" + encodeURIComponent(String(sha));
+    var blobRes = await githubFetch(cfg, blobPath, "GET");
+    if (blobRes.ok && blobRes.json) {
+      buf = decodeGitBlobBase64(blobRes.json);
+      if (buf) source = "git_blob";
+    }
   }
-  if (!buf.length) return { ok: false, error: "empty_file" };
-  return { ok: true, buffer: buf, path: p, sha: res.json.sha || null };
+
+  if (!buf) {
+    var rawRes = await githubFetchBytes(cfg, path, "application/vnd.github.raw");
+    if (rawRes.ok && rawRes.buffer && rawRes.buffer.length) {
+      buf = rawRes.buffer;
+      source = "github_raw";
+    }
+  }
+
+  if (!buf || !buf.length) {
+    return {
+      ok: false,
+      error: "github_api_failed",
+      userMessage: "ファイルを取得できませんでした"
+    };
+  }
+  if (isFinite(expectedSize) && expectedSize > 0 && buf.length !== expectedSize) {
+    return {
+      ok: false,
+      error: "blob_size_mismatch",
+      userMessage: "公開ファイルのバイト数が一致しません"
+    };
+  }
+  return {
+    ok: true,
+    buffer: Buffer.from(buf),
+    path: p,
+    sha: sha,
+    size: buf.length,
+    source: source
+  };
 }
 
 async function githubSearchIssueItems(query) {
