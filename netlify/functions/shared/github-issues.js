@@ -157,6 +157,25 @@ function parseBranchName(body) {
   return String(m[1] || "").trim() || null;
 }
 
+function replaceIssueSection(body, heading, value) {
+  var raw = String(body || "");
+  var name = String(heading || "").trim();
+  if (!name) return raw;
+  var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  var re = new RegExp("(##\\s*" + escaped + "\\s*\\r?\\n)([^\\n\\r]*)", "i");
+  if (re.test(raw)) return raw.replace(re, "$1" + String(value == null ? "" : value));
+  return raw.replace(/\s*$/, "") + "\n\n## " + name + "\n" + String(value == null ? "" : value) + "\n";
+}
+
+function hasAiDevJobLabel(issue) {
+  var labels = (issue && issue.labels) || [];
+  for (var i = 0; i < labels.length; i++) {
+    var name = labels[i] && labels[i].name != null ? labels[i].name : labels[i];
+    if (String(name || "").toLowerCase() === "ai-dev-job") return true;
+  }
+  return false;
+}
+
 function parsePrFromBody(body) {
   var text = String(body || "");
   var section = text.match(/##\s*Pull Request\s*\r?\n\s*([^\n\r]+)/i);
@@ -1142,6 +1161,8 @@ module.exports = {
   isReadyForSitePublish: isReadyForSitePublish,
   evaluateHomepagePublishCandidate: evaluateHomepagePublishCandidate,
   parseBranchName: parseBranchName,
+  replaceIssueSection: replaceIssueSection,
+  hasAiDevJobLabel: hasAiDevJobLabel,
   parsePrFromBody: parsePrFromBody,
   prBodyReferencesIssue: prBodyReferencesIssue,
   ensureAgentStatus: ensureAgentStatus,

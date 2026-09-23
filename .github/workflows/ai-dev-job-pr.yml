@@ -1,0 +1,35 @@
+name: AI dev job PR ready
+
+on:
+  pull_request:
+    types: [opened, reopened, edited]
+    branches: [main]
+
+concurrency:
+  group: ai-dev-job-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  ready-for-review:
+    if: ${{ github.event.pull_request.base.ref == 'main' && startsWith(github.event.pull_request.head.ref, 'feature/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Mark Issue READY_FOR_REVIEW
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/ai-dev-job-dispatch.js pr-ready
+      # Never merge, never deploy, never FTP.
