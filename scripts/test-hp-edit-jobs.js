@@ -243,6 +243,9 @@ async function run() {
     assert.strictEqual(ui.explainReasonCode("site_cwd_reuses_diary_dir"), "公式サイトの作業フォルダが日記フォルダと同じです");
     assert.strictEqual(ui.explainReasonCode("invalid_json"), "公開リクエストを解析できませんでした");
     assert.strictEqual(ui.explainReasonCode("response_not_json"), "サーバー応答を解析できませんでした");
+    assert.strictEqual(ui.explainReasonCode("gateway_timeout"), "公開処理が時間切れになりました");
+    assert.ok(/gateway_timeout/.test(script));
+    assert.ok(/statusNum === 504/.test(publishFn));
     assert.strictEqual(ui.explainReasonCode("unknown_reason_xyz"), "公開処理でエラーが発生しました");
     assert.ok(/response_not_json/.test(script));
     assert.ok(/res\.text\(\)/.test(publishFn));

@@ -15670,7 +15670,17 @@
           parsed = null;
         }
         if (parsed && typeof parsed === "object") return parsed;
-        var status = res && res.status ? String(res.status) : "";
+        var statusNum = res && res.status ? Number(res.status) : 0;
+        if (statusNum === 504 || statusNum === 408) {
+          return {
+            ok: false,
+            error: "gateway_timeout",
+            reasonCode: "gateway_timeout",
+            userMessage: "公開処理が時間切れになりました。元のホームページは維持されています",
+            productionUntouched: true
+          };
+        }
+        var status = statusNum ? String(statusNum) : "";
         return {
           ok: false,
           error: "response_not_json",

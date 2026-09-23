@@ -149,10 +149,22 @@ function logCwd550(info) {
   });
 }
 
+function rootHasDiary(rootDirs) {
+  var src = Array.isArray(rootDirs) ? rootDirs : [];
+  var i;
+  for (i = 0; i < src.length; i++) {
+    if (String(src[i] || "").toLowerCase() === "diary") return true;
+  }
+  return false;
+}
+
 /**
  * @param {object} ftp injected adapter with pwd/list
+ * @param {{shallow?: boolean}} [opts] shallow skips the one-level public_html walk
  */
-async function probeLoginLayout(ftp) {
+async function probeLoginLayout(ftp, opts) {
+  opts = opts || {};
+  var shallow = !!opts.shallow;
   if (!ftp || typeof ftp.pwd !== "function" || typeof ftp.list !== "function") {
     return fail("ftp_missing", "FTP接続がありません");
   }
@@ -182,7 +194,7 @@ async function probeLoginLayout(ftp) {
   }
 
   var i;
-  if (!publicHtmlHints.length) {
+  if (!publicHtmlHints.length && !shallow && !rootHasDiary(rootDirs)) {
     for (i = 0; i < rootDirs.length; i++) {
       var parent = rootDirs[i];
       if (parent.toLowerCase() === "diary") continue;
@@ -214,6 +226,7 @@ async function probeLoginLayout(ftp) {
 
 module.exports = {
   probeLoginLayout: probeLoginLayout,
+  rootHasDiary: rootHasDiary,
   readOnlyFtp: readOnlyFtp,
   dirNamesOnly: dirNamesOnly,
   sanitizeName: sanitizeName,

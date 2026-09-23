@@ -204,6 +204,52 @@ async function run() {
     assert.strictEqual(writeOpCount(ftp.ops), 0);
   });
 
+  await test("ログイン直下に diary があれば 1階層探索しない", async function () {
+    var listed = [];
+    var ftp = ftpClient.createMemoryFtp({});
+    ftp.cwd = "/";
+    ftp.listEntries = async function (dir) {
+      listed.push(String(dir || "."));
+      if (dir === "." || dir === "/") {
+        return [
+          { name: "balloon", type: 2 },
+          { name: "company", type: 2 },
+          { name: "css", type: 2 },
+          { name: "diary", type: 2 },
+          { name: "err", type: 2 },
+          { name: "faq", type: 2 },
+          { name: "history", type: 2 },
+          { name: "image", type: 2 },
+          { name: "info", type: 2 },
+          { name: "js", type: 2 },
+          { name: "link", type: 2 },
+          { name: "matsuri", type: 2 },
+          { name: "omutsu", type: 2 },
+          { name: "order", type: 2 },
+          { name: "oyako", type: 2 },
+          { name: "result", type: 2 },
+          { name: "schedule", type: 2 },
+          { name: "sitemap", type: 2 },
+          { name: "toyokawa", type: 2 },
+          { name: "user", type: 2 }
+        ];
+      }
+      throw new Error("should not list children " + dir);
+    };
+    var r = await probe.probeLoginLayout(ftp);
+    assert.strictEqual(r.ok, true, r.userMessage || r.code);
+    assert.ok(r.rootDirs.indexOf("diary") >= 0);
+    assert.strictEqual(r.publicHtmlHints.length, 0);
+    assert.deepStrictEqual(listed, ["."]);
+    var entered = await ftpClient.enterSiteCwdAfterLoginProbe(ftp, "/");
+    assert.strictEqual(entered.ok, true, entered.userMessage || entered.code);
+    assert.strictEqual(entered.loginRoot, true);
+    assert.ok(!listed.some(function (d) {
+      return d !== "." && d !== "/";
+    }));
+    assert.strictEqual(writeOpCount(ftp.ops), 0);
+  });
+
   await test("診断APIは cd/STOR/rename/remove しない", function () {
     var probeApi = fs.readFileSync(
       path.join(__dirname, "..", "netlify", "functions", "api-site-ftp-probe.js"),
