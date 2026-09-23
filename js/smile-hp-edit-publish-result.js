@@ -22,7 +22,8 @@
     rollback_failed: "元のファイルへの復元に失敗しました",
     pipeline_error: "FTP公開処理の途中でエラーが発生しました",
     invalid_json: "公開リクエストを解析できませんでした",
-    response_not_json: "サーバー応答を解析できませんでした"
+    response_not_json: "サーバー応答を解析できませんでした",
+    gateway_timeout: "公開処理が時間切れになりました"
   };
   var FALLBACK_JA = "公開処理でエラーが発生しました";
   var MAX_FIELD = 200;

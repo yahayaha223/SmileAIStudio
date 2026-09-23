@@ -424,7 +424,11 @@ async function enterSiteCwdAfterLoginProbe(ftp, requestedCwd) {
   var sitePublishLog = require("./site-publish-log");
   var diagnostic = null;
   try {
-    diagnostic = await siteFtpProbe.probeLoginLayout(ftp);
+    var planned = siteFtpPaths.validateSiteFtpCwd(requestedCwd);
+    diagnostic = await siteFtpProbe.probeLoginLayout(ftp, {
+      shallow: !!(planned && planned.loginRoot) ||
+        siteFtpPaths.normalizeAbs(requestedCwd) === "/"
+    });
   } catch (eProbe) {
     diagnostic = null;
   }
