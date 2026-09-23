@@ -191,6 +191,10 @@ async function run() {
       path.join(__dirname, "..", "netlify", "functions", "api-diary-publish.js"),
       "utf8"
     );
+    var diaryDeleteApi = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "api-diary-delete.js"),
+      "utf8"
+    );
     var ftpSrc = fs.readFileSync(
       path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"),
       "utf8"
@@ -205,12 +209,14 @@ async function run() {
     );
     assert.ok(/var INDEX_NAME = "index.htm"/.test(diarySrc));
     assert.ok(/connectFromEnv\(\)/.test(diaryApi));
+    assert.ok(/connectFromEnv\(\)/.test(diaryDeleteApi));
     assert.ok(!/connectSiteFromEnv/.test(diaryApi));
+    assert.ok(!/connectSiteFromEnv/.test(diaryDeleteApi));
     assert.ok(!/connectSiteFromEnv/.test(diarySrc));
     assert.ok(!/SITE_FTP_USER/.test(diarySrc));
     assert.ok(!/SITE_FTP_PASSWORD/.test(diarySrc));
-    assert.ok(!/SITE_FTP_USER/.test(diaryApi));
-    assert.ok(!/SITE_FTP_PASSWORD/.test(diaryApi));
+    assert.ok(!/SITE_FTP_USER/.test(diaryApi + diaryDeleteApi));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diaryApi + diaryDeleteApi));
     assert.ok(/remoteDir:\s*env\.getEnv\("FTP_REMOTE_DIR"\)/.test(ftpSrc));
     assert.ok(/SITE_FTP_USER/.test(siteFn));
     assert.ok(/SITE_FTP_PASSWORD/.test(siteFn));
@@ -560,6 +566,14 @@ async function run() {
       path.join(__dirname, "..", "netlify", "functions", "api-diary-publish.js"),
       "utf8"
     );
+    var diaryDeleteSrc = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "shared", "diary-delete.js"),
+      "utf8"
+    );
+    var diaryDeleteApi = fs.readFileSync(
+      path.join(__dirname, "..", "netlify", "functions", "api-diary-delete.js"),
+      "utf8"
+    );
     var ftpSrc = fs.readFileSync(
       path.join(__dirname, "..", "netlify", "functions", "shared", "ftp-client.js"),
       "utf8"
@@ -568,10 +582,12 @@ async function run() {
       ftpSrc.indexOf("function getFtpConfig"),
       ftpSrc.indexOf("function getSiteFtpConfig")
     );
-    assert.ok(!/SITE_FTP_USER/.test(diarySrc + diaryApi + diaryFn));
-    assert.ok(!/SITE_FTP_PASSWORD/.test(diarySrc + diaryApi + diaryFn));
+    var diaryAll = diarySrc + diaryApi + diaryDeleteSrc + diaryDeleteApi + diaryFn;
+    assert.ok(!/SITE_FTP_USER/.test(diaryAll));
+    assert.ok(!/SITE_FTP_PASSWORD/.test(diaryAll));
     assert.ok(/connectFromEnv\(\)/.test(diaryApi));
-    assert.ok(!/connectSiteFromEnv/.test(diaryApi));
+    assert.ok(/connectFromEnv\(\)/.test(diaryDeleteApi));
+    assert.ok(!/connectSiteFromEnv/.test(diaryApi + diaryDeleteApi));
   });
 
   await test("SITE_FTP_CWD=/ で homepage root 判定", function () {

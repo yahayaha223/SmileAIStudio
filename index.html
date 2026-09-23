@@ -40,6 +40,11 @@
             <span class="home-action__title">日記を書く</span>
             <span class="home-action__hint">写真と文章で公開</span>
           </button>
+          <button type="button" class="home-action home-action--diary-delete owner-only-diary-delete" id="btn-home-delete-diary">
+            <span class="home-action__icon" aria-hidden="true">🗑️</span>
+            <span class="home-action__title">公開した日記を消す</span>
+            <span class="home-action__hint">自分だけ・確認してから消す</span>
+          </button>
           <button type="button" class="home-action home-action--hp" id="btn-home-edit-hp">
             <span class="home-action__icon" aria-hidden="true">🌐</span>
             <span class="home-action__title">ホームページを編集</span>
@@ -214,6 +219,9 @@
           <button type="button" class="more-menu__btn" id="btn-more-write-diary">
             <span aria-hidden="true">📷</span> 日記を書く
           </button>
+          <button type="button" class="more-menu__btn owner-only-diary-delete" id="btn-more-delete-diary">
+            <span aria-hidden="true">🗑️</span> 公開した日記を消す
+          </button>
           <button type="button" class="more-menu__btn" id="btn-more-ask-ai">
             <span aria-hidden="true">✨</span> AIに仕事を頼む
           </button>
@@ -381,6 +389,7 @@
         <div class="simple-diary__result" id="simple-diary-result" hidden>
           <p class="simple-diary__result-msg" id="simple-diary-result-msg"></p>
           <a class="btn btn--secondary btn--touch" id="simple-diary-open-page" href="https://www.egaonokiroku.co.jp/diary/index.htm" target="_blank" rel="noopener" hidden>公開ページを見る</a>
+          <button type="button" class="btn btn--ghost btn--block btn--touch owner-only-diary-delete" id="btn-simple-diary-open-delete" hidden>この日記を消す</button>
           <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-simple-diary-retry" hidden>もう一度試す</button>
           <details class="simple-diary__details" id="simple-diary-details" hidden>
             <summary>詳細を見る</summary>
@@ -391,7 +400,36 @@
       </div>
       <div class="modal__actions modal__actions--stack">
         <button type="button" class="btn btn--primary btn--block btn--touch" id="btn-simple-diary-publish">公開</button>
+        <button type="button" class="btn btn--ghost btn--block btn--touch owner-only-diary-delete" id="btn-simple-diary-manage-delete">公開した日記を消す</button>
         <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-simple-diary-cancel">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 公開日記の削除（オーナーのみ） -->
+  <div class="modal-overlay" id="simple-diary-delete-modal" aria-hidden="true">
+    <div class="modal modal--simple-diary" role="dialog" aria-labelledby="simple-diary-delete-title" aria-modal="true">
+      <div class="modal__header">
+        <h3 class="modal__title" id="simple-diary-delete-title">公開した日記を消す</h3>
+        <button type="button" class="modal__close" id="simple-diary-delete-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="modal__body simple-diary">
+        <p class="simple-diary__lead">公開中の日記から1件選んで消します。自分（オーナー）だけができます。</p>
+        <p class="simple-diary__status" id="simple-diary-delete-status" role="status" aria-live="polite"></p>
+        <div class="simple-diary-delete-list" id="simple-diary-delete-list"></div>
+        <div class="simple-diary__confirm" id="simple-diary-delete-confirm" hidden>
+          <p class="simple-diary__confirm-msg" id="simple-diary-delete-confirm-msg">この日記を本番ホームページから消します</p>
+          <button type="button" class="btn btn--danger btn--block btn--touch" id="btn-simple-diary-delete-yes">消す</button>
+          <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-simple-diary-delete-no">やめる</button>
+        </div>
+        <div class="simple-diary__result" id="simple-diary-delete-result" hidden>
+          <p class="simple-diary__result-msg" id="simple-diary-delete-result-msg"></p>
+          <a class="btn btn--secondary btn--touch" id="simple-diary-delete-open-page" href="https://www.egaonokiroku.co.jp/diary/index.htm" target="_blank" rel="noopener" hidden>公開ページを見る</a>
+        </div>
+      </div>
+      <div class="modal__actions modal__actions--stack">
+        <button type="button" class="btn btn--secondary btn--block btn--touch" id="btn-simple-diary-delete-reload">一覧を更新</button>
+        <button type="button" class="btn btn--ghost btn--block btn--touch" id="btn-simple-diary-delete-cancel">閉じる</button>
       </div>
     </div>
   </div>
@@ -2010,6 +2048,7 @@
   <script src="js/smile-hp-edit-github-ready.js"></script>
   <script src="js/smile-hp-edit-publish-result.js"></script>
   <script src="js/smile-simple-diary-publish.js"></script>
+  <script src="js/smile-simple-diary-delete.js"></script>
   <script src="js/creative-interview-engine.js"></script>
   <script src="script.js"></script>
 </body>

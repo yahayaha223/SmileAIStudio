@@ -590,6 +590,7 @@
       (releaseCenterModal && releaseCenterModal.classList.contains("is-open")) ||
       (vaultPickerModal && vaultPickerModal.classList.contains("is-open")) ||
       isOpen("simple-diary-modal") ||
+      isOpen("simple-diary-delete-modal") ||
       isOpen("ai-job-modal") ||
       isOpen("hp-edit-modal")
     );
@@ -14103,6 +14104,8 @@
   });
   onClick("btn-home-write-diary", function () { openSimpleDiary(); });
   onClick("btn-more-write-diary", function () { openSimpleDiary(); });
+  onClick("btn-home-delete-diary", function () { openSimpleDiaryDelete(); });
+  onClick("btn-more-delete-diary", function () { openSimpleDiaryDelete(); });
   onClick("btn-home-edit-hp", function () { openHpEditModal(); });
   onClick("btn-home-ask-ai", function () { openAiJobModal(); });
   onClick("btn-more-ask-ai", function () { openAiJobModal(); });
@@ -15058,8 +15061,12 @@
 
   var simpleDiaryBusy = false;
   var simpleDiaryPendingConfirm = false;
+  var simpleDiaryDeleteBusy = false;
+  var simpleDiaryDeletePendingId = "";
+  var lastPublishedDiaryBoxId = "";
   var DevJobs = window.SmileDevJobs || null;
   var SimpleDiaryPublish = window.SmileSimpleDiaryPublish || null;
+  var SimpleDiaryDelete = window.SmileSimpleDiaryDelete || null;
 
   function setModalOpen(id, open) {
     var el = document.getElementById(id);
@@ -15154,6 +15161,8 @@
       link.hidden = !opts.showPage;
       if (opts.pageUrl) link.href = opts.pageUrl;
     }
+    var openDelete = document.getElementById("btn-simple-diary-open-delete");
+    if (openDelete) openDelete.hidden = !opts.showDelete;
     if (retry) retry.hidden = !opts.showRetry;
     if (details) {
       details.hidden = !opts.showDetails;
@@ -15176,6 +15185,199 @@
       });
     }
     return lines.join("\n");
+  }
+
+  function setSimpleDiaryDeleteStatus(msg, kind) {
+    var el = document.getElementById("simple-diary-delete-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.classList.remove("is-error", "is-ok", "is-info");
+    if (kind) el.classList.add(kind);
+  }
+
+  function closeSimpleDiaryDelete() {
+    setModalOpen("simple-diary-delete-modal", false);
+    simpleDiaryDeletePendingId = "";
+    simpleDiaryDeleteBusy = false;
+  }
+
+  function showSimpleDiaryDeleteResult(ok, message, opts) {
+    opts = opts || {};
+    var box = document.getElementById("simple-diary-delete-result");
+    var msg = document.getElementById("simple-diary-delete-result-msg");
+    var link = document.getElementById("simple-diary-delete-open-page");
+    var confirmBox = document.getElementById("simple-diary-delete-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    if (!box || !msg) return;
+    box.hidden = false;
+    box.classList.toggle("is-error", !ok);
+    msg.textContent = message || "";
+    if (link) {
+      link.hidden = !opts.showPage;
+      if (opts.pageUrl) link.href = opts.pageUrl;
+    }
+  }
+
+  function renderSimpleDiaryDeleteList(articles, selectedId) {
+    var box = document.getElementById("simple-diary-delete-list");
+    if (!box) return;
+    box.innerHTML = "";
+    var rows = Array.isArray(articles) ? articles : [];
+    if (!rows.length) {
+      var empty = document.createElement("p");
+      empty.className = "simple-diary__hint";
+      empty.textContent = "消せる公開日記はありません。";
+      box.appendChild(empty);
+      return;
+    }
+    rows.forEach(function (row) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "simple-diary-delete-item" + (row.id === selectedId ? " is-selected" : "");
+      btn.setAttribute("data-diary-id", row.id || "");
+      btn.innerHTML =
+        "<span class=\"simple-diary-delete-item__date\">" + escapeHtml(row.date || row.id || "") + "</span>" +
+        "<span class=\"simple-diary-delete-item__title\">" + escapeHtml(row.title || "（無題）") + "</span>" +
+        "<span class=\"simple-diary-delete-item__excerpt\">" + escapeHtml(row.excerpt || "") + "</span>";
+      box.appendChild(btn);
+    });
+  }
+
+  function beginSimpleDiaryDeleteConfirm(diaryId, title) {
+    if (simpleDiaryDeleteBusy) return;
+    simpleDiaryDeletePendingId = String(diaryId || "");
+    if (!simpleDiaryDeletePendingId) {
+      setSimpleDiaryDeleteStatus("消す日記を選んでください。", "is-error");
+      return;
+    }
+    var confirmBox = document.getElementById("simple-diary-delete-confirm");
+    var confirmMsg = document.getElementById("simple-diary-delete-confirm-msg");
+    if (confirmMsg) {
+      confirmMsg.textContent = (title ? "「" + title + "」" : "この日記") + "を本番ホームページから消します";
+    }
+    if (confirmBox) confirmBox.hidden = false;
+    var result = document.getElementById("simple-diary-delete-result");
+    if (result) result.hidden = true;
+    setSimpleDiaryDeleteStatus("本当に消しますか？よろしければ「消す」を押してください。", "is-info");
+    renderSimpleDiaryDeleteList(
+      (window.__SMILE_DIARY_DELETE_LIST__ || []),
+      simpleDiaryDeletePendingId
+    );
+  }
+
+  function cancelSimpleDiaryDeleteConfirm() {
+    simpleDiaryDeletePendingId = "";
+    var confirmBox = document.getElementById("simple-diary-delete-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    setSimpleDiaryDeleteStatus("");
+  }
+
+  function loadSimpleDiaryDeleteList() {
+    if (!SimpleDiaryDelete || typeof SimpleDiaryDelete.listPublishedDiaries !== "function") {
+      setSimpleDiaryDeleteStatus("削除モジュールを読み込めませんでした。", "is-error");
+      return Promise.resolve();
+    }
+    if (studioAuthSession && studioAuthSession.authenticated && studioAuthSession.role !== "owner") {
+      setSimpleDiaryDeleteStatus("オーナーだけが公開日記を消せます。", "is-error");
+      return Promise.resolve();
+    }
+    setSimpleDiaryDeleteStatus("公開中の日記を読みしています…", "is-info");
+    return SimpleDiaryDelete.listPublishedDiaries({
+      getCsrfToken: getStudioCsrfToken
+    }).then(function (result) {
+      if (!result || !result.ok) {
+        setSimpleDiaryDeleteStatus(
+          (result && result.message) || "日記一覧を読めませんでした。",
+          "is-error"
+        );
+        renderSimpleDiaryDeleteList([]);
+        return;
+      }
+      window.__SMILE_DIARY_DELETE_LIST__ = result.articles || [];
+      renderSimpleDiaryDeleteList(result.articles, simpleDiaryDeletePendingId || lastPublishedDiaryBoxId);
+      setSimpleDiaryDeleteStatus(
+        result.articles && result.articles.length
+          ? "消したい日記を選んでください。"
+          : "消せる公開日記はありません。",
+        "is-ok"
+      );
+      if (lastPublishedDiaryBoxId) {
+        var hit = (result.articles || []).find(function (row) {
+          return row.id === lastPublishedDiaryBoxId;
+        });
+        if (hit) beginSimpleDiaryDeleteConfirm(hit.id, hit.title);
+      }
+    });
+  }
+
+  function openSimpleDiaryDelete(preferredId) {
+    if (preferredId) lastPublishedDiaryBoxId = preferredId;
+    simpleDiaryDeletePendingId = "";
+    var confirmBox = document.getElementById("simple-diary-delete-confirm");
+    if (confirmBox) confirmBox.hidden = true;
+    var result = document.getElementById("simple-diary-delete-result");
+    if (result) result.hidden = true;
+    renderSimpleDiaryDeleteList([]);
+    setModalOpen("simple-diary-delete-modal", true);
+    loadSimpleDiaryDeleteList();
+  }
+
+  function deleteSelectedPublishedDiary() {
+    if (simpleDiaryDeleteBusy) return;
+    if (!simpleDiaryDeletePendingId) {
+      setSimpleDiaryDeleteStatus("消す日記を選んでください。", "is-error");
+      return;
+    }
+    if (!SimpleDiaryDelete || typeof SimpleDiaryDelete.deletePublishedDiary !== "function") {
+      setSimpleDiaryDeleteStatus("削除モジュールを読み込めませんでした。", "is-error");
+      return;
+    }
+    if (studioAuthSession && studioAuthSession.authenticated && studioAuthSession.role !== "owner") {
+      setSimpleDiaryDeleteStatus("オーナーだけが公開日記を消せます。", "is-error");
+      return;
+    }
+    simpleDiaryDeleteBusy = true;
+    var yesBtn = document.getElementById("btn-simple-diary-delete-yes");
+    if (yesBtn) yesBtn.disabled = true;
+    setSimpleDiaryDeleteStatus("日記を消しています…", "is-info");
+    SimpleDiaryDelete.deletePublishedDiary({
+      diaryId: simpleDiaryDeletePendingId,
+      userConfirmed: true,
+      getCsrfToken: getStudioCsrfToken
+    }).then(function (result) {
+      if (result && result.ok) {
+        lastPublishedDiaryBoxId = "";
+        simpleDiaryDeletePendingId = "";
+        setSimpleDiaryDeleteStatus("✅ 日記を消しました", "is-ok");
+        showSimpleDiaryDeleteResult(true, "✅ 日記を消しました", {
+          showPage: true,
+          pageUrl: (result && result.pageUrl) || "https://www.egaonokiroku.co.jp/diary/index.htm"
+        });
+        showToast("日記を消しました");
+        return SimpleDiaryDelete.listPublishedDiaries({
+          getCsrfToken: getStudioCsrfToken
+        }).then(function (listed) {
+          if (listed && listed.ok) {
+            window.__SMILE_DIARY_DELETE_LIST__ = listed.articles || [];
+            renderSimpleDiaryDeleteList(listed.articles, "");
+          }
+        });
+      }
+      var untouched = !(result && result.productionUntouched === false);
+      setSimpleDiaryDeleteStatus(
+        (result && result.message) ||
+          (untouched ? "消せませんでした。元のホームページは変更されていません。" : "消せませんでした。"),
+        "is-error"
+      );
+      showSimpleDiaryDeleteResult(
+        false,
+        "❌ 消せませんでした\n" + (untouched ? "元のホームページは変更されていません。" : ""),
+        { showPage: false }
+      );
+    }).finally(function () {
+      simpleDiaryDeleteBusy = false;
+      if (yesBtn) yesBtn.disabled = false;
+    });
   }
 
   function beginSimpleDiaryConfirm() {
@@ -15302,9 +15504,13 @@
           updateDiaryStatusOnly(entry.id, "production-published");
         }
         setSimpleDiaryStatus("✅ 日記を公開しました", "is-ok");
+        if (SimpleDiaryDelete && typeof SimpleDiaryDelete.dateKeyFromPublishDate === "function") {
+          lastPublishedDiaryBoxId = SimpleDiaryDelete.dateKeyFromPublishDate(entry.publishDate) || "";
+        }
         showSimpleDiaryResult(true, "✅ 日記を公開しました", {
           showPage: true,
           showRetry: false,
+          showDelete: !!lastPublishedDiaryBoxId,
           showDetails: true,
           showAdvanced: false,
           pageUrl: (result && result.pageUrl) || "https://www.egaonokiroku.co.jp/diary/index.htm",
@@ -16045,6 +16251,32 @@
 
   onClick("simple-diary-close", closeSimpleDiary);
   onClick("btn-simple-diary-cancel", closeSimpleDiary);
+  onClick("btn-simple-diary-manage-delete", function () {
+    closeSimpleDiary();
+    openSimpleDiaryDelete();
+  });
+  onClick("btn-simple-diary-open-delete", function () {
+    closeSimpleDiary();
+    openSimpleDiaryDelete(lastPublishedDiaryBoxId);
+  });
+  onClick("simple-diary-delete-close", closeSimpleDiaryDelete);
+  onClick("btn-simple-diary-delete-cancel", closeSimpleDiaryDelete);
+  onClick("btn-simple-diary-delete-reload", function () {
+    lastPublishedDiaryBoxId = "";
+    loadSimpleDiaryDeleteList();
+  });
+  onClick("btn-simple-diary-delete-yes", deleteSelectedPublishedDiary);
+  onClick("btn-simple-diary-delete-no", cancelSimpleDiaryDeleteConfirm);
+  var deleteList = document.getElementById("simple-diary-delete-list");
+  if (deleteList) {
+    deleteList.addEventListener("click", function (ev) {
+      var btn = ev.target && ev.target.closest ? ev.target.closest(".simple-diary-delete-item") : null;
+      if (!btn) return;
+      var id = btn.getAttribute("data-diary-id") || "";
+      var titleEl = btn.querySelector(".simple-diary-delete-item__title");
+      beginSimpleDiaryDeleteConfirm(id, titleEl ? titleEl.textContent : "");
+    });
+  }
   onClick("btn-simple-diary-publish", publishSimpleDiary);
   onClick("btn-simple-diary-confirm-yes", publishSimpleDiary);
   onClick("btn-simple-diary-confirm-no", cancelSimpleDiaryConfirm);
@@ -16222,6 +16454,12 @@
     if (menu) {
       if (session && session.authenticated) menu.hidden = false;
       else menu.hidden = true;
+    }
+    var showDelete = !session || !session.authenticated || session.role === "owner";
+    var deleteBtns = document.querySelectorAll(".owner-only-diary-delete");
+    for (var i = 0; i < deleteBtns.length; i++) {
+      if (deleteBtns[i].id === "btn-simple-diary-open-delete") continue;
+      deleteBtns[i].hidden = !showDelete;
     }
   }
 

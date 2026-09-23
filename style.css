@@ -327,6 +327,57 @@ body::before {
   margin: 8px 0;
 }
 
+.home-action--diary-delete {
+  border-color: rgba(220, 38, 38, 0.28);
+  background: linear-gradient(180deg, #fff7f7 0%, #fff 70%);
+}
+
+.simple-diary-delete-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 8px 0 12px;
+}
+
+.simple-diary-delete-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--color-text);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.simple-diary-delete-item.is-selected {
+  border-color: #dc2626;
+  background: #fff7f7;
+}
+
+.simple-diary-delete-item__date {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.simple-diary-delete-item__title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.simple-diary-delete-item__excerpt {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
 .ai-job-preview,
 .ai-jobs-list {
   margin-top: 12px;
