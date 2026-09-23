@@ -241,7 +241,12 @@ async function run() {
     assert.strictEqual(ui.explainReasonCode("backup_failed"), "公開前バックアップを作成できませんでした");
     assert.strictEqual(ui.explainReasonCode("swap_failed"), "新しいファイルへの切替に失敗しました");
     assert.strictEqual(ui.explainReasonCode("site_cwd_reuses_diary_dir"), "公式サイトの作業フォルダが日記フォルダと同じです");
+    assert.strictEqual(ui.explainReasonCode("invalid_json"), "公開リクエストを解析できませんでした");
+    assert.strictEqual(ui.explainReasonCode("response_not_json"), "サーバー応答を解析できませんでした");
     assert.strictEqual(ui.explainReasonCode("unknown_reason_xyz"), "公開処理でエラーが発生しました");
+    assert.ok(/response_not_json/.test(script));
+    assert.ok(/res\.text\(\)/.test(publishFn));
+    assert.ok(!/error: "invalid_json"/.test(publishFn));
     assert.strictEqual(ui.explainReasonCode(""), "公開処理でエラーが発生しました");
 
     var data = {

@@ -20,7 +20,9 @@
     upload_failed: "新しいファイルをアップロードできませんでした",
     swap_failed: "新しいファイルへの切替に失敗しました",
     rollback_failed: "元のファイルへの復元に失敗しました",
-    pipeline_error: "FTP公開処理の途中でエラーが発生しました"
+    pipeline_error: "FTP公開処理の途中でエラーが発生しました",
+    invalid_json: "公開リクエストを解析できませんでした",
+    response_not_json: "サーバー応答を解析できませんでした"
   };
   var FALLBACK_JA = "公開処理でエラーが発生しました";
   var MAX_FIELD = 200;

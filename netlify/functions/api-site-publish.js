@@ -15,14 +15,6 @@ var ftpClient = require("./shared/ftp-client");
 var githubIssues = require("./shared/github-issues");
 var sitePublishLog = require("./shared/site-publish-log");
 
-function parseBody(event) {
-  try {
-    return JSON.parse(event.body || "{}");
-  } catch (e) {
-    return null;
-  }
-}
-
 function permissionKey(event) {
   if (String(event.httpMethod || "").toUpperCase() !== "POST") return null;
   return "api-site-publish:POST";
@@ -32,12 +24,21 @@ async function handler(event, guard) {
   if (event.httpMethod !== "POST") {
     return http.json(405, { ok: false, error: "method_not_allowed" }, event);
   }
-  var body = parseBody(event);
-  if (!body) return http.json(400, { ok: false, error: "invalid_json" }, event);
+  var requestId = sitePublishLog.newRequestId();
+  var body = http.parseJsonBody(event);
+  if (!body) {
+    return http.json(400, {
+      ok: false,
+      error: "invalid_json",
+      reasonCode: "invalid_json",
+      requestId: requestId,
+      userMessage: "公開リクエストを解析できませんでした",
+      productionUntouched: true
+    }, event);
+  }
 
   var userId = (guard && guard.session && guard.session.userId) || "anon";
   var ipHash = audit.ipHashForEvent(event);
-  var requestId = sitePublishLog.newRequestId();
   var issueNumber = Number(body.issueNumber);
   if (!isFinite(issueNumber) || issueNumber < 1) issueNumber = null;
   var logBase = {

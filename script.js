@@ -15662,8 +15662,24 @@
         issueNumber: pending.issueNumber || null
       })
     }).then(function (res) {
-      return res.json().catch(function () {
-        return { ok: false, error: "invalid_json" };
+      return res.text().then(function (text) {
+        var parsed = null;
+        try {
+          parsed = text ? JSON.parse(text) : null;
+        } catch (eParse) {
+          parsed = null;
+        }
+        if (parsed && typeof parsed === "object") return parsed;
+        var status = res && res.status ? String(res.status) : "";
+        return {
+          ok: false,
+          error: "response_not_json",
+          reasonCode: "response_not_json",
+          userMessage: status
+            ? "サーバー応答を解析できませんでした（HTTP " + status + "）"
+            : "サーバー応答を解析できませんでした",
+          productionUntouched: true
+        };
       });
     }).then(function (data) {
       data = data || {};

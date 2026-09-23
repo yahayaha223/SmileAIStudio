@@ -43,6 +43,45 @@ function mergeHeaders(base, extra) {
   return out;
 }
 
+function readEventBody(event) {
+  event = event || {};
+  var raw = event.body == null ? "" : String(event.body);
+  if (event.isBase64Encoded && raw) {
+    try {
+      raw = Buffer.from(raw, "base64").toString("utf8");
+    } catch (eDec) {
+      return "";
+    }
+  }
+  return raw;
+}
+
+function parseJsonBody(event) {
+  var raw = readEventBody(event);
+  if (!String(raw).trim()) return {};
+  try {
+    var parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch (eParse) {
+    return null;
+  }
+}
+
+function safeJsonStringify(body) {
+  try {
+    return JSON.stringify(body);
+  } catch (eJson) {
+    return JSON.stringify({
+      ok: false,
+      error: "pipeline_error",
+      reasonCode: "pipeline_error",
+      userMessage: "応答を作れませんでした",
+      productionUntouched: true
+    });
+  }
+}
+
 function json(statusCode, body, event, extraHeaders) {
   var headers = mergeHeaders(
     mergeHeaders(
@@ -58,7 +97,7 @@ function json(statusCode, body, event, extraHeaders) {
     multiValueHeaders: extraHeaders && extraHeaders["Set-Cookie"]
       ? undefined
       : undefined,
-    body: JSON.stringify(body)
+    body: safeJsonStringify(body)
   };
 }
 
@@ -80,7 +119,7 @@ function jsonWithCookies(statusCode, body, event, setCookies) {
     multiValueHeaders: {
       "Set-Cookie": cookies.filter(Boolean)
     },
-    body: JSON.stringify(body)
+    body: safeJsonStringify(body)
   };
 }
 
@@ -126,7 +165,7 @@ function jsonNoCors(statusCode, body) {
       { "Content-Type": "application/json; charset=utf-8" },
       securityHeaders()
     ),
-    body: JSON.stringify(body)
+    body: safeJsonStringify(body)
   };
 }
 
@@ -138,5 +177,8 @@ module.exports = {
   jsonNoCors: jsonNoCors,
   securityHeaders: securityHeaders,
   corsHeaders: corsHeaders,
-  requestOrigin: requestOrigin
+  requestOrigin: requestOrigin,
+  readEventBody: readEventBody,
+  parseJsonBody: parseJsonBody,
+  safeJsonStringify: safeJsonStringify
 };
