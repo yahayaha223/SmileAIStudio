@@ -40,7 +40,27 @@ function wrapApi(innerHandler, permissionKeyOrResolver) {
     var guard = await middleware.enforceAccess(event, { permissionKey: key });
     if (!guard.ok) return guard.response;
 
-    var result = await innerHandler(event, guard);
+    var result;
+    try {
+      result = await innerHandler(event, guard);
+    } catch (eInner) {
+      return http.json(500, {
+        ok: false,
+        error: "pipeline_error",
+        reasonCode: "pipeline_error",
+        userMessage: "処理中にエラーが発生しました",
+        productionUntouched: true
+      }, event);
+    }
+    if (!result || typeof result !== "object") {
+      return http.json(500, {
+        ok: false,
+        error: "pipeline_error",
+        reasonCode: "pipeline_error",
+        userMessage: "処理中にエラーが発生しました",
+        productionUntouched: true
+      }, event);
+    }
     return mergeCorsOnto(result, event);
   };
 }

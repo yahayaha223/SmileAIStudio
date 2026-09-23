@@ -1404,6 +1404,40 @@ async function run() {
     assert.ok(/getPullRequest\(prNumber\)/.test(apiSrc));
     assert.ok(/reasonCode: cwdPlan.code/.test(apiSrc));
     assert.ok(/requestId: requestId/.test(apiSrc));
+    assert.ok(/parseJsonBody\(event\)/.test(apiSrc));
+    assert.ok(/reasonCode: "invalid_json"/.test(apiSrc));
+  });
+
+  await test("base64 JSON body and handler throw stay JSON", async function () {
+    var httpMod = require(path.join(__dirname, "..", "netlify", "functions", "shared", "http.js"));
+    var protect = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth", "protect-api.js"));
+    var payload = { userConfirmed: true, prNumber: 22 };
+    var encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
+    var decoded = httpMod.parseJsonBody({ body: encoded, isBase64Encoded: true });
+    assert.strictEqual(decoded.userConfirmed, true);
+    assert.strictEqual(decoded.prNumber, 22);
+    assert.strictEqual(httpMod.parseJsonBody({ body: "{not-json", isBase64Encoded: false }), null);
+    var cycle = {};
+    cycle.self = cycle;
+    var dumped = JSON.parse(httpMod.safeJsonStringify(cycle));
+    assert.strictEqual(dumped.reasonCode, "pipeline_error");
+
+    var prevMode = process.env.AUTH_ENFORCEMENT_MODE;
+    process.env.AUTH_ENFORCEMENT_MODE = "off";
+    try {
+      var wrapped = protect.wrapApi(async function () {
+        throw new Error("boom");
+      }, "test-throw:POST");
+      var res = await wrapped(fakeEvent());
+      assert.strictEqual(res.statusCode, 500);
+      var body = JSON.parse(res.body);
+      assert.strictEqual(body.ok, false);
+      assert.strictEqual(body.reasonCode, "pipeline_error");
+      assert.strictEqual(body.productionUntouched, true);
+      assert.ok(!/boom/.test(res.body));
+    } finally {
+      process.env.AUTH_ENFORCEMENT_MODE = prevMode;
+    }
   });
 
   await test("merged PR sync becomes ready_for_publish", async function () {
