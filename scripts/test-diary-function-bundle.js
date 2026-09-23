@@ -52,7 +52,16 @@ function test(name, fn) {
 
 function resolveEsbuildBin() {
   var jsCli = path.join(ROOT, "node_modules", "esbuild", "bin", "esbuild");
-  if (fs.existsSync(jsCli)) return { cmd: NODE, argsPrefix: [jsCli] };
+  var libMain = path.join(ROOT, "node_modules", "esbuild", "lib", "main.js");
+  if (fs.existsSync(jsCli)) {
+    var fd = fs.openSync(jsCli, "r");
+    var buf = Buffer.alloc(4);
+    try { fs.readSync(fd, buf, 0, 4, 0); } finally { fs.closeSync(fd); }
+    var isElf = buf[0] === 0x7f && buf.toString("ascii", 1, 4) === "ELF";
+    if (isElf) return { cmd: jsCli, argsPrefix: [] };
+    return { cmd: NODE, argsPrefix: [jsCli] };
+  }
+  if (fs.existsSync(libMain)) return { cmd: NODE, argsPrefix: [libMain] };
   return { cmd: process.platform === "win32" ? "npx.cmd" : "npx", argsPrefix: ["--yes", "esbuild"] };
 }
 
@@ -187,10 +196,17 @@ async function run() {
       var bundled = require(sharedOut);
       var ftpClient = require(path.join(ROOT, "netlify", "functions", "shared", "ftp-client.js"));
       var twoBoxes = [
-        SAMPLE_INDEX.slice(0, SAMPLE_INDEX.lastIndexOf("</div></div></body></html>")),
+        "<!DOCTYPE html>",
+        "<html><head><meta charset=\"UTF-8\"><title>活動日記</title></head>",
+        "<body><div id=\"diary-base\">",
+        "<div class=\"year-navi-mobile\"><select></select></div>",
         "<div class=\"diary-box\" id=\"diary-260820\">",
         "<div class=\"diary-date\">2026.08.20</div>",
         "<div class=\"diary-main\">公園で遊びました</div>",
+        "</div>",
+        "<div class=\"diary-box\" id=\"diary-240101\">",
+        "<div class=\"diary-date\">2024.01.01</div>",
+        "<div class=\"diary-main\">旧記事です。えがお</div>",
         "</div></div></body></html>"
       ].join("\n");
       var ftp = ftpClient.createMemoryFtp({
