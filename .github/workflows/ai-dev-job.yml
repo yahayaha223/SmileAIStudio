@@ -1,0 +1,47 @@
+name: AI dev job kickoff
+
+on:
+  issues:
+    types: [opened, labeled]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: ai-dev-job-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  kickoff:
+    if: ${{ !github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Dispatch AI job
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: node scripts/ai-dev-job-dispatch.js kickoff
+      - name: Launch Cursor cloud agent
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "$CURSOR_API_KEY" ]; then
+            echo "CURSOR_API_KEY missing; GitHub claim/branch only"
+            exit 0
+          fi
+          npm install --no-save @cursor/sdk
+          node scripts/ai-dev-job-launch-cursor.js

@@ -66,7 +66,20 @@ feature/...
 
 Studio polls `POST /.netlify/functions/api-github-issues` with `action: "sync-batch"` and applies Issue Agent Status + linked PR into local `developmentJobs`.
 
-## Cursor Automation (one-time human setup)
+## Automatic kickoff (GitHub Actions)
+
+Repo workflows start the job without opening Cursor by hand:
+
+1. Trigger: `ai-dev-job` label **and** `## Agent Status` = `READY_FOR_AGENT` (Issue opened/labeled, or kickoff comment `READY_FOR_AGENT`).
+2. Double-start lock: concurrency per Issue + Agent Status already busy + `<!-- smile-ai-agent-started -->` comment.
+3. Set Agent Status to `AGENT_WORKING`, create `feature/issue-N` from `main`, write the branch into the Issue body/comment.
+4. If repository secret `CURSOR_API_KEY` is set, launch a Cursor cloud agent (`autoCreatePR`, never merge).
+5. When a `feature/*` PR targeting `main` opens, set Agent Status to `READY_FOR_REVIEW` and write `## Pull Request`.
+6. Smile AI Studio keeps polling `sync-batch` and shows 確認してください.
+
+Never auto-merge `main`, never Production Deploy, never production FTP.
+
+## Cursor Automation (optional extra path)
 
 Create an Automation with GitHub trigger **Issue comment** on `yahayaha223/SmileAIStudio` (not Issue/PR label). Studio posts `READY_FOR_AGENT` as the kickoff comment. Then run an Agent with this prompt:
 
