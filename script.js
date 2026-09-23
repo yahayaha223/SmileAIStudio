@@ -15478,6 +15478,20 @@
   }
 
   function createGithubIssueForJob(job) {
+    if (job && job.githubIssueNumber) {
+      return Promise.resolve({
+        ok: true,
+        reasonCode: "reused",
+        issue: {
+          number: job.githubIssueNumber,
+          url: job.githubIssueUrl,
+          title: job.title,
+          agentStatus: job.agentStatus || "READY_FOR_AGENT",
+          jobStatus: job.status || "waiting_for_agent",
+          reused: true
+        }
+      });
+    }
     var csrf = getStudioCsrfToken();
     var headers = {
       Accept: "application/json",
@@ -15557,15 +15571,8 @@
         showToast("GitHub Issue を作成しました");
         startAiJobsSyncLoop();
       } else {
-        var msg = (data && (data.userMessage || data.error)) || "GitHubへ送信できませんでした";
-        if (data && data.error === "unauthorized") {
-          msg = "ログイン（オーナー）が必要です";
-        } else if (data && data.error === "forbidden") {
-          msg = "オーナー権限が必要です";
-        } else if (data && data.error === "github_not_configured") {
-          msg = "GitHub接続設定が必要です";
-        }
-        DevJobs.markGithubFailure(job, { userMessage: msg, error: data && data.error });
+        var msg = githubErrorMessage(data);
+        DevJobs.markGithubFailure(job, data || { userMessage: msg });
         if (status) status.textContent = "依頼票は保存しました。" + msg + "（再送信できます）";
         showToast(msg);
       }
@@ -15953,10 +15960,20 @@
   }
 
   function githubErrorMessage(data) {
+    if (DevJobs && typeof DevJobs.githubCreateUserMessage === "function") {
+      return DevJobs.githubCreateUserMessage(data);
+    }
     var msg = (data && (data.userMessage || data.error)) || "GitHubへ送信できませんでした";
     if (data && data.error === "unauthorized") msg = "ログイン（オーナー）が必要です";
     else if (data && data.error === "forbidden") msg = "オーナー権限が必要です";
     else if (data && data.error === "github_not_configured") msg = "GitHub接続設定が必要です";
+    else if (data && (data.error === "github_forbidden" || data.githubHttpStatus === 403)) {
+      msg = "GitHubトークンに Issue 作成権限がありません";
+    } else if (data && (data.error === "github_unauthorized" || data.githubHttpStatus === 401)) {
+      msg = "GitHub認証に失敗しました";
+    } else if (data && (data.error === "github_not_found" || data.githubHttpStatus === 404)) {
+      msg = "GitHubリポジトリが見つかりません";
+    }
     return msg;
   }
 

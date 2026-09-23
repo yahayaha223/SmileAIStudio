@@ -240,7 +240,14 @@ async function githubFetch(cfg, path, method, payload) {
     var text = await res.text();
     var json = null;
     try { json = text ? JSON.parse(text) : null; } catch (e) { json = null; }
-    return { ok: res.ok, status: res.status, json: json, text: text };
+    return {
+      ok: res.ok,
+      status: res.status,
+      json: json,
+      text: text,
+      oauthScopes: readResponseHeader(res, "x-oauth-scopes"),
+      acceptedScopes: readResponseHeader(res, "x-accepted-oauth-scopes")
+    };
   }
 
   var first = await once(true);
@@ -251,6 +258,62 @@ async function githubFetch(cfg, path, method, payload) {
     if (second.ok) return second;
   }
   return first;
+}
+
+function readResponseHeader(res, name) {
+  if (!res || !res.headers) return "";
+  try {
+    if (typeof res.headers.get === "function") {
+      return String(res.headers.get(name) || "");
+    }
+  } catch (e) { /* ignore */ }
+  var key = String(name || "").toLowerCase();
+  var raw = res.headers[name] || res.headers[key] || "";
+  return String(raw || "");
+}
+
+function sanitizeGithubMessage(raw) {
+  var s = String(raw == null ? "" : raw).replace(/\s+/g, " ").trim();
+  s = s.replace(
+    /(password|passwd|pwd|token|secret|authorization|api[_-]?key)\s*[:=]\s*\S+/ig,
+    "$1=(redacted)"
+  );
+  if (/bearer\s+[a-z0-9._\-]+/i.test(s) || /github_pat_|ghp_|gho_/i.test(s)) {
+    return "(omitted)";
+  }
+  return s.slice(0, 200);
+}
+
+function classifyGithubWriteFailure(status, json) {
+  var raw = (json && (json.message || json.error)) || ("GitHub API error HTTP " + status);
+  var detail = sanitizeGithubMessage(raw);
+  var code = "github_api_failed";
+  var userMessage = "GitHubへの送信に失敗しました";
+  if (status === 401) {
+    code = "github_unauthorized";
+    userMessage = "GitHub認証に失敗しました";
+  } else if (status === 403) {
+    code = "github_forbidden";
+    userMessage = "GitHubトークンに Issue 作成権限がありません";
+  } else if (status === 404) {
+    code = "github_not_found";
+    userMessage = "GitHubリポジトリが見つかりません";
+  } else if (status === 422) {
+    code = "github_validation_failed";
+    userMessage = "GitHubが依頼内容を拒否しました";
+  }
+  return {
+    ok: false,
+    error: code,
+    reasonCode: code,
+    userMessage: userMessage,
+    detail: detail,
+    httpStatus: status
+  };
+}
+
+function isSafeJobId(jobId) {
+  return /^job_[a-z0-9]+_[a-z0-9]+$/i.test(String(jobId || "").trim());
 }
 
 /**
@@ -325,24 +388,49 @@ async function createIssue(opts) {
   }
   var body = ensureAgentStatus(bodyRes.body, opts.agentStatus || "READY_FOR_AGENT");
   var labels = sanitizeLabels(opts.labels, cfg.defaultLabels);
+  var jobId = parseJobId(body) || (isSafeJobId(opts.jobId) ? String(opts.jobId).trim() : "");
+
+  if (jobId) {
+    var existing = await findIssueByJobId(jobId);
+    if (existing && existing.ok && existing.issue) {
+      var reusedStatus = parseAgentStatus(existing.issue.body) || "READY_FOR_AGENT";
+      return {
+        ok: true,
+        reused: true,
+        number: existing.issue.number,
+        url: existing.issue.html_url || existing.issue.url,
+        title: existing.issue.title,
+        agentStatus: reusedStatus,
+        jobStatus: AGENT_STATUS_TO_JOB[reusedStatus] || "waiting_for_agent",
+        kickoffCommentPosted: false
+      };
+    }
+  }
 
   var path = "/repos/" + encodeURIComponent(cfg.owner) + "/" + encodeURIComponent(cfg.repo) + "/issues";
-  var res = await githubFetch(cfg, path, "POST", {
+  var payload = {
     title: titleRes.title,
-    body: body,
-    labels: labels
-  });
+    body: body
+  };
+  if (labels.length) payload.labels = labels;
+  var res = await githubFetch(cfg, path, "POST", payload);
+
+  if ((!res.ok || !res.json || !res.json.number) &&
+    res.status === 422 &&
+    labels.length &&
+    /label/i.test(String((res.json && res.json.message) || ""))) {
+    delete payload.labels;
+    res = await githubFetch(cfg, path, "POST", payload);
+  }
 
   if (!res.ok || !res.json || !res.json.number) {
-    var msg = (res.json && (res.json.message || res.json.error)) ||
-      ("GitHub API error HTTP " + res.status);
-    return {
-      ok: false,
-      error: "github_api_failed",
-      userMessage: "GitHubへの送信に失敗しました",
-      detail: String(msg).slice(0, 200),
-      httpStatus: res.status
-    };
+    var classified = classifyGithubWriteFailure(res.status, res.json);
+    classified.oauthScopes = sanitizeGithubMessage(res.oauthScopes || "");
+    classified.acceptedScopes = sanitizeGithubMessage(res.acceptedScopes || "");
+    classified.hasToken = !!cfg.token;
+    classified.owner = cfg.owner;
+    classified.repo = cfg.repo;
+    return classified;
   }
 
   var agentStatus = parseAgentStatus(body) || "READY_FOR_AGENT";
@@ -725,6 +813,26 @@ async function githubSearchIssueItems(query) {
   return res.json.items;
 }
 
+async function findIssueByJobId(jobId) {
+  var cfg = getGithubConfig();
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: "github_not_configured", issue: null };
+  }
+  var id = String(jobId || "").trim();
+  if (!isSafeJobId(id)) {
+    return { ok: true, issue: null };
+  }
+  var q = "repo:" + cfg.owner + "/" + cfg.repo + " \"" + id + "\" in:body";
+  var items = await githubSearchIssueItems(q);
+  var hit = null;
+  items.forEach(function (it) {
+    if (!it || it.pull_request) return;
+    if (parseJobId(it.body) !== id) return;
+    if (!hit || Number(it.number) < Number(hit.number)) hit = it;
+  });
+  return { ok: true, issue: hit || null };
+}
+
 async function listCrossReferencedPullNumbers(issueNumber) {
   var cfg = getGithubConfig();
   var n = Number(issueNumber);
@@ -1039,6 +1147,10 @@ module.exports = {
   ensureAgentStatus: ensureAgentStatus,
   mapAgentStatusToJobStatus: mapAgentStatusToJobStatus,
   createIssue: createIssue,
+  findIssueByJobId: findIssueByJobId,
+  classifyGithubWriteFailure: classifyGithubWriteFailure,
+  sanitizeGithubMessage: sanitizeGithubMessage,
+  isSafeJobId: isSafeJobId,
   postIssueComment: postIssueComment,
   postAgentKickoffComment: postAgentKickoffComment,
   getIssue: getIssue,

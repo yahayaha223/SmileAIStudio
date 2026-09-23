@@ -259,9 +259,26 @@
     return upsert(job);
   }
 
+  function githubCreateUserMessage(err) {
+    var data = err && typeof err === "object" ? err : {};
+    var code = String(data.reasonCode || data.error || "");
+    var status = Number(data.githubHttpStatus || data._httpStatus);
+    if (code === "unauthorized") return "ログイン（オーナー）が必要です";
+    if (code === "forbidden") return "オーナー権限が必要です";
+    if (code === "github_not_configured") return "GitHub接続設定が必要です";
+    if (code === "github_unauthorized" || status === 401) return "GitHub認証に失敗しました";
+    if (code === "github_forbidden" || status === 403) return "GitHubトークンに Issue 作成権限がありません";
+    if (code === "github_not_found" || status === 404) return "GitHubリポジトリが見つかりません";
+    if (code === "github_validation_failed" || status === 422) return "GitHubが依頼内容を拒否しました";
+    return data.userMessage || data.error || "GitHubへ送信できませんでした";
+  }
+
   function markGithubFailure(job, err) {
     if (!job) return null;
-    job.lastGithubError = (err && (err.userMessage || err.message || err.error)) || "送信失敗";
+    job.lastGithubError = githubCreateUserMessage(err) ||
+      (err && (err.userMessage || err.message || err.error)) || "送信失敗";
+    job.lastGithubReasonCode = err && (err.reasonCode || err.error) || null;
+    job.lastGithubHttpStatus = err && (err.githubHttpStatus || err._httpStatus) || null;
     if (job.status === "issue_created" || job.status === "waiting_for_agent") {
       /* leave status */
     } else {
@@ -462,6 +479,7 @@
     statusLabel: statusLabel,
     toIssueMarkdown: toIssueMarkdown,
     applyGithubIssueResult: applyGithubIssueResult,
+    githubCreateUserMessage: githubCreateUserMessage,
     markGithubFailure: markGithubFailure,
     applyExternalUpdate: applyExternalUpdate,
     applySyncPayload: applySyncPayload,
