@@ -873,6 +873,189 @@ async function run() {
     }
   });
 
+  await test("classifyGithubWriteFailure distinguishes 401/403/404", function () {
+    var a = github.classifyGithubWriteFailure(401, { message: "Bad credentials" });
+    assert.strictEqual(a.error, "github_unauthorized");
+    assert.strictEqual(a.httpStatus, 401);
+    var f = github.classifyGithubWriteFailure(403, {
+      message: "Resource not accessible by personal access token"
+    });
+    assert.strictEqual(f.error, "github_forbidden");
+    assert.strictEqual(f.httpStatus, 403);
+    assert.ok(/Issue 作成権限/.test(f.userMessage));
+    var n = github.classifyGithubWriteFailure(404, { message: "Not Found" });
+    assert.strictEqual(n.error, "github_not_found");
+    assert.strictEqual(n.httpStatus, 404);
+    var safe = github.sanitizeGithubMessage("token=gho_secretvalue please");
+    assert.ok(safe.indexOf("gho_secretvalue") < 0);
+  });
+
+  await test("createIssue maps 403 Issues write failure", async function () {
+    var origFetch = global.fetch;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "yahayaha223";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = async function () {
+      return {
+        ok: false,
+        status: 403,
+        headers: {
+          get: function (name) {
+            return String(name).toLowerCase() === "x-oauth-scopes" ? "contents:read" : "";
+          }
+        },
+        text: async function () {
+          return JSON.stringify({ message: "Resource not accessible by personal access token" });
+        }
+      };
+    };
+    try {
+      var r = await github.createIssue({
+        title: "公開した日記を私だけが手軽に消せないかな？",
+        body: "これは十分な長さのある開発依頼本文です。受け入れ条件も含みます。"
+      });
+      assert.strictEqual(r.ok, false);
+      assert.strictEqual(r.error, "github_forbidden");
+      assert.strictEqual(r.httpStatus, 403);
+      assert.strictEqual(r.owner, "yahayaha223");
+      assert.strictEqual(r.repo, "SmileAIStudio");
+      assert.ok(r.detail.indexOf("Resource not accessible") >= 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("createIssue reuses existing Job Id instead of opening a second Issue", async function () {
+    var origFetch = global.fetch;
+    var posts = 0;
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "yahayaha223";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    global.fetch = async function (url, opts) {
+      var u = String(url);
+      var method = (opts && opts.method) || "GET";
+      if (u.indexOf("/search/issues") >= 0) {
+        return {
+          ok: true,
+          status: 200,
+          text: async function () {
+            return JSON.stringify({
+              items: [{
+                number: 88,
+                html_url: "https://github.com/yahayaha223/SmileAIStudio/issues/88",
+                title: "公開した日記を私だけが手軽に消せないかな？",
+                body: "## Job Id\njob_abc123_retry\n\n## Agent Status\nREADY_FOR_AGENT\n"
+              }]
+            });
+          }
+        };
+      }
+      if (method === "POST" && u.indexOf("/issues") >= 0) {
+        posts += 1;
+      }
+      return {
+        ok: false,
+        status: 500,
+        text: async function () { return JSON.stringify({ message: "should not create" }); }
+      };
+    };
+    try {
+      var r = await github.createIssue({
+        title: "公開した日記を私だけが手軽に消せないかな？",
+        body: "これは十分な長さのある開発依頼本文です。\n\n## Job Id\njob_abc123_retry\n",
+        jobId: "job_abc123_retry"
+      });
+      assert.strictEqual(r.ok, true, r.error);
+      assert.strictEqual(r.reused, true);
+      assert.strictEqual(r.number, 88);
+      assert.strictEqual(posts, 0);
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
+  await test("createIssue succeeds for 日記削除依頼 after GitHub 201", async function () {
+    var origFetch = global.fetch;
+    var DevJobs = require(path.join(__dirname, "..", "js", "smile-dev-jobs.js"));
+    process.env.GITHUB_TOKEN = "test-token-not-real";
+    process.env.GITHUB_OWNER = "yahayaha223";
+    process.env.GITHUB_REPO = "SmileAIStudio";
+    var job = DevJobs.buildTaskFromRequest({
+      userRequest: "公開した日記を私だけが手軽に消せないかな？"
+    });
+    job.status = "ready_for_issue";
+    global.fetch = async function (url, opts) {
+      var u = String(url);
+      var method = (opts && opts.method) || "GET";
+      if (u.indexOf("/search/issues") >= 0) {
+        return {
+          ok: true,
+          status: 200,
+          text: async function () { return JSON.stringify({ items: [] }); }
+        };
+      }
+      if (method === "POST" && /\/issues$/.test(u.split("?")[0])) {
+        var payload = JSON.parse(opts.body);
+        assert.ok(payload.title.indexOf("公開した日記") >= 0);
+        assert.ok(payload.body.indexOf(job.id) >= 0);
+        return {
+          ok: true,
+          status: 201,
+          text: async function () {
+            return JSON.stringify({
+              number: 91,
+              html_url: "https://github.com/yahayaha223/SmileAIStudio/issues/91",
+              title: payload.title
+            });
+          }
+        };
+      }
+      if (u.indexOf("/comments") >= 0) {
+        return {
+          ok: true,
+          status: 201,
+          text: async function () { return JSON.stringify({ id: 1, body: "READY_FOR_AGENT" }); }
+        };
+      }
+      return {
+        ok: false,
+        status: 404,
+        text: async function () { return JSON.stringify({ message: "Not Found" }); }
+      };
+    };
+    try {
+      var r = await github.createIssue({
+        title: job.title,
+        body: DevJobs.toIssueMarkdown(job),
+        jobId: job.id
+      });
+      assert.strictEqual(r.ok, true, r.error);
+      assert.strictEqual(r.number, 91);
+      assert.strictEqual(r.reused, undefined);
+      assert.strictEqual(r.kickoffCommentPosted, true);
+      DevJobs.applyGithubIssueResult(job, {
+        number: r.number,
+        url: r.url,
+        agentStatus: r.agentStatus,
+        jobStatus: r.jobStatus
+      });
+      var saved = DevJobs.getById(job.id);
+      assert.strictEqual(saved.githubIssueNumber, 91);
+      assert.strictEqual(saved.status, "waiting_for_agent");
+    } finally {
+      global.fetch = origFetch;
+      delete process.env.GITHUB_TOKEN;
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+    }
+  });
+
   var fs = require("fs");
   var crypto = require("crypto");
   var { TextDecoder } = require("util");

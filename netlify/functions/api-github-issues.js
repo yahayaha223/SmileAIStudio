@@ -10,6 +10,7 @@ var protectApi = require("./shared/auth/protect-api");
 var rateLimit = require("./shared/auth/rate-limit");
 var audit = require("./shared/auth/audit");
 var githubIssues = require("./shared/github-issues");
+var sitePublishLog = require("./shared/site-publish-log");
 
 function parseBody(event) {
   try {
@@ -42,24 +43,49 @@ async function handleCreate(event, guard, body) {
     return http.json(429, { ok: false, error: "rate_limited", userMessage: "しばらく待ってから再試行してください" }, event);
   }
 
+  var requestId = sitePublishLog.newRequestId();
   var result = await githubIssues.createIssue({
     title: body.title,
     body: body.body,
     labels: body.labels,
     agentStatus: body.agentStatus || "READY_FOR_AGENT",
     owner: body.owner,
-    repo: body.repo
+    repo: body.repo,
+    jobId: body.jobId
+  });
+  var reasonCode = result.ok ? (result.reused ? "reused" : "ok") : (result.reasonCode || result.error || "failed");
+
+  sitePublishLog.logEvent({
+    stage: "github-issue-create",
+    requestId: requestId,
+    reasonCode: reasonCode,
+    githubHttpStatus: result.httpStatus || (result.ok ? 201 : null),
+    githubMessage: result.detail || null,
+    jobId: body.jobId || null,
+    issueNumber: result.number || null,
+    reused: !!result.reused,
+    owner: result.owner || null,
+    repo: result.repo || null,
+    hasToken: result.hasToken == null ? null : !!result.hasToken,
+    oauthScopes: result.oauthScopes || null,
+    acceptedScopes: result.acceptedScopes || null
   });
 
   await audit.recordAudit({
     event: "github_issue_create",
     success: !!result.ok,
-    reasonCode: result.ok ? "ok" : (result.error || "failed"),
+    reasonCode: reasonCode,
     actorUserId: userId,
     role: guard && guard.session ? guard.session.roleSnapshot : null,
     target: "api-github-issues",
     ipHash: ipHash,
-    meta: { issueNumber: result.number || null, jobId: body.jobId || null }
+    meta: {
+      issueNumber: result.number || null,
+      jobId: body.jobId || null,
+      githubHttpStatus: result.httpStatus || null,
+      reused: !!result.reused,
+      requestId: requestId
+    }
   });
 
   if (!result.ok) {
@@ -69,20 +95,26 @@ async function handleCreate(event, guard, body) {
     return http.json(status, {
       ok: false,
       error: result.error,
+      reasonCode: reasonCode,
+      githubHttpStatus: result.httpStatus || null,
       userMessage: result.userMessage || "GitHubへの送信に失敗しました",
-      detail: result.detail || null
+      detail: result.detail || null,
+      requestId: requestId
     }, event);
   }
 
   return http.json(200, {
     ok: true,
+    reasonCode: reasonCode,
+    requestId: requestId,
     issue: {
       number: result.number,
       url: result.url,
       title: result.title,
       agentStatus: result.agentStatus,
       jobStatus: result.jobStatus || "waiting_for_agent",
-      kickoffCommentPosted: result.kickoffCommentPosted === true
+      kickoffCommentPosted: result.kickoffCommentPosted === true,
+      reused: !!result.reused
     }
   }, event);
 }

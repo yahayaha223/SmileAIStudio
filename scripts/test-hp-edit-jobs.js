@@ -304,6 +304,53 @@ async function run() {
     assert.notStrictEqual(restored.productionLine, "元のホームページは維持されています");
   });
 
+  test("AI仕事依頼は 401/403/404 を区別し、保存済み票から再送信・二重作成しない", function () {
+    assert.strictEqual(
+      DevJobs.githubCreateUserMessage({ error: "github_forbidden", githubHttpStatus: 403 }),
+      "GitHubトークンに Issue 作成権限がありません"
+    );
+    assert.strictEqual(
+      DevJobs.githubCreateUserMessage({ error: "github_unauthorized", githubHttpStatus: 401 }),
+      "GitHub認証に失敗しました"
+    );
+    assert.strictEqual(
+      DevJobs.githubCreateUserMessage({ error: "github_not_found", githubHttpStatus: 404 }),
+      "GitHubリポジトリが見つかりません"
+    );
+    var job = DevJobs.buildTaskFromRequest({
+      userRequest: "公開した日記を私だけが手軽に消せないかな？"
+    });
+    job.status = "ready_for_issue";
+    DevJobs.upsert(job);
+    DevJobs.markGithubFailure(job, {
+      error: "github_forbidden",
+      githubHttpStatus: 403,
+      userMessage: "GitHubトークンに Issue 作成権限がありません"
+    });
+    var failed = DevJobs.getById(job.id);
+    assert.strictEqual(failed.status, "ready_for_issue");
+    assert.ok(/Issue 作成権限/.test(failed.lastGithubError));
+    assert.strictEqual(failed.lastGithubHttpStatus, 403);
+    assert.ok(/再送信/.test(DevJobs.renderProgressHtml(failed)));
+    assert.strictEqual(DevJobs.getById(job.id).id, job.id);
+
+    DevJobs.applyGithubIssueResult(failed, {
+      number: 91,
+      url: "https://github.com/yahayaha223/SmileAIStudio/issues/91",
+      agentStatus: "READY_FOR_AGENT",
+      jobStatus: "waiting_for_agent"
+    });
+    var created = DevJobs.getById(job.id);
+    assert.strictEqual(created.githubIssueNumber, 91);
+    var script = fs.readFileSync(path.join(__dirname, "..", "script.js"), "utf8");
+    assert.ok(/function submitAiJob\(retryJobId\)/.test(script));
+    assert.ok(/DevJobs\.getById\(retryJobId\)/.test(script));
+    assert.ok(/if \(job && job\.githubIssueNumber\)/.test(script));
+    assert.ok(/githubCreateUserMessage/.test(script));
+    assert.ok(/action: "create"/.test(script));
+    assert.ok(/jobId: job\.id/.test(script));
+  });
+
   console.log("\nPassed " + passed + " hp-edit-jobs tests");
 }
 
