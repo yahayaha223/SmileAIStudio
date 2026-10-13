@@ -1,5 +1,5 @@
 [build]
-  command = "npm install"
+  command = "npm install && node scripts/build-diary-ai-trial.js"
   publish = "."
   functions = "netlify/functions"
 
@@ -16,6 +16,9 @@
   timeout = 26
 
 [functions."api-diary-delete"]
+  timeout = 26
+
+[functions."api-diary-ai-trial"]
   timeout = 26
 
 [functions."api-site-publish"]

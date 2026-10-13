@@ -1,0 +1,11 @@
+{
+  "production": false,
+  "model": "gpt-4.1-mini-2025-04-14",
+  "payloadSha256": "8b4e6afdb24547ebd4f947b794901d9675f523e5767e7382aa1ab90e17059c97",
+  "localTextTokens": 164,
+  "conservativeInputTokens": 1188,
+  "framingAllowance": 1024,
+  "maxOutputTokens": 512,
+  "maximumModelCostUSD": 0.0016192,
+  "priceCheckedOn": "2026-10-13"
+}

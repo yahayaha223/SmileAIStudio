@@ -27,7 +27,9 @@
     "@netlify/blobs": "^8.1.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.2",
-    "basic-ftp": "^5.0.5"
+    "basic-ftp": "^5.0.5",
+    "js-tiktoken": "1.0.21",
+    "netlify-blobs-trial": "npm:@netlify/blobs@10.7.13"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
