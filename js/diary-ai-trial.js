@@ -14,7 +14,7 @@
     };
     var code = error && error.message;
     if (Object.prototype.hasOwnProperty.call(messages, code)) return messages[code] + "（" + code + "）" +
-      (code === "trial_unavailable_do_not_retry" && /^D0[1-9]_C0[0-6]$/.test(error.diagnostic || "") ? " [" + error.diagnostic + "]" : "");
+      (code === "trial_unavailable_do_not_retry" && /^D(?:0[1-9]|1[0-3])_C0[0-9]$/.test(error.diagnostic || "") ? " [" + error.diagnostic + "]" : "");
     return "状態確認の通信または応答を確認できません。実行せず、この表示をお知らせください。";
   }
   function csrf() {
@@ -29,7 +29,7 @@
     var res = await fetch(endpoint, options);
     var data = await res.json();
     if (!res.ok) { var failure = new Error(data.error || "trial_unavailable");
-      if (typeof data.diagnostic === "string" && /^D0[1-9]_C0[0-6]$/.test(data.diagnostic)) failure.diagnostic = data.diagnostic;
+      if (typeof data.diagnostic === "string" && /^D(?:0[1-9]|1[0-3])_C0[0-9]$/.test(data.diagnostic)) failure.diagnostic = data.diagnostic;
       throw failure; }
     return data;
   }

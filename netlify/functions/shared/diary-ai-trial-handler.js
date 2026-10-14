@@ -48,7 +48,10 @@ function createHandler(deps = {}) {
       const csrf = header(event, "x-csrf-token");
       if (!raw || !csrf || !jar[authConfig.COOKIE_CSRF]) return reply(401, { error: "owner_login_required" });
       stage = "D02";
-      const stores = (deps.getStores || trial.getStores)(event);
+      const stores = (deps.getStores || trial.getStores)(event, value => {
+        if (["D10", "D11", "D12"].includes(value)) stage = value;
+      });
+      stage = "D13";
       const hash = crypto.hashToken(raw);
       stage = "D03";
       const session = await stores.auth.get("production/sessions/" + hash, { type: "json", consistency: "strong" });
@@ -89,8 +92,10 @@ function createHandler(deps = {}) {
     } catch (error) {
       // Only fixed categories, never exception text, stack, context or record data.
       const categories = { MissingBlobsEnvironmentError: "C01", BlobsConsistencyError: "C02",
-        BlobsInternalError: "C03", SyntaxError: "C04", URIError: "C05", TypeError: "C06" };
-      const category = error && Object.prototype.hasOwnProperty.call(categories, error.name) ? categories[error.name] : "C00";
+        BlobsInternalError: "C03", SyntaxError: "C04", URIError: "C05", TypeError: "C06", ReferenceError: "C09" };
+      const category = error && ["MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND"].includes(error.code) ? "C07" :
+        error && error.code === "ERR_REQUIRE_ESM" ? "C08" :
+        error && Object.prototype.hasOwnProperty.call(categories, error.name) ? categories[error.name] : "C00";
       return reply(503, { error: "trial_unavailable_do_not_retry", retryAllowed: false,
         ...(method === "GET" ? { diagnostic: stage + "_" + category } : {}) });
     }
