@@ -27,7 +27,11 @@ function createHandler(deps = {}) {
         (method === "POST" && origin !== trial.ORIGIN) || (origin && origin !== trial.ORIGIN)) {
       return reply(403, { error: "origin_denied" });
     }
-    if (event.isBase64Encoded || Object.keys(event.queryStringParameters || {}).length) return reply(400, { error: "invalid_request" });
+    // Netlify can mark an empty GET as base64 when Content-Type is absent.
+    // There is no payload to decode; still reject every GET body and query.
+    if (Object.keys(event.queryStringParameters || {}).length ||
+        (method === "POST" && event.isBase64Encoded) ||
+        (method === "GET" && event.body != null && event.body !== "")) return reply(400, { error: "invalid_request" });
     if (method === "POST") {
       try {
         if (Buffer.byteLength(event.body || "") > 64) throw Error();
