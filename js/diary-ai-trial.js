@@ -2,6 +2,15 @@
 (function () {
   var endpoint = "/.netlify/functions/api-diary-ai-trial";
   var status = document.getElementById("status"), button = document.getElementById("run");
+  var checkInfo = null;
+  function showCheckInfo() {
+    var node = document.getElementById("check-info");
+    if (!node || !checkInfo) return;
+    node.textContent = "確認開始時刻(UTC): " + checkInfo.at + " / CSRF Cookie: " +
+      (checkInfo.csrfPresent ? "あり" : "なし") +
+      (checkInfo.ref ? " / 照会ID: " + checkInfo.ref : "") +
+      "。これは確認時点の結果です。別タブでログインしても自動更新されません。";
+  }
   function statusFailure(error) {
     var messages = {
       owner_login_required: "ownerのセッションを確認できません。ログイン済みの場合は再ログインを繰り返さず、この表示をお知らせください。",
@@ -23,11 +32,20 @@
     return raw ? decodeURIComponent(raw.slice("smile_studio_csrf=".length)) : "";
   }
   async function request(method) {
+    var csrfValue = csrf();
+    if (method === "GET") {
+      checkInfo = { at: new Date().toISOString(), csrfPresent: !!csrfValue, ref: "" };
+      showCheckInfo();
+    }
     var options = { method: method, credentials: "same-origin", cache: "no-store",
-      headers: { "X-CSRF-Token": csrf() } };
+      headers: { "X-CSRF-Token": csrfValue } };
     if (method === "POST") { options.headers["Content-Type"] = "application/json"; options.body = "{}"; }
     var res = await fetch(endpoint, options);
     var data = await res.json();
+    if (method === "GET" && checkInfo) {
+      if (typeof data.diagnosticRef === "string" && /^[A-Za-z0-9_-]{16}$/.test(data.diagnosticRef)) checkInfo.ref = data.diagnosticRef;
+      showCheckInfo();
+    }
     if (!res.ok) { var failure = new Error(data.error || "trial_unavailable");
       if (typeof data.diagnostic === "string" && /^D(?:0[1-9]|1[0-3])_C0[0-9]$/.test(data.diagnostic)) failure.diagnostic = data.diagnostic;
       throw failure; }
