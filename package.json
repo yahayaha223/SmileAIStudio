@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test:line": "node scripts/run-line-unit-tests.js",
-    "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js",
+    "test:auth": "node scripts/test-auth-policy.js && node scripts/test-webauthn-feasibility.js && node scripts/test-auth-webauthn.js && node scripts/test-auth-durable.cjs",
     "test:github-issues": "node scripts/test-github-issues.js",
     "test:hp-edit-jobs": "node scripts/test-hp-edit-jobs.js",
     "test:site-publish": "node scripts/test-site-publish.js",

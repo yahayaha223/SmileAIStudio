@@ -38,7 +38,7 @@ var rateLimit = require(path.join(shared, "rate-limit"));
 var audit = require(path.join(shared, "audit"));
 var email = require(path.join(shared, "email"));
 var http = require(path.join(__dirname, "..", "netlify", "functions", "shared", "http"));
-var apiAuth = require(path.join(__dirname, "..", "netlify", "functions", "api-auth"));
+var apiAuth = require(path.join(__dirname, "..", "netlify", "functions", "shared", "auth-api-handler"));
 
 var passed = 0;
 var failed = 0;

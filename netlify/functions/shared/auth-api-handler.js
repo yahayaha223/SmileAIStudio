@@ -10,19 +10,19 @@
  *   DELETE devices/:sessionId
  */
 
-var http = require("./shared/http");
-var kv = require("./shared/kv-store");
-var authKv = require("./shared/auth/auth-kv");
-var config = require("./shared/auth/config");
-var cookies = require("./shared/auth/cookies");
-var users = require("./shared/auth/users");
-var sessions = require("./shared/auth/sessions");
-var emailTokens = require("./shared/auth/email-tokens");
-var emailSender = require("./shared/auth/email");
-var webauthn = require("./shared/auth/webauthn-service");
-var rateLimit = require("./shared/auth/rate-limit");
-var audit = require("./shared/auth/audit");
-var middleware = require("./shared/auth/middleware");
+var http = require("./http");
+var kv = require("./kv-store");
+var authKv = require("./auth/auth-kv");
+var config = require("./auth/config");
+var cookies = require("./auth/cookies");
+var users = require("./auth/users");
+var sessions = require("./auth/sessions");
+var emailTokens = require("./auth/email-tokens");
+var emailSender = require("./auth/email");
+var webauthn = require("./auth/webauthn-service");
+var rateLimit = require("./auth/rate-limit");
+var audit = require("./auth/audit");
+var middleware = require("./auth/middleware");
 
 function parseBody(event) {
   try {
@@ -607,8 +607,10 @@ async function handleDeviceDelete(event, sessionId) {
 }
 
 exports.handler = async function (event) {
-  kv.connectFromLambdaEvent(event);
-  authKv.connectFromLambdaEvent(event);
+  if (!authKv.hasRequestStore()) {
+    kv.connectFromLambdaEvent(event);
+    authKv.connectFromLambdaEvent(event);
+  }
   if (event.httpMethod === "OPTIONS") return http.options(event);
 
   var path = routePath(event);
@@ -637,6 +639,7 @@ exports.handler = async function (event) {
       ok: false,
       message: e && e.message ? String(e.message).slice(0, 200) : "error"
     }));
-    return http.json(500, { ok: false, error: "unavailable" }, event);
+    return http.json(e && e.message === "auth_storage_unavailable" ? 503 : 500,
+      { ok: false, error: "unavailable" }, event);
   }
 };
