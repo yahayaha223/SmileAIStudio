@@ -34,9 +34,9 @@ function storageFetch(fetchImpl = globalThis.fetch) {
     return new Response("", { status: 400 });
   };
 }
-function getStores(event, markStage = () => {}) {
+function getStores(event, markStage = () => {}, sdk) {
   markStage("D10");
-  const blobs = require("netlify-blobs-trial");
+  const blobs = sdk || require("netlify-blobs-trial");
   // Native Netlify runtime supplies the Blobs context, including strong-read routing.
   // Never replace it with the legacy Lambda context or fall back to eventual reads.
   markStage("D11");

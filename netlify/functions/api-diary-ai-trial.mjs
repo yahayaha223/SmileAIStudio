@@ -1,9 +1,13 @@
 import core from "./shared/diary-ai-trial-handler.js";
+import trial from "./shared/diary-ai-trial.js";
+import { getStore } from "netlify-blobs-trial";
 
 // Native Functions preserve the platform-provided Blobs context. The existing
 // owner/CSRF/origin checks operate on a bounded adapter, not a Lambda connection.
 export function createNativeHandler(deps = {}) {
-  const handler = core.createHandler(deps);
+  // Keep the SDK import visible to Netlify's V2 dependency tracer.
+  const handler = core.createHandler({ ...deps,
+    getStores: deps.getStores || ((event, markStage) => trial.getStores(event, markStage, { getStore })) });
   return async request => {
     const url = new URL(request.url);
     const headers = Object.fromEntries(request.headers);
