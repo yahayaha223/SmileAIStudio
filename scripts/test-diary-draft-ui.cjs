@@ -90,4 +90,3 @@ test("UI: candidate edits during generation and publish lock are respected", asy
   assert.equal(f.el("simple-diary-ai-candidate").value, "人が編集");
   f.publish(); await f.editor.generate(); f.editor.apply(); assert.equal(calls, 1); assert.equal(f.el("simple-diary-body").value, "");
 });
-
