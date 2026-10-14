@@ -34,14 +34,16 @@ function storageFetch(fetchImpl = globalThis.fetch) {
     return new Response("", { status: 400 });
   };
 }
-function getStores() {
+function getStores(event, markStage = () => {}) {
+  markStage("D10");
   const blobs = require("netlify-blobs-trial");
   // Native Netlify runtime supplies the Blobs context, including strong-read routing.
   // Never replace it with the legacy Lambda context or fall back to eventual reads.
-  return {
-    auth: blobs.getStore({ name: "smile-studio-auth", consistency: "strong", fetch: storageFetch() }),
-    trial: blobs.getStore({ name: STORE_NAME, consistency: "strong", fetch: storageFetch() })
-  };
+  markStage("D11");
+  const auth = blobs.getStore({ name: "smile-studio-auth", consistency: "strong", fetch: storageFetch() });
+  markStage("D12");
+  const trial = blobs.getStore({ name: STORE_NAME, consistency: "strong", fetch: storageFetch() });
+  return { auth, trial };
 }
 function send(apiKey, request = https.request, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
