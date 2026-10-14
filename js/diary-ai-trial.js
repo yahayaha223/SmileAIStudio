@@ -2,6 +2,20 @@
 (function () {
   var endpoint = "/.netlify/functions/api-diary-ai-trial";
   var status = document.getElementById("status"), button = document.getElementById("run");
+  function statusFailure(error) {
+    var messages = {
+      owner_login_required: "ownerのセッションを確認できません。ログイン済みの場合は再ログインを繰り返さず、この表示をお知らせください。",
+      owner_required: "この試験に必要なowner権限を確認できません。",
+      csrf_denied: "試験画面の安全確認に失敗しました。再ログインを繰り返さず、この表示をお知らせください。",
+      trial_environment_blocked: "試験の配備先・設定条件を確認できません。フラグは変更しないでください。",
+      origin_denied: "試験ページのアクセス元を確認できません。",
+      invalid_request: "状態確認リクエストの形式が一致しません。",
+      trial_unavailable_do_not_retry: "サーバー側の状態確認に失敗しました。再ログインや実行をせず、この表示をお知らせください。"
+    };
+    var code = error && error.message;
+    if (Object.prototype.hasOwnProperty.call(messages, code)) return messages[code] + "（" + code + "）";
+    return "状態確認の通信または応答を確認できません。実行せず、この表示をお知らせください。";
+  }
   function csrf() {
     var raw = document.cookie.split(";").map(function (x) { return x.trim(); })
       .find(function (x) { return x.indexOf("smile_studio_csrf=") === 0; });
@@ -23,7 +37,7 @@
     button.disabled = !state.enabled || state.consumed;
     status.textContent = state.consumed ? "この試験は実行済みです。再実行できません。" :
       state.enabled ? "ownerを確認しました。承認済みの場合だけ実行してください。" : "試験はOFFです。課金通信は行われません。";
-  }).catch(function () { status.textContent = "試験状態を確認できません。ownerの既存ログイン・配備先・設定を確認してください。"; });
+  }).catch(function (error) { status.textContent = statusFailure(error); });
   button.addEventListener("click", async function () {
     if (button.disabled) return;
     if (!window.confirm("固定の架空メモで課金試験を1回実行します。失敗しても再試行しません。承認済みですか？")) return;
