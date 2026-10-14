@@ -41,12 +41,16 @@ async function createSession(user, opts) {
     uaBrief: opts.uaBrief || null,
     ipHash: opts.ipHash || null
   };
-  await authKv.authSet(sessionKey(sessionHash), row);
+  if (await authKv.authSet(sessionKey(sessionHash), row) !== true) {
+    throw new Error("auth_storage_unavailable");
+  }
   var uidx = (await authKv.authGet("sessionsByUser/" + user.id)) || { hashes: [] };
   uidx.hashes = [sessionHash].concat(uidx.hashes || []).filter(function (h, i, a) {
     return a.indexOf(h) === i;
   }).slice(0, 40);
-  await authKv.authSet("sessionsByUser/" + user.id, uidx);
+  if (await authKv.authSet("sessionsByUser/" + user.id, uidx) !== true) {
+    throw new Error("auth_storage_unavailable");
+  }
   return { rawId: rawId, session: row };
 }
 

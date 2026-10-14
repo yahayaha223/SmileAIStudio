@@ -10,6 +10,19 @@
 var fs = require("fs");
 var path = require("path");
 var config = require("./config");
+var requestStorage = new (require("node:async_hooks").AsyncLocalStorage)();
+
+// Native auth requests use one platform-provided store for their entire lifetime.
+// AsyncLocalStorage prevents concurrent requests from replacing each other's store.
+function withRequestStore(store, callback) {
+  if (!store || typeof store.get !== "function" || typeof store.setJSON !== "function" ||
+      typeof store.delete !== "function") throw new Error("auth_storage_unavailable");
+  return requestStorage.run(store, callback);
+}
+
+function hasRequestStore() { return !!requestStorage.getStore(); }
+
+function storageUnavailable() { return new Error("auth_storage_unavailable"); }
 
 var MEMORY = Object.create(null);
 var DATA_DIR = path.join(process.cwd(), ".data");
@@ -120,6 +133,11 @@ function getBlobStore() {
 
 async function authGet(key) {
   var nk = namespacedKey(key);
+  var requestStore = requestStorage.getStore();
+  if (requestStore) {
+    try { return await requestStore.get(nk, { type: "json", consistency: "strong" }); }
+    catch (e) { throw storageUnavailable(); }
+  }
   var store = getBlobStore();
   if (store) {
     try {
@@ -142,6 +160,11 @@ async function authGet(key) {
 
 async function authSet(key, value) {
   var nk = namespacedKey(key);
+  var requestStore = requestStorage.getStore();
+  if (requestStore) {
+    try { await requestStore.setJSON(nk, value); return true; }
+    catch (e) { throw storageUnavailable(); }
+  }
   var blobOk = false;
   var store = getBlobStore();
   if (store) {
@@ -165,6 +188,11 @@ async function authSet(key, value) {
 
 async function authDelete(key) {
   var nk = namespacedKey(key);
+  var requestStore = requestStorage.getStore();
+  if (requestStore) {
+    try { await requestStore.delete(nk); return true; }
+    catch (e) { throw storageUnavailable(); }
+  }
   var store = getBlobStore();
   if (store && typeof store.delete === "function") {
     try { await store.delete(nk); } catch (e) { /* ignore */ }
@@ -197,6 +225,8 @@ function describeAuthStorage() {
 }
 
 module.exports = {
+  withRequestStore: withRequestStore,
+  hasRequestStore: hasRequestStore,
   connectFromLambdaEvent: connectFromLambdaEvent,
   authGet: authGet,
   authSet: authSet,
