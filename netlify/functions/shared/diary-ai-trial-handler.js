@@ -40,13 +40,26 @@ function createHandler(deps = {}) {
       } catch { return reply(400, { error: "fixed_memo_only" }); }
     }
     let stage = "D01";
+    function denied(statusCode, error, reason) {
+      if (method !== "GET") return reply(statusCode, { error });
+      // Keep session existence/expiry/role classifications in server logs only.
+      const diagnosticRef = crypto.randomToken(12);
+      try {
+        (deps.logDiagnostic || console.info)(JSON.stringify({
+          event: "diary_trial_auth_denied", diagnosticRef, reason
+        }));
+      } catch { /* Logging must not change authentication decisions. */ }
+      return reply(statusCode, { error, diagnosticRef });
+    }
     try {
       // Read existing records directly with strong consistency. No touchSession,
       // audit, authSet, cookie renewal, memory cache or file-store fallback.
       const jar = cookies.parseCookies(event);
       const raw = jar[authConfig.COOKIE_SESSION];
       const csrf = header(event, "x-csrf-token");
-      if (!raw || !csrf || !jar[authConfig.COOKIE_CSRF]) return reply(401, { error: "owner_login_required" });
+      if (!raw) return denied(401, "owner_login_required", "INPUT_SESSION_MISSING");
+      if (!jar[authConfig.COOKIE_CSRF]) return denied(401, "owner_login_required", "INPUT_CSRF_COOKIE_MISSING");
+      if (!csrf) return denied(401, "owner_login_required", "INPUT_CSRF_HEADER_MISSING");
       stage = "D02";
       const stores = (deps.getStores || trial.getStores)(event, value => {
         if (["D10", "D11", "D12"].includes(value)) stage = value;
@@ -57,19 +70,23 @@ function createHandler(deps = {}) {
       const session = await stores.auth.get("production/sessions/" + hash, { type: "json", consistency: "strong" });
       stage = "D04";
       const now = (deps.now || Date.now)();
-      if (!session || session.sessionHash !== hash || session.purpose !== "full" || session.roleSnapshot !== "owner" ||
-          session.revokedAt || !Number.isFinite(session.expiresAt) || !Number.isFinite(session.absoluteExpiresAt) ||
-          now >= session.expiresAt || now >= session.absoluteExpiresAt || !session.userId) {
-        return reply(401, { error: "owner_login_required" });
-      }
+      if (!session) return denied(401, "owner_login_required", "SESSION_ABSENT");
+      if (session.sessionHash !== hash || !session.userId ||
+          !Number.isFinite(session.expiresAt) || !Number.isFinite(session.absoluteExpiresAt))
+        return denied(401, "owner_login_required", "SESSION_INVALID");
+      if (session.revokedAt) return denied(401, "owner_login_required", "SESSION_REVOKED");
+      if (now >= session.expiresAt || now >= session.absoluteExpiresAt)
+        return denied(401, "owner_login_required", "SESSION_EXPIRED");
+      if (session.purpose !== "full" || session.roleSnapshot !== "owner")
+        return denied(401, "owner_login_required", "SESSION_NOT_OWNER_FULL");
       stage = "D05";
       if (!session.csrfToken || !crypto.constantTimeEqual(csrf, session.csrfToken) ||
-          !crypto.constantTimeEqual(jar[authConfig.COOKIE_CSRF], session.csrfToken)) return reply(403, { error: "csrf_denied" });
+          !crypto.constantTimeEqual(jar[authConfig.COOKIE_CSRF], session.csrfToken)) return denied(403, "csrf_denied", "CSRF_MISMATCH");
       stage = "D06";
       const user = await stores.auth.get("production/users/" + session.userId, { type: "json", consistency: "strong" });
       stage = "D07";
       if (!user || user.id !== session.userId || user.role !== "owner" || user.status !== "active") {
-        return reply(403, { error: "owner_required" });
+        return denied(403, "owner_required", "USER_NOT_ACTIVE_OWNER");
       }
       stage = "D08";
       const ready = trial.preflight(stamp) && env.DIARY_AI_TRIAL_ENABLED === "1" && !!env.OPENAI_API_KEY;

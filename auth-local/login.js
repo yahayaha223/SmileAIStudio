@@ -166,6 +166,16 @@
     return data;
   }
 
+  async function confirmFullSession() {
+    var data = await refreshSession();
+    // Verification may succeed even if the browser did not retain its cookie.
+    if (!data || data._httpStatus !== 200 || data.ok !== true ||
+        data.authenticated !== true || data.purpose !== "full") {
+      throw new Error("session_not_confirmed");
+    }
+    return data;
+  }
+
   async function passkeyLogin() {
     if (busy) return;
     setBusy(true);
@@ -185,11 +195,13 @@
         setStatus(GENERIC_FAIL, "is-error");
         return;
       }
-      await refreshSession();
+      await confirmFullSession();
       setStatus("ログインしました。Studio へ移動できます。", "is-info");
       setTimeout(function () { location.href = "/index.html"; }, 600);
     } catch (e) {
-      setStatus(GENERIC_FAIL, "is-error");
+      setStatus(e && e.message === "session_not_confirmed"
+        ? "ログイン状態を確認できませんでした。再ログインを繰り返さず、この表示をお知らせください。"
+        : GENERIC_FAIL, "is-error");
     } finally {
       setBusy(false);
     }
@@ -277,7 +289,7 @@
         }
         return;
       }
-      await refreshSession();
+      await confirmFullSession();
       setStatus("パスキーを登録しました。Studio へ移動できます。", "is-info");
       setTimeout(function () { location.href = "/index.html"; }, 700);
     } catch (e) {
