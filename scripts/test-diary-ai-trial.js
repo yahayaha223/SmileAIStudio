@@ -88,10 +88,27 @@ function fakeTransport(data, mode) {
     ["method denied", { httpMethod: "DELETE" }, 405]
   ]) await test(name, async () => { const f = fixture(); assert.equal((await f.handler({ ...event, ...changes })).statusCode, code); assert.equal(f.state.calls, 0); assert.equal(f.state.writes.length, 0); });
   await test("GET readiness has no writes or generation", async () => {
-    const f = fixture(); const response = await f.handler({ ...event, httpMethod: "GET", headers: { ...event.headers, origin: "" } });
+    const f = fixture(); const response = await f.handler({ ...event, httpMethod: "GET", body: null, headers: { ...event.headers, origin: "" } });
     assert.equal(response.statusCode, 200); assert.equal(JSON.parse(response.body).owner, true);
     assert.equal(f.state.writes.length, 0); assert.equal(f.state.calls, 0);
     assert.deepEqual(f.state.reads, ["production/sessions/" + crypto.hashToken("fake-session"), "production/users/owner-1"]);
+  });
+  for (const body of [null, undefined, ""]) await test("empty base64-marked GET accepts owner: " + String(body), async () => {
+    const f = fixture(); const response = await f.handler({ ...event, httpMethod: "GET", body, isBase64Encoded: true });
+    assert.equal(response.statusCode, 200); assert.equal(f.state.calls, 0); assert.equal(f.state.writes.length, 0);
+  });
+  for (const [name, changes, code] of [
+    ["GET empty still requires owner", { headers: { ...event.headers, cookie: "" } }, 401],
+    ["GET empty still requires CSRF", { headers: { ...event.headers, "x-csrf-token": "wrong" } }, 403],
+    ["GET empty still checks Origin", { headers: { ...event.headers, origin: "https://evil.invalid" } }, 403],
+    ["GET empty still checks host", { headers: { ...event.headers, host: "preview.netlify.app" } }, 403],
+    ["GET query still forbidden", { queryStringParameters: { probe: "1" } }, 400],
+    ["GET base64 body forbidden", { body: "e30=" }, 400],
+    ["GET plain body forbidden", { body: "{}", isBase64Encoded: false }, 400],
+    ["GET whitespace body forbidden", { body: " " }, 400]
+  ]) await test(name, async () => {
+    const f = fixture(); const response = await f.handler({ ...event, httpMethod: "GET", body: null, isBase64Encoded: true, ...changes });
+    assert.equal(response.statusCode, code); assert.equal(f.state.calls, 0); assert.equal(f.state.writes.length, 0);
   });
   await test("concurrent owners have one durable global attempt", async () => {
     const f = fixture(); const responses = await Promise.all(Array.from({ length: 20 }, () => f.handler(event)));
