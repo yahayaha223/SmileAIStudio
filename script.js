@@ -15115,12 +15115,40 @@
     if (kind) el.classList.add(kind);
   }
 
+  var simpleDiaryEditingId = null;
+  var simpleDiarySourceValues = null;
+  function simpleDiaryContextMatches() {
+    return simpleDiaryEditingId === editingDiaryId &&
+      simpleDiarySourceValues === JSON.stringify(readWebDiaryFormValues());
+  }
+  var diaryDraftEditor = window.SmileDiaryDraft ? window.SmileDiaryDraft.attach({
+    document: document, storage: { getItem: function (k) { return window.sessionStorage.getItem(k); }, setItem: function (k,v) { window.sessionStorage.setItem(k,v); } }, fetch: window.fetch.bind(window),
+    AbortController: window.AbortController, setTimeout: window.setTimeout.bind(window),
+    clearTimeout: window.clearTimeout.bind(window), confirm: window.confirm.bind(window),
+    getCsrfToken: getStudioCsrfToken, isPublishing: function () { return simpleDiaryBusy; },
+    getContext: function () { return editingDiaryId; },
+    onBodyChange: cancelSimpleDiaryConfirm
+  }) : null;
+
   function openSimpleDiary() {
-    resetWebDiaryForm();
+    if (simpleDiaryEditingId === null) {
+      var existing = readWebDiaryFormValues();
+      if (existing.title || existing.content || existing.photoMemo || diaryImageItems.length) {
+        showToast("詳細画面の編集中の記事を保護しています。詳細画面で保存・編集を続けてください。");
+        return;
+      }
+      ensureEditingDiaryId();
+      simpleDiaryEditingId = editingDiaryId;
+      simpleDiarySourceValues = JSON.stringify(readWebDiaryFormValues());
+    } else if (!simpleDiaryContextMatches()) {
+      showToast("別の記事または詳細画面が変更されています。入力を保護するため、日記画面の切替を停止しました。");
+      return;
+    }
+    // Preserve the current entry and selected photos when opening the composer.
     ensureEditingDiaryId();
     initMediaDbAvailability();
     var body = document.getElementById("simple-diary-body");
-    if (body) body.value = "";
+    if (body && !diaryDraftEditor) body.value = "";
     var result = document.getElementById("simple-diary-result");
     if (result) result.hidden = true;
     var confirmBox = document.getElementById("simple-diary-confirm");
@@ -15137,6 +15165,8 @@
   }
 
   function closeSimpleDiary() {
+    if (simpleDiaryBusy) return;
+    if (diaryDraftEditor) diaryDraftEditor.cancel();
     setModalOpen("simple-diary-modal", false);
     simpleDiaryPendingConfirm = false;
   }
@@ -15382,6 +15412,11 @@
 
   function beginSimpleDiaryConfirm() {
     if (simpleDiaryBusy) return;
+    if (!simpleDiaryContextMatches()) {
+      setSimpleDiaryStatus("対象の記事が変更されています。入力を保護するため公開を停止しました。", "is-error");
+      return;
+    }
+    if (diaryDraftEditor) diaryDraftEditor.cancel();
     var bodyEl = document.getElementById("simple-diary-body");
     var body = bodyEl ? String(bodyEl.value || "").trim() : "";
     if (!body && !diaryImageItems.length) {
@@ -15409,6 +15444,11 @@
 
   function publishSimpleDiary() {
     if (simpleDiaryBusy) return;
+    if (!simpleDiaryContextMatches()) {
+      simpleDiaryPendingConfirm = false;
+      setSimpleDiaryStatus("対象の記事が変更されています。入力を保護するため公開を停止しました。", "is-error");
+      return;
+    }
     if (!simpleDiaryPendingConfirm) {
       beginSimpleDiaryConfirm();
       return;
@@ -15441,6 +15481,8 @@
     if (titleEl) titleEl.value = title;
     if (webBody) webBody.value = body;
     if (dateEl && !dateEl.value) dateEl.value = todayInputDate();
+
+    simpleDiarySourceValues = JSON.stringify(readWebDiaryFormValues());
 
     var entry = null;
     try {

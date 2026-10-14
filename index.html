@@ -365,7 +365,7 @@
         <button type="button" class="modal__close" id="simple-diary-close" aria-label="閉じる">✕</button>
       </div>
       <div class="modal__body simple-diary">
-        <p class="simple-diary__lead">写真を選んで、ひとこと書いて、公開するだけです。</p>
+        <p class="simple-diary__lead">メモから文章を作り、修正してから公開できます。本文を直接書くこともできます。</p>
         <div class="simple-diary__photos">
           <label class="simple-diary__photo-btn" for="simple-diary-images">
             <span aria-hidden="true">📷</span> 写真を選ぶ
@@ -377,7 +377,21 @@
           <input type="file" id="simple-diary-camera" accept="image/*" capture="environment" hidden>
         </div>
         <div class="simple-diary__preview" id="simple-diary-preview" hidden></div>
-        <label class="visually-hidden" for="simple-diary-body">本文</label>
+        <label for="simple-diary-notes">出来事のメモ（箇条書き）</label>
+        <textarea id="simple-diary-notes" class="simple-diary__body" rows="4" aria-describedby="simple-diary-ai-help simple-diary-notes-count" placeholder="・今日行ったこと&#10;・印象に残ったこと"></textarea>
+        <p id="simple-diary-notes-count" class="simple-diary__hint"></p>
+        <p id="simple-diary-ai-help" class="simple-diary__hint">1〜2000文字（絵文字などは2文字分になる場合があります）。ボタンを押すとメモをOpenAIへ送信します。メモに書いた氏名なども送られ、自動匿名化はしません。タイトル・既存本文・写真メモ・画像・LINEの会話は自動送信しません。API利用料が発生します。全利用者で10分6回・24時間30回・30日300回まで。生成は公開ではありません。</p>
+        <button type="button" class="btn btn--secondary btn--touch" id="btn-simple-diary-generate">メモをAIで文章にする</button>
+        <button type="button" class="btn btn--ghost btn--touch" id="btn-simple-diary-ai-cancel" hidden>生成を取り消す</button>
+        <p id="simple-diary-ai-status" role="status" aria-live="polite" class="simple-diary__hint"></p>
+        <div id="simple-diary-ai-result" hidden>
+          <label for="simple-diary-ai-candidate">AI候補（この場で編集できます）</label>
+          <textarea id="simple-diary-ai-candidate" class="simple-diary__body" rows="6"></textarea>
+          <p class="simple-diary__hint">AIが事実を取り違えることがあります。メモと照らして確認してください。</p>
+          <button type="button" class="btn btn--secondary btn--touch" id="btn-simple-diary-ai-apply">本文に使う</button>
+        </div>
+        <p class="simple-diary__hint">メモ・候補・本文はこのタブに一時保存します。タブを閉じると失われることがあります。写真はこの一時保存には含みません。</p>
+        <label for="simple-diary-body">公開する本文（直接修正できます）</label>
         <textarea id="simple-diary-body" class="simple-diary__body" rows="8" placeholder="今日の出来事を、そのまま書いてください"></textarea>
         <p class="simple-diary__hint">タイトルは自動で付けます。</p>
         <p class="simple-diary__status" id="simple-diary-status" role="status" aria-live="polite"></p>
@@ -2050,6 +2064,7 @@
   <script src="js/smile-simple-diary-publish.js"></script>
   <script src="js/smile-simple-diary-delete.js"></script>
   <script src="js/creative-interview-engine.js"></script>
+  <script src="js/smile-diary-draft.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

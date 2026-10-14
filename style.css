@@ -5541,3 +5541,6 @@ input:not([type]),
   touch-action: auto;
 }
 
+
+/* Keep draft controls hidden even when shared .btn styles set display. */
+#simple-diary-modal [hidden] { display: none !important; }

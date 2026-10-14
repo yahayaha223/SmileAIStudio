@@ -21,6 +21,9 @@
 [functions."api-diary-ai-trial"]
   timeout = 26
 
+[functions."api-diary-draft"]
+  timeout = 26
+
 [functions."api-site-publish"]
   timeout = 26
 
