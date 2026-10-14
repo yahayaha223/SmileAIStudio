@@ -13,7 +13,8 @@
       trial_unavailable_do_not_retry: "サーバー側の状態確認に失敗しました。再ログインや実行をせず、この表示をお知らせください。"
     };
     var code = error && error.message;
-    if (Object.prototype.hasOwnProperty.call(messages, code)) return messages[code] + "（" + code + "）";
+    if (Object.prototype.hasOwnProperty.call(messages, code)) return messages[code] + "（" + code + "）" +
+      (code === "trial_unavailable_do_not_retry" && /^D0[1-9]_C0[0-6]$/.test(error.diagnostic || "") ? " [" + error.diagnostic + "]" : "");
     return "状態確認の通信または応答を確認できません。実行せず、この表示をお知らせください。";
   }
   function csrf() {
@@ -27,7 +28,9 @@
     if (method === "POST") { options.headers["Content-Type"] = "application/json"; options.body = "{}"; }
     var res = await fetch(endpoint, options);
     var data = await res.json();
-    if (!res.ok) throw new Error(data.error || "trial_unavailable");
+    if (!res.ok) { var failure = new Error(data.error || "trial_unavailable");
+      if (typeof data.diagnostic === "string" && /^D0[1-9]_C0[0-6]$/.test(data.diagnostic)) failure.diagnostic = data.diagnostic;
+      throw failure; }
     return data;
   }
   request("GET").then(function (state) {

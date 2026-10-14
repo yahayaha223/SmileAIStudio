@@ -39,6 +39,7 @@ function createHandler(deps = {}) {
         if (!body || Array.isArray(body) || typeof body !== "object" || Object.keys(body).length) throw Error();
       } catch { return reply(400, { error: "fixed_memo_only" }); }
     }
+    let stage = "D01";
     try {
       // Read existing records directly with strong consistency. No touchSession,
       // audit, authSet, cookie renewal, memory cache or file-store fallback.
@@ -46,23 +47,31 @@ function createHandler(deps = {}) {
       const raw = jar[authConfig.COOKIE_SESSION];
       const csrf = header(event, "x-csrf-token");
       if (!raw || !csrf || !jar[authConfig.COOKIE_CSRF]) return reply(401, { error: "owner_login_required" });
+      stage = "D02";
       const stores = (deps.getStores || trial.getStores)(event);
       const hash = crypto.hashToken(raw);
+      stage = "D03";
       const session = await stores.auth.get("production/sessions/" + hash, { type: "json", consistency: "strong" });
+      stage = "D04";
       const now = (deps.now || Date.now)();
       if (!session || session.sessionHash !== hash || session.purpose !== "full" || session.roleSnapshot !== "owner" ||
           session.revokedAt || !Number.isFinite(session.expiresAt) || !Number.isFinite(session.absoluteExpiresAt) ||
           now >= session.expiresAt || now >= session.absoluteExpiresAt || !session.userId) {
         return reply(401, { error: "owner_login_required" });
       }
+      stage = "D05";
       if (!session.csrfToken || !crypto.constantTimeEqual(csrf, session.csrfToken) ||
           !crypto.constantTimeEqual(jar[authConfig.COOKIE_CSRF], session.csrfToken)) return reply(403, { error: "csrf_denied" });
+      stage = "D06";
       const user = await stores.auth.get("production/users/" + session.userId, { type: "json", consistency: "strong" });
+      stage = "D07";
       if (!user || user.id !== session.userId || user.role !== "owner" || user.status !== "active") {
         return reply(403, { error: "owner_required" });
       }
+      stage = "D08";
       const ready = trial.preflight(stamp) && env.DIARY_AI_TRIAL_ENABLED === "1" && !!env.OPENAI_API_KEY;
       if (method === "GET") {
+        stage = "D09";
         const marker = await stores.trial.get(trial.TRIAL_KEY, { type: "json", consistency: "strong" });
         return reply(200, { owner: true, enabled: ready, consumed: marker !== null && marker !== undefined,
           memo: trial.MEMO, model: trial.MODEL, maximumModelCostUSD: 0.0016192 });
@@ -77,8 +86,13 @@ function createHandler(deps = {}) {
         const result = await (deps.send || trial.send)(env.OPENAI_API_KEY);
         return reply(200, { ok: true, ...result });
       } catch { return reply(502, { error: "trial_failed_consumed", retryAllowed: false }); }
-    } catch {
-      return reply(503, { error: "trial_unavailable_do_not_retry", retryAllowed: false });
+    } catch (error) {
+      // Only fixed categories, never exception text, stack, context or record data.
+      const categories = { MissingBlobsEnvironmentError: "C01", BlobsConsistencyError: "C02",
+        BlobsInternalError: "C03", SyntaxError: "C04", URIError: "C05", TypeError: "C06" };
+      const category = error && Object.prototype.hasOwnProperty.call(categories, error.name) ? categories[error.name] : "C00";
+      return reply(503, { error: "trial_unavailable_do_not_retry", retryAllowed: false,
+        ...(method === "GET" ? { diagnostic: stage + "_" + category } : {}) });
     }
   };
 }
