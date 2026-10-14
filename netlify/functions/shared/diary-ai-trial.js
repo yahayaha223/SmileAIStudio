@@ -34,9 +34,10 @@ function storageFetch(fetchImpl = globalThis.fetch) {
     return new Response("", { status: 400 });
   };
 }
-function getStores(event) {
+function getStores() {
   const blobs = require("netlify-blobs-trial");
-  blobs.connectLambda(event);
+  // Native Netlify runtime supplies the Blobs context, including strong-read routing.
+  // Never replace it with the legacy Lambda context or fall back to eventual reads.
   return {
     auth: blobs.getStore({ name: "smile-studio-auth", consistency: "strong", fetch: storageFetch() }),
     trial: blobs.getStore({ name: STORE_NAME, consistency: "strong", fetch: storageFetch() })

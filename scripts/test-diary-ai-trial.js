@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const trial = require("../netlify/functions/shared/diary-ai-trial");
-const { createHandler } = require("../netlify/functions/api-diary-ai-trial");
+const { createHandler } = require("../netlify/functions/shared/diary-ai-trial-handler");
 const crypto = require("../netlify/functions/shared/auth/crypto-util");
 const stamp = require("../netlify/functions/shared/diary-ai-trial-context.json");
 const { getStore } = require("netlify-blobs-trial");

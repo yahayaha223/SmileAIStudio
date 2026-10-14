@@ -1,9 +1,9 @@
 "use strict";
-const trial = require("./shared/diary-ai-trial");
-const build = require("./shared/diary-ai-trial-context.json");
-const authConfig = require("./shared/auth/config");
-const cookies = require("./shared/auth/cookies");
-const crypto = require("./shared/auth/crypto-util");
+const trial = require("./diary-ai-trial");
+const build = require("./diary-ai-trial-context.json");
+const authConfig = require("./auth/config");
+const cookies = require("./auth/cookies");
+const crypto = require("./auth/crypto-util");
 
 function header(event, name) {
   const key = Object.keys(event.headers || {}).find(k => k.toLowerCase() === name);
@@ -82,5 +82,4 @@ function createHandler(deps = {}) {
     }
   };
 }
-exports.handler = createHandler();
 exports.createHandler = createHandler;
