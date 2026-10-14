@@ -11,7 +11,17 @@ function createHandler(deps) {
     const env = deps.env || process.env, now = (deps.now || Date.now)();
     const cfg = deps.config || config.getAuthConfig();
     if (event.httpMethod !== 'POST') return reply(405, {error:'method_not_allowed'});
-    if (env.DIARY_AI_ENABLED !== '1' || !env.OPENAI_API_KEY || now >= Date.UTC(2027,0,14)) return reply(503,{error:'not_enabled'});
+    const gateReasons = [];
+    if (env.DIARY_AI_ENABLED !== '1') gateReasons.push('FLAG_DISABLED');
+    if (!env.OPENAI_API_KEY) gateReasons.push('KEY_UNAVAILABLE');
+    if (now >= Date.UTC(2027,0,14)) gateReasons.push('MODEL_EXPIRED');
+    if (gateReasons.length) {
+      // Fixed classifications only: never log values, lengths, request data or credentials.
+      try {
+        (deps.logDiagnostic || console.info)(JSON.stringify({event:'diary_ai_gate_denied',reasons:gateReasons}));
+      } catch { /* Diagnostics must not change the gate or public response. */ }
+      return reply(503,{error:'not_enabled'});
+    }
     // CONTEXT is a build variable; use the existing build stamp in the runtime.
     if (!(deps.build || build).production || cfg.authEnvironment !== 'production' || cfg.rpId !== 'studio.egaonokiroku.co.jp' || event.headers.host !== 'studio.egaonokiroku.co.jp' || event.headers.origin !== ORIGIN) return reply(403,{error:'origin_denied'});
     let body;
