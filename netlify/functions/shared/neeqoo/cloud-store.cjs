@@ -1,0 +1,25 @@
+'use strict';
+const {randomUUID,createHash}=require('node:crypto');
+const intents=['report','review_design','research','publish','post','price_change','purchase','contract','credentials'];
+const reasons=['operations','quality','growth','verification'];
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function fail(status,message){const e=Error(message);e.status=status;throw e;}
+const key='state-v1';
+function initial(){return {version:1,revision:0,Jobs:[],Approvals:[],Audit:[],Orders:[],Products:[{id:'otter-mug',name:'ラッコのマグカップ',version:1,quality:'existing_published',source:'user_handoff'}],Listings:[{id:'91683096',product_id:'otter-mug',platform:'SUZURI',url:'https://suzuri.jp/NeeQooDesign/21156182/mug/m/white',price_jpy:3146,toribun_jpy:1000,status:'published',evidence:'引継ぎ確認済み・実購入未検証'}],Traffic:[{id:'1116259457749648047',listing_id:'91683096',url:'https://jp.pinterest.com/pin/1116259457749648047/',views:null,clicks:null}],Settings:[{monthly_budget_jpy:3000,price_min_jpy:null,price_max_jpy:null,profit_min_jpy:null,quality_review_count:20}]};}
+function check(s){if(!s||s.version!==1||!Number.isSafeInteger(s.revision)||s.revision<0||['Jobs','Approvals','Audit','Orders','Products','Listings','Traffic','Settings'].some(k=>!Array.isArray(s[k]))||s.Jobs.length>200||s.Audit.length>1000||Buffer.byteLength(JSON.stringify(s))>1048576)fail(503,'persistent_state_invalid');return s;}
+function createCloudStore(store,{now=Date.now}={}){
+ if(!store||typeof store.getWithMetadata!=='function'||typeof store.setJSON!=='function')throw Error('store_unconnected');
+ async function read(){const row=await store.getWithMetadata(key,{type:'json',consistency:'strong'});if(row===null)return {state:initial(),etag:null};if(!row||typeof row.etag!=='string'||!row.etag)fail(503,'etag_missing');return {state:check(structuredClone(row.data)),etag:row.etag};}
+ async function mutate(fn){for(let attempt=0;attempt<8;attempt++){const {state,etag}=await read();const outcome=fn(state);if(outcome.unchanged)return outcome.value;state.revision++;check(state);const result=await store.setJSON(key,state,etag?{onlyIfMatch:etag}:{onlyIfNew:true});if(result?.modified===true&&result.etag)return outcome.value;if(result?.modified!==false)fail(503,'write_outcome_unknown');}fail(503,'storage_conflict');}
+ function log(s,job,action,result,actor){if(s.Audit.length>=1000)fail(503,'archive_required');s.Audit.push({id:randomUUID(),at:new Date(now()).toISOString(),job_id:job,action,reason:'authenticated_request',cost_jpy:null,result,actor});}
+ return {
+  async snapshot(){const {state}=await read();return {...state,mode:'cloud-incomplete',authentication:true,https:true,externalConnected:false,sheetsConnected:false,workerConnected:false,revenue:{sales:null,profit:null,orders:null,views:null,status:'未取得'}};},
+  async submit(input,actor){
+   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['intent','reason','productId','key'].includes(k))||!intents.includes(input.intent)||!reasons.includes(input.reason)||input.productId!=='otter-mug'||!uuid.test(input.key||''))fail(400,'invalid_instruction');
+   const idempotency=String(input.key).toLowerCase(),fingerprint=createHash('sha256').update(JSON.stringify([input.intent,input.productId,input.reason])).digest('hex');
+   return mutate(s=>{const old=s.Jobs.find(j=>j.idempotency_key===idempotency);if(old){if(old.fingerprint!==fingerprint)fail(409,'idempotency_conflict');return {unchanged:true,value:old};}if(s.Jobs.length>=200)fail(503,'archive_required');const at=new Date(now()).toISOString(),j={id:randomUUID(),idempotency_key:idempotency,fingerprint,intent:input.intent,product_id:input.productId,reason:input.reason,status:input.intent==='report'?'queued':'awaiting_approval',created_at:at,started_at:null,ended_at:null,attempts:0,cost_jpy:null,result:null,actor};s.Jobs.push(j);if(j.status==='awaiting_approval')s.Approvals.push({id:randomUUID(),job_id:j.id,status:'pending',requested_at:at,expires_at:new Date(now()+86400000).toISOString(),scope:'この指示の審査のみ。外部公開・支出の許可ではない',max_cost_jpy:0});log(s,j.id,'submit',j.status,actor);return {value:j};});
+  },
+  async decide(id,decision,actor){if(!['approved','rejected'].includes(decision))fail(400,'invalid_decision');return mutate(s=>{const a=s.Approvals.find(a=>a.id===id);if(!a)fail(404,'approval_missing');const j=s.Jobs.find(j=>j.id===a.job_id);if(!j)fail(503,'persistent_state_invalid');if(a.status!=='pending'){if(a.status===decision&&a.actor===actor)return {unchanged:true,value:{status:j.status}};fail(409,'decision_conflict');}if(Date.parse(a.expires_at)<=now()||!Number.isFinite(Date.parse(a.expires_at)))fail(409,'approval_expired');if(j.status!=='awaiting_approval')fail(409,'job_conflict');a.status=decision;a.actor=actor;a.decided_at=new Date(now()).toISOString();j.status=decision==='approved'?'queued':'rejected';if(decision==='rejected')j.ended_at=a.decided_at;log(s,j.id,'decision',decision,actor);return {value:{status:j.status}};});}
+ };
+}
+module.exports={createCloudStore};
