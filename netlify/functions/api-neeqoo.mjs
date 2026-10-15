@@ -20,7 +20,7 @@ export default async function handler(request){
   const reader=auth.createStrongAuthReader({store:getStore({name:'smile-studio-auth',...storeOptions}),sessionKey:raw=>'production/sessions/'+cryptoUtil.hashToken(raw),userKey:id=>'production/users/'+id});
   const getSession=async raw=>{const s=await reader.getSession(raw);return s&&s.sessionHash===cryptoUtil.hashToken(raw)?s:null;};
   let body='',length=0;
-  if(request.body){const stream=request.body.getReader(),chunks=[];try{for(;;){const r=await stream.read();if(r.done)break;length+=r.value.byteLength;if(length>4096){await stream.cancel();return response(413,'input_too_large');}chunks.push(Buffer.from(r.value));}body=Buffer.concat(chunks).toString('utf8');}finally{stream.releaseLock();}}
+  if(request.body){const stream=request.body.getReader(),chunks=[];try{for(;;){const r=await stream.read();if(r.done)break;length+=r.value.byteLength;if(length>16384){await stream.cancel();return response(413,'input_too_large');}chunks.push(Buffer.from(r.value));}body=Buffer.concat(chunks).toString('utf8');}finally{stream.releaseLock();}}
   const result=await api.createCloudApi({enabled:true,ownerIds,reader:{...reader,getSession},store:getStore({name:'smile-neeqoo-state',...storeOptions})})({httpMethod:request.method,path:url.pathname,headers:Object.fromEntries(request.headers),body});
   return new Response(result.body,{status:result.statusCode,headers:result.headers});
  }catch{return response(503,'neeqoo_unavailable');}
