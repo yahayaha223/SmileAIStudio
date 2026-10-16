@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Smile AI Studio ログイン（ローカル試作）">
+  <meta name="description" content="Smile AI Studio ログイン">
   <meta name="theme-color" content="#4f6ef7">
   <title>ログイン — Smile AI Studio</title>
   <link rel="stylesheet" href="login.css">
@@ -23,10 +23,7 @@
       顔認証・指紋・Windows Hello はお使いの端末が行います。
       Smile AI Studio が顔写真や生体情報を保存することはありません（パスキー方式）。
     </p>
-    <p class="login__lead login__lead--staging" id="staging-passkey-note">
-      ステージング（auth-staging）で登録するパスキーは試験用です。
-      本番（studio.egaonokiroku.co.jp）切替時は再登録してください。本番用パスキーをここに登録しないでください。
-    </p>
+    <p class="login__lead">株式会社えがおのきろくの管理画面です。登録済みのパスキーでログインしてください。</p>
 
     <section class="login__panel" aria-labelledby="passkey-heading">
       <h2 id="passkey-heading" class="visually-hidden">パスキーログイン</h2>
@@ -39,7 +36,7 @@
     <section class="login__alt" aria-labelledby="alt-heading">
       <h2 id="alt-heading" class="login__section-title">その他の方法</h2>
       <button type="button" class="btn btn--secondary" id="btn-email-login">
-        メールでログイン（代替）
+        メールで本人確認（パスキー登録用）
       </button>
       <button type="button" class="btn btn--ghost" id="btn-register-passkey">
         パスキーを登録 / 追加
@@ -50,23 +47,24 @@
     <section class="login__recover" id="recover" hidden>
       <h2 class="login__section-title">回復について</h2>
       <p class="login__recover-text">
-        回復は管理者（owner）による確認後、メールワンタイムまたは回復コードで行います。
-        この試作画面では本番への送信は行いません。
+        登録メールへの確認案内を認証APIへ要求します。メール確認だけでは管理画面へログインできません。
+        確認後はパスキーの登録・追加が必要です。既存のパスキーが使える場合は、上のログインボタンをご利用ください。
       </p>
       <label class="login__field">
-        <span>登録メール（試作）</span>
+        <span>登録メール</span>
         <input type="email" id="recover-email" autocomplete="username" placeholder="name@example.com" inputmode="email">
       </label>
-      <button type="button" class="btn btn--secondary" id="btn-recover-submit">回復手続きを開始（試作）</button>
+      <button type="button" class="btn btn--secondary" id="btn-recover-submit">本人確認メールを依頼する</button>
     </section>
 
     <div class="login__status" id="login-status" role="status" aria-live="polite"></div>
 
     <footer class="login__footer">
-      <p>ローカル試作 — 本番認証・公開・ユーザー本登録は未接続</p>
+      <p>認証にはこのサイトの認証APIを使用します。メール送信・登録の可否はサーバー設定によります。</p>
       <p class="login__footer-note">エラー表示はアカウントの有無を特定しない共通表現を使用します</p>
     </footer>
   </main>
   <script src="login.js"></script>
 </body>
 </html>
+

@@ -1,0 +1,24 @@
+// Optional same-tab drafts only. Never localStorage, credentials, or automatic POST.
+const draftKey='neeqoo.optional-draft.v1';
+const fields=['instruction','intent','reason','productId'];
+const ttl=30*60*1000;
+function valid(p){return p&&typeof p==='object'&&!Array.isArray(p)&&Object.keys(p).length===4&&fields.every(k=>typeof p[k]==='string')&&p.instruction.length<=2000&&p.intent.length<=32&&p.reason.length<=32&&p.productId==='otter-mug';}
+export function createDraftStore(storage,now=Date.now){
+ function clear(){storage.removeItem(draftKey);if(storage.getItem(draftKey)!==null)throw Error('draft_cleanup_failed');}
+ return {clear,read(){const raw=storage.getItem(draftKey);if(raw===null)return null;const r=JSON.parse(raw);if(r?.version!==1||!Number.isFinite(r.expires)||!valid(r.payload))throw Error('draft_invalid');if(r.expires<=now()||r.expires>now()+ttl){clear();return null;}return r.payload;},write(payload){if(!valid(payload))throw Error('draft_invalid');const raw=JSON.stringify({version:1,expires:now()+ttl,payload});storage.setItem(draftKey,raw);if(storage.getItem(draftKey)!==raw)throw Error('draft_write_failed');}};
+}
+export function connectionText(status){return status===401?'ログインが必要です。入力を保ったまま、同じブラウザーでログインしてください。':status===403?'アクセス条件を確認できません。再ログイン後も続く場合は確認を依頼してください。':status===503?'サーバー接続は準備中、または一時的に利用できません。':'接続を確認できません。表示データを最新として扱わないでください。';}
+export function createConnectionState(render){let epoch=0;return {begin(){const token=++epoch;render('接続を確認中です。指示の保存成功を示すものではありません。',false);return token;},success(token){if(token!==epoch)return false;render('認証済みの管理データを読み込みました。新しい指示の保存は別途確認します。',true);return true;},failure(token,status){if(token!==epoch)return false;render(connectionText(status),false);return true;}};}
+export function installDraftRetention({form,input,checkbox,status,storage,getPending}){
+ const store=createDraftStore(storage);
+ const current=()=>Object.fromEntries(new FormData(form));
+ const error=()=>{status.textContent='タブ内の下書き保持・消去を確認できません。入力は画面に残しています。タブを閉じず確認を依頼してください。';};
+ try{const saved=store.read();if(saved&&!getPending()){input.value=saved.instruction;form.elements.intent.value=saved.intent;form.elements.reason.value=saved.reason;form.elements.productId.value=saved.productId;checkbox.checked=true;status.textContent='このタブの未送信下書きを復元しました。サーバーには保存していません。';}}catch{error();}
+ function persist(){if(!checkbox.checked||getPending())return;try{store.write(current());status.textContent='このタブ内で未送信下書きを保持中です（復元期限：最終編集から30分）。サーバーには保存していません。';}catch{error();}}
+ checkbox.addEventListener('change',()=>{if(checkbox.checked)persist();else try{store.clear();status.textContent='下書きのタブ内保持を解除しました。画面を離れると入力を失う場合があります。';}catch{checkbox.checked=true;error();}});
+ form.addEventListener('input',persist);input.addEventListener('input',persist);
+ // Page exit is best effort on mobile; never promise retention after closing a tab.
+ const onExit=e=>{persist();if(input.value&&!getPending()){e.preventDefault();e.returnValue='';}};
+ window.addEventListener('beforeunload',onExit);
+ return {persist,clear(){try{store.clear();checkbox.checked=false;status.textContent='未送信下書きの保持を解除しました。';}catch{error();}}};
+}
