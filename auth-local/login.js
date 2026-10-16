@@ -7,6 +7,7 @@
 
   var GENERIC_FAIL = "ログインできませんでした。入力内容をご確認のうえ、再度お試しください。";
   var AUTH_BASE = "/api/auth";
+  var returnTarget = window.SmileReturnTarget ? window.SmileReturnTarget.fromSearch(location.search) : "/index.html";
 
   var el = {
     passkeyBtn: document.getElementById("btn-passkey-login"),
@@ -197,7 +198,7 @@
       }
       await confirmFullSession();
       setStatus("ログインしました。Studio へ移動できます。", "is-info");
-      setTimeout(function () { location.href = "/index.html"; }, 600);
+      setTimeout(function () { location.href = returnTarget; }, 600);
     } catch (e) {
       setStatus(e && e.message === "session_not_confirmed"
         ? "ログイン状態を確認できませんでした。再ログインを繰り返さず、この表示をお知らせください。"
@@ -291,7 +292,7 @@
       }
       await confirmFullSession();
       setStatus("パスキーを登録しました。Studio へ移動できます。", "is-info");
-      setTimeout(function () { location.href = "/index.html"; }, 700);
+      setTimeout(function () { location.href = returnTarget; }, 700);
     } catch (e) {
       var name = e && e.name ? String(e.name) : "";
       var msg = e && e.message ? String(e.message) : "";
@@ -342,6 +343,6 @@
   if (t) {
     emailVerify(t).then(function () { /* status set inside */ });
   } else {
-    refreshSession().catch(function () { /* ignore */ });
+    refreshSession().then(function (data) { if (returnTarget.indexOf("/neeqoo/#") === 0 && data && data._httpStatus === 200 && data.ok === true && data.authenticated === true && data.purpose === "full") location.href = returnTarget; }).catch(function () { /* ignore */ });
   }
 })();
