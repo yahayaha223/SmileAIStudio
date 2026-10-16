@@ -93,3 +93,10 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     Cache-Control = "no-store"
+
+# NeeQoo only: existing diary build/auth/routes unchanged.
+[[redirects]]
+  from = "/api/neeqoo/*"
+  to = "/.netlify/functions/api-neeqoo/:splat"
+  status = 200
+  force = true
