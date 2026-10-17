@@ -1,0 +1,55 @@
+name: NeeQoo PR checks
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/neeqoo-checks.yml'
+      - 'neeqoo/**'
+      - 'auth-local/**'
+      - 'tests/**'
+      - 'scripts/neeqoo-tests/**'
+      - 'scripts/build-diary-ai-trial.js'
+      - 'netlify/functions/api-neeqoo.mjs'
+      - 'netlify/functions/shared/**'
+      - 'netlify.toml'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neeqoo-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR merge candidate
+        # Official actions/checkout v4, pinned to the verified commit.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Set up verified Node version
+        # Official actions/setup-node v4; no shared dependency cache.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20.20.2'
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run offline mock tests
+        run: env -i PATH="$PATH" node --test tests/*.test.mjs scripts/neeqoo-tests/*.test.mjs
+      - name: Build non-production metadata and bundles
+        # No Netlify CLI, credentials, deployment, or business API requests.
+        shell: bash
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" CONTEXT=dev node scripts/build-diary-ai-trial.js
+          env -i PATH="$PATH" node -e "if (require('./netlify/functions/shared/diary-ai-trial-context.json').production !== false) throw Error('production build forbidden')"
+          env -i PATH="$PATH" node_modules/.bin/esbuild neeqoo/app.js --bundle --platform=browser --outfile="$RUNNER_TEMP/neeqoo-app.js"
+          env -i PATH="$PATH" node_modules/.bin/esbuild netlify/functions/api-neeqoo.mjs --bundle --platform=node --format=esm --packages=external --outfile="$RUNNER_TEMP/neeqoo-api.mjs"
