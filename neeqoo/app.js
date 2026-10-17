@@ -1,3 +1,5 @@
+import {requestJson} from './request.js';
+import {installLoginNavigation} from './login-navigation.js';
 import {installDiagnostics} from './storage-diagnostics.js';
 import {route,loginHref,requireSavedMatch,saveAndReadBack,recordStatus} from './save-receipt.js';
 import {createConnectionState,installDraftRetention} from './return-state.js';
@@ -29,7 +31,7 @@ function pending(){try{return pendingStore?.read()||null;}catch{storageError();r
 function updateControls(){const p=pending();const locked=storageFailed||sending||!!p;for(const n of [...form.elements,input,document.querySelector('#make-plan')])n.disabled=locked;document.querySelector('#retain-draft').disabled=locked;sendButton.disabled=locked;retryButton.disabled=storageFailed||sending;pendingPanel.hidden=!p;if(p){summary(pendingBody,p);review.hidden=true;}return p;}
 try{pendingStore=createPendingStore(window.sessionStorage);pendingStore.read();}catch{storageError();}
 document.querySelector('#make-plan').onclick=()=>{const plan=propose(input.value),root=document.querySelector('#plan-preview');root.replaceChildren(el('p',plan.message));form.elements.intent.value='';review.hidden=true;reviewed=null;for(const intent of plan.candidates){const b=el('button',intents[intent]);b.type='button';b.onclick=()=>{form.elements.intent.value=intent;reviewed=null;review.hidden=true;document.querySelector('[data-view=instructions]').click();};root.append(b);}};
-async function api(path,body){const headers={'Content-Type':'application/json','X-CSRF-Token':decodeURIComponent(document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('smile_studio_csrf='))?.slice('smile_studio_csrf='.length)||'')};const r=await fetch(path,{cache:'no-store',credentials:'same-origin',...(body?{method:'POST',headers,body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok)throw Object.assign(Error(r.status===401?'ログイン／パスキー再認証を確認してください。':r.status===503?'接続準備中、または保存結果を確認できません。':'保存できませんでした。内容と接続状態を確認してください。'),{status:r.status,code:data?.error});return data;}
+async function api(path,body){const headers={'Content-Type':'application/json','X-CSRF-Token':decodeURIComponent(document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith('smile_studio_csrf='))?.slice('smile_studio_csrf='.length)||'')};const {response:r,data}=await requestJson(path,{cache:'no-store',credentials:'same-origin',...(body?{method:'POST',headers,body:JSON.stringify(body)}:{})});if(!r.ok)throw Object.assign(Error(r.status===401?'ログイン／パスキー再認証を確認してください。':r.status===503?'接続準備中、または保存結果を確認できません。':'保存できませんでした。内容と接続状態を確認してください。'),{status:r.status,code:data?.error});return data;}
 function cards(target,items,render,empty){const root=document.querySelector(target);root.replaceChildren();if(!items.length)root.append(el('p',empty));for(const item of items)root.append(render(item));}
 function confirmed(job){if(!pendingStore.confirm(job))return;draftRetention?.clear();reviewed=null;review.hidden=true;form.reset();input.value='';document.querySelector('#plan-preview').replaceChildren();message.textContent='保存後の再読込みで指示の一致を確認しました。受付保存のみです。AI・ワーカーによる自動実行は行っていません。';selectView('jobs',job.id);updateControls();}
 async function refresh(){const token=connection.begin();try{const s=await api('/api/neeqoo/state');if(s?.authentication!==true||!['Jobs','Approvals','Audit','Products'].every(k=>Array.isArray(s[k])))throw Error('invalid_state_response');if(!connection.success(token))return;const p=pending();if(p&&!sending&&!storageFailed){const saved=s.Jobs.find(j=>j.idempotency_key===p.key);if(saved)confirmed(requireSavedMatch(p,s));}
@@ -52,6 +54,7 @@ sendButton.onclick=()=>{if(!reviewed||sending||storageFailed)return;const fields
 retryButton.onclick=()=>{const p=pending();if(p&&!storageFailed)void send(p);};
 updateControls();
 try{draftRetention=installDraftRetention({form,input,checkbox:document.querySelector('#retain-draft'),status:document.querySelector('#draft-status'),storage:window.sessionStorage,getPending:pending});}catch{document.querySelector('#draft-status').textContent='下書き保持は利用できません。入力したままタブを閉じないでください。';}
+installLoginNavigation({document,getState:()=>({hasInput:!!input.value,getPending:()=>{if(storageFailed)throw Error('storage_unavailable');return pendingStore.read();},retention:draftRetention}),ask:text=>window.confirm(text)});
 if(pending())message.textContent='前回の保存結果を確認します。未確認なら同じ記録の再送ボタンを使ってください。';
 const checkConnection=()=>{void refresh().catch(()=>{});};
 document.querySelector('#refresh-diagnostic').onclick=checkConnection;
