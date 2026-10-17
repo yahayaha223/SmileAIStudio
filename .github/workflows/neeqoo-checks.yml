@@ -6,12 +6,14 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.github/workflows/neeqoo-checks.yml'
+      - '.npmrc'
       - 'neeqoo/**'
       - 'auth-local/**'
       - 'tests/**'
       - 'scripts/neeqoo-tests/**'
       - 'scripts/build-diary-ai-trial.js'
       - 'netlify/functions/api-neeqoo.mjs'
+      - 'netlify/functions/api-auth.mjs'
       - 'netlify/functions/shared/**'
       - 'netlify.toml'
       - 'package.json'
@@ -42,7 +44,7 @@ jobs:
           node-version: '20.20.2'
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Run offline mock tests
+      - name: Run mock tests without inherited environment
         run: env -i PATH="$PATH" node --test tests/*.test.mjs scripts/neeqoo-tests/*.test.mjs
       - name: Build non-production metadata and bundles
         # No Netlify CLI, credentials, deployment, or business API requests.
