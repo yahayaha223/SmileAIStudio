@@ -2,9 +2,9 @@
 const {createHandler}=require('./neeqoo-auth.cjs');
 const {createCloudStore}=require('./cloud-store.cjs');
 const json=(statusCode,data)=>({statusCode,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'},body:JSON.stringify(data)});
-function createCloudApi({reader,store,ownerIds=[],enabled=false,now}={}){
+function createCloudApi({reader,store,ownerIds=[],enabled=false,now,release}={}){
  if(!enabled)return async()=>json(503,{error:'NeeQoo未接続・準備中'});
- const db=createCloudStore(store,{now});
+ const db=createCloudStore(store,{now,release});
  return createHandler({origin:'https://studio.egaonokiroku.co.jp',ownerIds,...reader,now,execute:async ctx=>{
   try{
    if(ctx.permission==='read')return json(200,await db.snapshot());
