@@ -3,3 +3,6 @@ textarea{font:inherit;width:100%;border:1px solid #9bafa7;border-radius:10px;pad
 
 /* Narrow screens and enlarged text: controls wrap without widening the page. */
 nav{grid-template-columns:repeat(4,minmax(0,1fr))}button{max-width:100%;white-space:normal;overflow-wrap:anywhere}nav button{min-width:0}select,textarea{min-width:0;max-width:100%}article[id^="job-"]{scroll-margin-top:100px}body{padding-bottom:max(48px,env(safe-area-inset-bottom))}
+
+/* Readable status rows on narrow screens; no fixed widths or color-only meaning. */
+.status-summary{border:1px solid #9bafa7;border-radius:16px;background:#fff;padding:16px;margin:16px 0;font-size:16px;overflow-wrap:anywhere}.status-summary h2{font-size:20px;margin:0 0 12px}.status-summary p{margin:0;padding:10px 0}.status-summary p+p{border-top:1px solid #dce4de}
