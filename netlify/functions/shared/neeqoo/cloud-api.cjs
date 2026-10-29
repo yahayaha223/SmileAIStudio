@@ -7,7 +7,17 @@ function createCloudApi({reader,store,ownerIds=[],enabled=false,now,release}={})
  const db=createCloudStore(store,{now,release});
  return createHandler({origin:'https://studio.egaonokiroku.co.jp',ownerIds,...reader,now,execute:async ctx=>{
   try{
-   if(ctx.permission==='read')return json(200,await db.snapshot());
+   if(ctx.permission==='read'){
+    const state=await db.snapshot();
+    // Separate owner-only snapshot, provisioned out of band. Never seed private
+    // measurements in this public repository, static assets or an unauthenticated API.
+    let analytics=null;
+    try{
+     const row=await store.getWithMetadata('analytics-snapshot-v1',{type:'json',consistency:'strong'});
+     if(row?.data?.version===1&&row.data.mode==='manual_snapshot')analytics=row.data;
+    }catch{/* Unavailable analytics must not break the existing instruction state. */}
+    return json(200,{...state,analytics});
+   }
    if(Buffer.byteLength(ctx.body)>16384)return json(413,{error:'input_too_large'});
    let body;try{body=JSON.parse(ctx.body);}catch{return json(400,{error:'invalid_json'});}
    if(ctx.permission==='instruct')return json(201,await db.submit(body,ctx.actorUserId));
@@ -17,3 +27,4 @@ function createCloudApi({reader,store,ownerIds=[],enabled=false,now,release}={})
  }});
 }
 module.exports={createCloudApi};
+
