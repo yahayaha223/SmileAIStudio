@@ -4,7 +4,7 @@ const reply=(statusCode,error)=>({statusCode,headers:{'Content-Type':'applicatio
 function header(event,name){const values=Object.entries(event.headers||{}).filter(([k])=>k.toLowerCase()===name).map(([,v])=>v);return values.length===1&&typeof values[0]==='string'?values[0]:'';}
 function cookies(event){const result=Object.create(null);for(const part of header(event,'cookie').split(';')){const at=part.indexOf('=');if(at<0)continue;const key=part.slice(0,at).trim();if(Object.hasOwn(result,key))throw Error('duplicate');result[key]=decodeURIComponent(part.slice(at+1).trim());}return result;}
 function equal(a,b){if(typeof a!=='string'||typeof b!=='string'||!a||a.length>512||b.length>512)return false;const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
-function route(event){const p=event.path||'';const m=event.httpMethod;const root='(?:/api/neeqoo|/\\.netlify/functions/api-neeqoo)';if(m==='GET'&&new RegExp('^'+root+'/state$').test(p))return 'read';if(m==='POST'&&new RegExp('^'+root+'/jobs$').test(p))return 'instruct';if(m==='POST'&&new RegExp('^'+root+'/approvals/[a-f0-9-]{36}$').test(p))return 'approve';return null;}
+function route(event){const p=event.path||'';const m=event.httpMethod;const root='(?:/api/neeqoo|/\\.netlify/functions/api-neeqoo)';if(m==='GET'&&new RegExp('^'+root+'/state$').test(p))return 'read';if(m==='POST'&&new RegExp('^'+root+'/analytics$').test(p))return 'analytics';if(m==='POST'&&new RegExp('^'+root+'/jobs$').test(p))return 'instruct';if(m==='POST'&&new RegExp('^'+root+'/approvals/[a-f0-9-]{36}$').test(p))return 'approve';return null;}
 // Dependencies must be bound to server-owned session/user stores, never to request data.
 // No cookie minting, auth configuration writes, session touch, or global enforcement mode changes.
 function createHandler(deps={}){
@@ -30,3 +30,4 @@ function createHandler(deps={}){
  };
 }
 module.exports={createHandler};
+
