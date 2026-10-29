@@ -6,3 +6,6 @@ nav{grid-template-columns:repeat(4,minmax(0,1fr))}button{max-width:100%;white-sp
 
 /* Readable status rows on narrow screens; no fixed widths or color-only meaning. */
 .status-summary{border:1px solid #9bafa7;border-radius:16px;background:#fff;padding:16px;margin:16px 0;font-size:16px;overflow-wrap:anywhere}.status-summary h2{font-size:20px;margin:0 0 12px}.status-summary p{margin:0;padding:10px 0}.status-summary p+p{border-top:1px solid #dce4de}
+
+#analytics-content{min-width:0;overflow-wrap:anywhere}.analytics-row{padding:8px 0}.analytics-row span{display:block}.analytics-row meter{display:block;width:100%;height:22px;accent-color:#205c4c}.analytics-flow{padding-left:24px}.analytics-flow li{padding:6px 0}#analytics-content summary{min-height:48px;cursor:pointer;padding:12px 0}#analytics-content article{padding:14px}
+
