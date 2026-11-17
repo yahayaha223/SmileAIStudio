@@ -1,6 +1,7 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NeeQoo Design 管理</title><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script></head>
-<body><header><small>株式会社えがおのきろく</small><h1>NeeQoo Design</h1><p>作品と運営を、ひとつずつ確かに。</p><p><a data-neeqoo-login href="/auth-local/login.html?returnTo=neeqoo&view=instructions">既存ログイン画面を開く</a>（ログイン後は日記トップの NeeQoo から戻れます）</p></header>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>NeeQoo Design 管理</title><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script><link rel="stylesheet" href="../assets/studio-night.css">
+</head>
+<body class="studio-neeqoo"><header><small>株式会社えがおのきろく</small><h1>NeeQoo Design</h1><p>作品と運営を、ひとつずつ確かに。</p><p><a data-neeqoo-login href="/auth-local/login.html?returnTo=neeqoo&view=instructions">既存ログイン画面を開く</a>（ログイン後は日記トップの NeeQoo から戻れます）</p></header>
 <aside class="notice"><strong>機能の検証範囲</strong><br>本人による本番保存・承認テストは未実施です。外部連携・キュー実行・バックアップ・端末間同期は未検証です。接続状態は下に別表示します。<a href="/index.html">共通入口へ戻る／ログイン</a></aside>
 <nav aria-label="管理メニュー"><button data-view="instructions" aria-pressed="true">指示する</button><button data-view="approvals" aria-pressed="false">承認待ち</button><button data-view="jobs" aria-pressed="false">実行状況</button><button data-view="revenue" aria-pressed="false">解析・収益</button></nav>
 <main><p><a data-neeqoo-login href="/auth-local/login.html?returnTo=neeqoo&view=instructions">ログインしてこの画面に戻る</a> <a id="saved-record-link" hidden>この保存記録を開く</a></p><p id="record-status" role="status" aria-live="polite"></p><p id="connection-status" role="status" aria-live="polite">接続はまだ確認していません。</p><p id="message" role="status" aria-live="polite"></p>

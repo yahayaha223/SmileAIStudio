@@ -1,0 +1,126 @@
+/* Presentation-only theme based on the 2026-11-10 mobile references.
+   No authentication, storage, API, visibility or event behaviour is changed. */
+:root {
+  color-scheme: dark;
+  --color-bg: #080f1b;
+  --color-surface: #14263d;
+  --color-primary: #2bd0e2;
+  --color-primary-dark: #22b8ca;
+  --color-accent: #a897ff;
+  --color-accent-light: #c1b5ff;
+  --color-text: #eef3ff;
+  --color-text-muted: #b1c1d3;
+  --color-border: #2a465f;
+  --color-success: #65dfbb;
+  --color-danger: #ff9aa9;
+  --color-warning: #ffca77;
+  --shadow: 0 8px 28px #0003;
+  --shadow-sm: 0 2px 8px #0002;
+  --shadow-md: 0 8px 24px #0003;
+}
+:root { background-color: var(--color-bg); }
+body {
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  background-image: linear-gradient(#20354d12 1px, transparent 1px),linear-gradient(90deg,#20354d12 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+body::before { background: none; }
+a { color: var(--color-primary); }
+button, input, select, textarea { font: inherit; }
+input, select, textarea { color: var(--color-text); background: #0d1c2f; border-color: var(--color-border); }
+input::placeholder, textarea::placeholder { color: #9cacc1; opacity: 1; }
+:where(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #ffca77; outline-offset: 3px; }
+:where(button, input, select, textarea) { accent-color: var(--color-primary); }
+.btn--primary { background: var(--color-primary); color: #061923; border-color: var(--color-primary); }
+.btn--primary:hover { background: #68e5ef; }
+.btn--secondary { background: #101d31; color: var(--color-accent); border-color: var(--color-accent); }
+.btn--ghost { color: var(--color-text); background: transparent; border-color: var(--color-border); }
+/* Login: preserve the complete passkey/recovery flow and all guidance. */
+.login { padding-inline: 16px; }
+.login__logo { background: #0c2034; border: 1px solid var(--color-primary); border-radius: 18px; }
+.login__logo-mark { color: var(--color-primary); }
+.login__panel, .login__alt, .login__recover { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 18px; }
+.login__panel { border-top: 2px solid var(--color-primary); }
+.login__hint.is-warn { color: var(--color-warning); }
+.login__status.is-error { color: var(--color-danger); background: #371c2b; }
+/* Existing dashboard layout, navigation, and modal state remain intact. */
+.home-action, .home-action--diary, .home-action--diary-delete,
+.home-more-panel, .modal, .account-menu__dropdown,
+.project-card, .home-accordion, .home-accordion--vision, .home-accordion--mission {
+  background: var(--color-surface); color: var(--color-text); border-color: var(--color-border);
+}
+.home-action--diary { border-top: 2px solid var(--color-primary); }
+.home-action:hover { border-color: var(--color-primary); }
+.home-greet__hello, .home-action__hint { color: var(--color-text-muted); }
+.home-greet__ask { color: var(--color-text); }
+.footer, .footer--quick, .quick-nav { background: #0f1d30; border-color: var(--color-border); }
+.quick-nav__btn { color: var(--color-text-muted); background: transparent; }
+.quick-nav__btn--active { color: #061923; background: var(--color-primary); }
+.modal__header, .modal__actions { background: var(--color-surface); border-color: var(--color-border); }
+.modal__close, .account-menu__trigger { color: var(--color-text); background: #0f1e32; border: 1px solid var(--color-border); }
+.modal__close:hover, .account-menu__trigger:hover { background: #203c56; }
+.modal-overlay { background: #020812c9; }
+.simple-diary__body, .simple-diary__photo-btn, .simple-diary__confirm,
+.simple-diary__result, .ai-job-card { background: #102035; color: var(--color-text); border-color: var(--color-border); }
+/* NeeQoo: keep unknown / unverified states visible, never fabricate metrics. */
+.studio-neeqoo { padding-bottom: max(48px, env(safe-area-inset-bottom)); }
+.studio-neeqoo header p, .studio-neeqoo .muted, .studio-neeqoo footer { color: var(--color-text-muted); }
+.studio-neeqoo :is(section, article, .status-summary) { background: var(--color-surface); border-color: var(--color-border); }
+.studio-neeqoo .notice { background: #101d31; color: var(--color-text); border-color: #ba914e; }
+.studio-neeqoo button { background: #0f1e32; border-color: var(--color-border); color: var(--color-text); }
+.studio-neeqoo button[aria-pressed=true], .studio-neeqoo button.primary { background: var(--color-primary); border-color: var(--color-primary); color: #061923; font-weight: 700; }
+.studio-neeqoo nav { background: #0f1d30; }
+.studio-neeqoo #message { background: #19344a; }
+.studio-neeqoo .analytics-row meter { accent-color: var(--color-primary); }
+@media (max-width: 600px) {
+  .studio-neeqoo { padding: 16px 16px calc(110px + env(safe-area-inset-bottom)); }
+  .studio-neeqoo nav { position: fixed; inset: auto 0 0; z-index: 10; margin: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--color-border); }
+  .studio-neeqoo nav button { min-height: 48px; }
+  .studio-neeqoo section { padding: 16px; }
+  .studio-neeqoo article[id^="job-"] { scroll-margin-top: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; animation-duration: 0s !important; }
+}
+
+/* Visual QA: replace legacy light surfaces without changing behaviour. */
+.modal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea),
+.modal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  color: var(--color-text); background: #0d1c2f; border-color: var(--color-border);
+}
+.modal :is(input, textarea)::placeholder { color: #9cacc1; opacity: 1; }
+.task-tab, .creative-type-card, .creative-mode-card, .creative-mode-card--primary,
+.line-status__row, .release-version, .system-check__meta, .manual-checklist__item {
+  background: #0f1e32; color: var(--color-text); border-color: var(--color-border);
+}
+.task-tab.is-active { background: var(--color-primary); color: #061923; border-color: var(--color-primary); }
+.creative-type-card:active, .creative-mode-card:active { background: #203c56; }
+.meeting-fab { background: var(--color-primary); color: #061923; }
+.btn--danger { color: var(--color-danger); background: #371c2b; border-color: #754454; }
+.more-menu__btn, .ai-jobs-list { background: #0f1e32; color: var(--color-text); border-color: var(--color-border); }
+.more-menu__btn:hover { background: #203c56; }
+.more-menu__btn#btn-company-brain { background: #0f1e32; border-color: var(--color-border); }
+/* Preserve the existing hidden state against legacy display:flex rules. */
+.secretary-photo__preview[hidden], .home-compose__preview[hidden] { display: none; }
+/* Dark-theme error and required labels retain their original semantics. */
+.simple-diary__status.is-error, .hp-edit-ftp-probe-result.is-error,
+.account-card__status.is-error, .badge--priority-top, .required-mark,
+.form-error, .check-card__badge.is-fail, .line-status__value.is-bad,
+.web-index-check-ng, .interview-list-action--danger,
+.request-card__actions .btn--danger { color: var(--color-danger); }
+.web-vault-stats { background: #0f1e32; color: var(--color-text); border-color: var(--color-border); }
+
+.cursor-handoff__preview { background: #0f1e32; color: var(--color-text); border-color: var(--color-border); }
+.cursor-handoff__full[hidden] { display: none; }
+
+/* Keep the keyboard ring visible over legacy field focus resets. */
+body :is(button, a, input, select, textarea, summary):focus-visible,
+.modal :is(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #ffca77; outline-offset: 3px; }
+
+.web-diary-save-bar, .web-diary-form-actions { background: #0f1e32; border-color: var(--color-border); }
+/* Preserve accessible file inputs without expanding the modal scroll area. */
+.modal input.visually-hidden { width: 1px; height: 1px; min-width: 0; padding: 0; border: 0; }
+
+.web-diary-image-card { background: #0f1e32; color: var(--color-text); border-color: var(--color-border); }
+.web-diary-image-card__meta, .web-diary-image-card__field-label { color: var(--color-text-muted); }
